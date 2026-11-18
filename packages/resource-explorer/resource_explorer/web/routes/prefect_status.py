@@ -51,6 +51,8 @@ def get_status() -> dict:
     return {
         "enabled": config.prefect.enabled,
         "route_local_steps": config.prefect.route_local_steps,
+        # TR-11 F-AB-3: the effective per-step dispatch policy (PREFECT_DISPATCH_STEPS, or the deprecated alias).
+        "dispatch_policy": _dispatch_policy_words(config.prefect),
         "reachable": ok,
         "error": error,
         "api_url": config.prefect.api_url,
@@ -121,3 +123,12 @@ def cancel_flow_run(flow_run_id: str) -> dict:
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Could not cancel flow run: {exc}")
     return {"status": "cancelling", "id": flow_run_id}
+
+
+def _dispatch_policy_words(prefect_cfg) -> str:
+    from resource_explorer.surveyors.step_dispatch_policy import DispatchPolicyError, resolve
+
+    try:
+        return resolve(prefect_cfg).describe()
+    except DispatchPolicyError as exc:
+        return f"invalid: {exc}"

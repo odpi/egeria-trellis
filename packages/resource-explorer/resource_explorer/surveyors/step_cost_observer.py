@@ -268,6 +268,22 @@ def in_flow_run(flow_run_id: str):
         _FLOW_RUN.reset(token)
 
 
+#: Why a step dispatched to Prefect is running locally instead (TR-11 F-AB-3, C5), or "".
+_FALLBACK: ContextVar[str] = ContextVar("re_step_dispatch_fallback", default="")
+
+
+@contextmanager
+def dispatch_fallback(reason: str):
+    """Rows observed inside this scope ran locally BECAUSE a Prefect dispatch fell back: each local row gets
+    `dispatch_failed=reason`, so a fallback can never read as dispatched, nor as a step never routed to Prefect.
+    "" is a no-op scope."""
+    token = _FALLBACK.set(str(reason or ""))
+    try:
+        yield
+    finally:
+        _FALLBACK.reset(token)
+
+
 def current_flow_run() -> str:
     """The flow run a step is executing inside, or ""."""
     return _FLOW_RUN.get()
@@ -345,6 +361,9 @@ def observe(step_key: str, declared_fetch: str, declared_compute: str,
                 obs.executor = obs.source = "prefect"
                 obs.executor_ref = executor_ref or flow_run
                 obs.flow_run_id = flow_run
+            fallback = _FALLBACK.get()
+            if fallback and obs.executor == "local" and not obs.dispatch_failed:
+                obs.dispatch_failed = fallback
             obs.demanded_by = demanded_by
             obs.disagreement = _disagreement(obs)
             openlineage.finish(ol_state, ol_token, raised=raised)

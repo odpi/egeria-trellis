@@ -842,6 +842,16 @@ def run_prefect_step(
 ) -> dict[str, Any]:
     """Dispatch step execution to Prefect, via its API when enabled, else in-process.
 
+    Who calls it (corrected 2026-11-17, TR-11 F-AB-3): the in-process loop for a
+    step its `_use_prefect` routes to Prefect, and the whole-definition flow's
+    `run_planned_step_task` for a step `step_dispatch_policy.dispatch_decision`
+    sends to a worker. A whole-definition run (`engine_override="prefect"`, or
+    the default with Prefect reachable) does NOT come through here as a whole:
+    it is one flow in RE's own process, and only its dispatched steps reach this
+    function. When the dispatch falls back to running locally, the rows the step
+    records carry the reason in `dispatch_failed` (`step_cost_observer.
+    dispatch_fallback`), so a fallback can never read as a dispatched run.
+
     The API branch had never executed. It began with `asyncio.get_running_loop()`,
     while a redundant `import asyncio` further down the same function turned
     `asyncio` into a closure cell (the lambda below captures it) — so that first
@@ -871,6 +881,8 @@ def run_prefect_step(
     # except there would turn this into a quiet local fallback.
     assert_no_credentials(runner_kwargs, where="Prefect")
     config = get_config()
+
+    fallback_reason = ""
 
     def _fill(engine: str, flow_run_id: str = "", dispatch_failed: str = "") -> None:
         if dispatch_info is not None:
@@ -937,7 +949,8 @@ def run_prefect_step(
                 "Prefect API dispatch failed (%s), falling back to local flow execution: %s",
                 type(e).__name__, e, exc_info=True,
             )
-            _fill("local", dispatch_failed=f"{type(e).__name__}: {e}")
+            fallback_reason = f"{type(e).__name__}: {e}"
+            _fill("local", dispatch_failed=fallback_reason)
     else:
         _fill("local", dispatch_failed="")
 
@@ -959,10 +972,14 @@ def run_prefect_step(
     # prefect/flows.py) — this runs the step as a plain Python call, no
     # Prefect engine involved at all.
     local_kwargs = {"credential_ref": credential_ref} if credential_ref else {}
-    return run_surveyor_step_task.fn(
-        entity_type=entity_type,
-        slug=slug,
-        step_name=step_name,
-        runner_kwargs=runner_kwargs,
-        **local_kwargs,
-    )
+    from resource_explorer.surveyors import step_cost_observer
+
+    # TR-11 F-AB-3 (C5): a row the step's own runner records while falling back says so.
+    with step_cost_observer.dispatch_fallback(fallback_reason):
+        return run_surveyor_step_task.fn(
+            entity_type=entity_type,
+            slug=slug,
+            step_name=step_name,
+            runner_kwargs=runner_kwargs,
+            **local_kwargs,
+        )

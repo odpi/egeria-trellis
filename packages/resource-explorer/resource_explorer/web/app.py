@@ -110,6 +110,11 @@ async def _lifespan(app: FastAPI):
     from resource_explorer.surveyors.prefect_adapter import alog_prefect_reachability_at_startup
 
     await alog_prefect_reachability_at_startup()
+    from resource_explorer.surveyors.step_dispatch_policy import log_dispatch_policy_at_startup
+
+    # TR-11 F-AB-3 (C4/C5): an unknown PREFECT_DISPATCH_STEPS token stops startup; the policy, the heavy steps it
+    # resolved and the per-step dispatch cost are logged once.
+    log_dispatch_policy_at_startup()
     import asyncio as _asyncio
 
     # on, or off with the lift's evidence, then the platform's origin beside the proven build (one read, off-loop)

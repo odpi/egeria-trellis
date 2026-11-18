@@ -114,6 +114,7 @@ from datetime import UTC
 from typing import Any
 
 from resource_explorer.step_outcome import SURVEY_GUARDS, TRIGGERED_TWICE_SENTENCE
+from resource_explorer.surveyors.step_dispatch_policy import HEAVY_COMPUTE as _HEAVY_COMPUTE
 
 log = logging.getLogger(__name__)
 
@@ -400,7 +401,7 @@ REGISTRY_ENTITY_TYPES = ("database", "repo")
 
 #: Repository steps whose fetch or compute is out of this slice (§5.4): "steps fetch sources or call models".
 _HEAVY_FETCH = frozenset({"api_heavy", "download"})
-_HEAVY_COMPUTE = frozenset({"high"})
+# _HEAVY_COMPUTE: what "heavy compute" means is said once, in step_dispatch_policy (TR-11 F-AB-3, C3), imported above.
 
 
 @dataclass(frozen=True)

@@ -1507,7 +1507,7 @@ def survey_definition(
         None, "--engine",
         help="Force which engine runs this definition's 'resource-explorer'-tagged "
              "steps for THIS run only: 'resource-explorer' (local) or 'prefect'. "
-             "Omit to use the configured behaviour (PREFECT_ROUTE_LOCAL_STEPS). "
+             "Omit to use the configured behaviour (PREFECT_DISPATCH_STEPS). "
              "Does not affect executes_at='egeria' steps.",
     ),
 ):
@@ -2262,7 +2262,7 @@ def database_survey_definition(
         None, "--engine",
         help="Force which engine runs this definition's 'resource-explorer'-tagged "
              "steps for THIS run only: 'resource-explorer' (local) or 'prefect'. "
-             "Omit to use the configured behaviour (PREFECT_ROUTE_LOCAL_STEPS). "
+             "Omit to use the configured behaviour (PREFECT_DISPATCH_STEPS). "
              "Does not affect executes_at='egeria' steps.",
     ),
 ):
@@ -2763,7 +2763,7 @@ def filesystem_survey_definition(
         None, "--engine",
         help="Force which engine runs this definition's 'resource-explorer'-tagged "
              "steps for THIS run only: 'resource-explorer' (local) or 'prefect'. "
-             "Omit to use the configured behaviour (PREFECT_ROUTE_LOCAL_STEPS). "
+             "Omit to use the configured behaviour (PREFECT_DISPATCH_STEPS). "
              "Does not affect executes_at='egeria' steps.",
     ),
 ):

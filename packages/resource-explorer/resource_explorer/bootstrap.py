@@ -355,23 +355,34 @@ def prefect_pool_runs_locally_instead() -> list[str]:
     """What runs in Resource Explorer's own process, instead of on a pool worker, while the pool has
     no live worker. Derived from the code's own routing, not a hand-kept list:
 
-    - a whole-definition run calls `re_survey_definition_flow` in this process and never uses the
-      pool, so it is not affected and is not listed;
-    - a step `_use_prefect` sends to Prefect goes through `run_prefect_step` ->
-      `_run_prefect_step_api`, which refuses to create a flow run when the pool has no ONLINE worker;
-      `run_prefect_step` then runs the step locally (PREFECT-POLL-TIMEOUT-IMPLEMENTED.md). Those steps
-      are: every PREFECT_ONLY_STEPS entry, any step marked executes_at=prefect, and RE's own
-      (executes_at=resource-explorer) steps when PREFECT_ROUTE_LOCAL_STEPS is on.
+    - a whole-definition run calls `re_survey_definition_flow` in this process; only the steps
+      `step_dispatch_policy.dispatch_decision` sends to a worker use the pool from there;
+    - a step dispatched to a worker -- by the in-process loop's `_use_prefect` or by the
+      whole-definition flow's `run_planned_step_task`, which both ask `dispatch_decision` -- goes
+      through `run_prefect_step` -> `_run_prefect_step_api`, which refuses to create a flow run when
+      the pool has no ONLINE worker; `run_prefect_step` then runs the step locally
+      (PREFECT-POLL-TIMEOUT-IMPLEMENTED.md). Those steps are: every PREFECT_ONLY_STEPS entry, any step
+      marked executes_at=prefect, and RE's own (executes_at=resource-explorer) steps the dispatch
+      policy (PREFECT_DISPATCH_STEPS, or the deprecated PREFECT_ROUTE_LOCAL_STEPS) selects.
     """
     from resource_explorer.config import get_config
+    from resource_explorer.surveyors import step_dispatch_policy as sdp
     from resource_explorer.surveyors.survey_definition_executor import PREFECT_ONLY_STEPS
 
     out = [_STEP_WORDS.get(k, k) for k in PREFECT_ONLY_STEPS]
     out.append("any step marked executes_at=prefect")
     # Called inside check_prefect_pool_workers' own try: a config that cannot be read makes the
     # whole check "could not check", never a silently shorter list.
-    if get_config().prefect.route_local_steps:
-        out.append("Resource Explorer's own steps (PREFECT_ROUTE_LOCAL_STEPS is on)")
+    policy = sdp.resolve(get_config().prefect)
+    if policy.all:
+        out.append("Resource Explorer's own steps (PREFECT_ROUTE_LOCAL_STEPS is on)"
+                   if policy.source == sdp.ENV_ROUTE_LOCAL else
+                   "Resource Explorer's own steps (PREFECT_DISPATCH_STEPS=all)")
+    elif not policy.empty:
+        # The same decision the executors make, over every registry step (TR-11 F-AB-3, C2).
+        picked = [k for k in sdp.dispatched_steps(policy) if k not in PREFECT_ONLY_STEPS]
+        if picked:
+            out.append(f"Resource Explorer's own steps PREFECT_DISPATCH_STEPS selects: {', '.join(picked)}")
     return out
 
 

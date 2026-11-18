@@ -403,21 +403,27 @@ class SurveyDefinitionExecutor:
 
         engine_override: per-RUN choice of which engine runs this definition's
         `resource-explorer`-tagged steps, taking precedence over
-        `config.prefect.enabled`/`route_local_steps` for the duration of THIS
-        call only — a local parameter, never a global mutation, so it cannot
-        leak into a concurrent request.
+        `config.prefect.enabled` and the step dispatch policy
+        (`PREFECT_DISPATCH_STEPS`, see `surveyors/step_dispatch_policy.py`) for
+        the duration of THIS call only — a local parameter, never a global
+        mutation, so it cannot leak into a concurrent request.
 
           - None (default): unchanged, config-driven behaviour (see
             `_use_prefect` below).
           - "resource-explorer": force every `resource-explorer`-tagged step
             to run locally for this run, and skip whole-definition Prefect
             orchestration (`_run_via_prefect`) entirely.
-          - "prefect": force every `resource-explorer`-tagged step to run via
-            Prefect for this run (`run_prefect_step` already degrades to
-            running the step locally if no Prefect server is actually
-            reachable — see its own docstring — so this is safe to select
-            even when Prefect isn't configured; it just won't do anything
-            useful).
+          - "prefect": orchestrate the run with Prefect. Corrected 2026-11-17
+            (TR-11 F-AB-3): this does NOT send every step to a worker. A
+            definition Prefect can run whole (`_run_via_prefect`) runs as ONE
+            flow, `re_survey_definition_flow`, in THIS process; inside it each
+            step runs in-process unless `dispatch_decision` sends it to a
+            worker (executes_at=prefect, or selected by PREFECT_DISPATCH_STEPS).
+            Only when the whole-definition path is not taken (mixed engines,
+            unmet prerequisites, Prefect unreachable) does the local loop run,
+            and there this override forces each `resource-explorer` step
+            through `run_prefect_step`, which degrades to running it locally
+            if no Prefect server or worker is reachable (see its docstring).
 
         This is genuinely a choice between two runners for the SAME function
         and the SAME result — it is deliberately narrower than `executes_at`
@@ -767,6 +773,7 @@ class SurveyDefinitionExecutor:
             return True, ""
 
         from resource_explorer.config import get_config
+        from resource_explorer.surveyors import step_dispatch_policy
         from resource_explorer.surveyors.prefect_adapter import (
             PrefectFlowRunCancelled, PrefectFlowRunTimeout, run_prefect_step,
         )
@@ -776,9 +783,12 @@ class SurveyDefinitionExecutor:
 
             executes_at is what the definition asked for, and it is honoured.
             `prefect.enabled` says Prefect is reachable — it does not re-route a
-            step that named a different engine; `prefect.route_local_steps` is
-            the explicit opt-in for that, because taking RE's own steps to
-            Prefect is a real deployment choice but not one to make silently.
+            step that named a different engine; the step dispatch policy
+            (`PREFECT_DISPATCH_STEPS`, of which `PREFECT_ROUTE_LOCAL_STEPS=true`
+            is the deprecated `all` alias) is the explicit, per-step opt-in for
+            that, because taking RE's own steps to Prefect is a real deployment
+            choice but not one to make silently. The decision itself is
+            `step_dispatch_policy.dispatch_decision` (TR-11 F-AB-3).
 
             `engine_override` (this run's local parameter — see `run`'s own
             docstring) takes precedence over both config values, but ONLY for
@@ -800,19 +810,28 @@ class SurveyDefinitionExecutor:
             (`_run_prefect_step_api`'s precheck); bootstrap's pool check
             names those steps (`prefect_pool_runs_locally_instead`).
             """
-            if step.executes_at == "prefect" or step.re_analysis_step in PREFECT_ONLY_STEPS:
+            # The policy itself is `step_dispatch_policy.dispatch_decision`, shared with the whole-definition
+            # flow and the startup summary (TR-11 F-AB-3, C2). What stays here is this run's override and
+            # whether Prefect is enabled at all, which only gate RE's own steps.
+            key = step.re_analysis_step
+            own_step = step.executes_at == "resource-explorer" and key not in PREFECT_ONLY_STEPS
+            if own_step and engine_override == "prefect":
                 return True
-            if step.executes_at == "resource-explorer":
-                if engine_override == "prefect":
-                    return True
-                if engine_override == "resource-explorer":
+            if own_step and engine_override == "resource-explorer":
+                return False
+            try:
+                cfg = get_config().prefect
+                policy = step_dispatch_policy.resolve(cfg)
+                enabled = bool(cfg.enabled)
+            except Exception:
+                if own_step:
                     return False
-                try:
-                    cfg = get_config().prefect
-                    return bool(cfg.enabled and getattr(cfg, "route_local_steps", False))
-                except Exception:
-                    return False
-            return False
+                policy, enabled = step_dispatch_policy.DispatchPolicy(), False
+            where, _why = step_dispatch_policy.dispatch_decision(
+                key, step.executes_at, self._step_info(adapter, key), policy)
+            if where != step_dispatch_policy.WORKER:
+                return False
+            return enabled or not own_step
 
         i = 0
         n = len(pending_steps)
