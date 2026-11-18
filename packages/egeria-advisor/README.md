@@ -328,21 +328,31 @@ egeria> /dry-run
 egeria> Create a project called 'Data Quality Initiative'
 ```
 
-### 5. Monitoring & Incremental Updates
+### 5. Building, Monitoring & Incremental Updates
+
+Run these from `packages/egeria-advisor/`. That is where EA's `.env` (with `PGVECTOR_PASSWORD`) is read
+from, so from the repository root they fail with "PGVECTOR_PASSWORD is not set".
 
 ```bash
+cd packages/egeria-advisor
+
+# First build: clone the source repositories, then embed every enabled collection.
+# Use --phase all on both; phase 1 is egeria-python only and can't answer concept questions.
+uv run python scripts/clone_repos.py --phase all
+uv run python scripts/ingest_collections.py --phase all
+
 # Start real-time monitoring dashboard
-python -m advisor.dashboard.terminal_dashboard
+uv run python -m advisor.dashboard.terminal_dashboard
 
-# Detect changes in a collection (dry-run)
-python -m advisor.incremental_indexer --collection pyegeria --dry-run
-
-# Apply incremental updates to a collection
-python -m advisor.incremental_indexer --collection pyegeria
-
-# Update all collections
-python -m advisor.incremental_indexer --all
+# Detect changes in one collection (dry-run), then apply them
+uv run python -m advisor.incremental_indexer --collection pyegeria --dry-run
+uv run python -m advisor.incremental_indexer --collection pyegeria
 ```
+
+`--collection` takes an enabled collection name. egeria-docs is indexed as `egeria_concepts`, `egeria_types`
+and `egeria_general`; the old `egeria_docs` collection is disabled (see
+[INDEXING_AND_COLLECTIONS.md](docs/design/INDEXING_AND_COLLECTIONS.md)). There is no `--all` on the
+incremental indexer: to rebuild everything, rerun `ingest_collections.py --phase all`.
 
 ### 6. Testing
 
