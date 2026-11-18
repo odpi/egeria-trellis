@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from contextlib import ExitStack
-from datetime import datetime
+from datetime import UTC, datetime
 
 from trellis_microflow import resolve_resources
 
@@ -31,6 +31,17 @@ def _cost_orders() -> tuple[list[str], list[str]]:
         COMPUTE_COST_ORDER, FETCH_COST_ORDER,
     )
     return FETCH_COST_ORDER, COMPUTE_COST_ORDER
+
+
+def _naive_utc(value: str) -> datetime | None:
+    """A caller's shared run time (ISO, zoned or naive UTC) as the naive UTC datetime `SurveyResult.surveyed_at`
+    names Egeria objects with; None if it is not an ISO time, so the run takes its own time rather than failing."""
+    try:
+        moment = datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        log.warning("ignoring a shared surveyed_at that is not an ISO time: %r", value)
+        return None
+    return moment.astimezone(UTC).replace(tzinfo=None) if moment.tzinfo else moment
 
 
 class SurveyOrchestrator:
@@ -157,6 +168,7 @@ class SurveyOrchestrator:
         self, resource_slug: str, steps: list[str] | None = None,
         scope_locator: str = "", fast: bool = False,
         max_fetch_cost: str | None = None, max_compute_cost: str | None = None,
+        surveyed_at: str = "",
     ) -> SurveyResult:
         """Survey a single project and return the assembled SurveyResult.
 
@@ -189,12 +201,18 @@ class SurveyOrchestrator:
             deliberately the only new surface this plan adds — no new
             survey types, no scheduler changes; see the plan's "Out of
             scope".
+        surveyed_at : the shared time of a larger run this call is one step
+            of (F-AB-1: a whole-definition Prefect flow calls this once per
+            step). Given, every row this call writes carries it, so the
+            flow's steps read as one run; "" (default) takes the time now.
         """
         project = self._registry.get(resource_slug)
         if project is None:
             raise ValueError(f"Project '{resource_slug}' not found in registry.")
 
-        surveyed_at_dt = datetime.utcnow()
+        surveyed_at_dt = _naive_utc(surveyed_at) if surveyed_at else None
+        if surveyed_at_dt is None:
+            surveyed_at_dt, surveyed_at = datetime.utcnow(), ""
         # Shared run-timestamp, passed into the surveyors that persist
         # structured findings at survey time (Phase B, D1) — lets one
         # orchestrator run's writes across those tables be correlated,
@@ -205,7 +223,7 @@ class SurveyOrchestrator:
         # Stored with its zone (survey_time); `surveyed_at_dt` stays naive because it names Egeria's SurveyReport
         # and Annotations, and a kept survey published later must produce the same names (survey_snapshot.to_result
         # strips the zone back off). Same instant either way.
-        surveyed_at = as_utc_iso(surveyed_at_dt)
+        surveyed_at = surveyed_at or as_utc_iso(surveyed_at_dt)
 
         result = SurveyResult(
             resource_slug=project.slug,

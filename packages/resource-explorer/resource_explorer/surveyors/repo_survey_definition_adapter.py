@@ -1283,7 +1283,7 @@ STEP_REGISTRY: dict[str, StepInfo] = {
 
 
 def _run_step(step_key: str, **orchestrator_kwargs):
-    def runner(project, registry, fast: bool = False, **_) -> dict:
+    def runner(project, registry, fast: bool = False, surveyed_at: str = "", **_) -> dict:
         from resource_explorer.surveyors.survey_orchestrator import SurveyOrchestrator
 
         orch = SurveyOrchestrator(registry, **orchestrator_kwargs)
@@ -1291,7 +1291,10 @@ def _run_step(step_key: str, **orchestrator_kwargs):
         # True (repo_health today) — SurveyOrchestrator.run() ignores it for
         # every other step, so forwarding it unconditionally here is safe
         # for any step_key, not just the ones that care.
-        result = orch.run(project.slug, steps=[step_key], fast=fast)
+        # surveyed_at: the shared time of the run this step is one of (a whole-definition Prefect flow passes
+        # it, F-AB-1), so the orchestrator's rows carry the run's time rather than one of its own per step.
+        result = orch.run(project.slug, steps=[step_key], fast=fast,
+                          **({"surveyed_at": surveyed_at} if surveyed_at else {}))
         # The commit this step read, only if it completed (SurveyResult.commit_by_step); the executor's
         # and Prefect's step_runs rows take it from here.
         return {"annotations": result.annotations, "survey_commit_sha": result.commit_by_step.get(step_key)}

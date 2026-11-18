@@ -378,6 +378,15 @@ def _record_step_cost(entity_type: str, slug: str, obs, output, surveyed_at: str
         log.debug("could not record step cost for %s/%s: %s", slug, obs.step_key, exc)
 
 
+def _current_flow_run_id() -> str | None:
+    try:
+        from prefect.runtime import flow_run as _flow_run_ctx
+
+        return _flow_run_ctx.id
+    except Exception:  # pragma: no cover - defensive, never fatal
+        return None
+
+
 @task(name="Run Planned Step")
 def run_planned_step_task(
     entity_type: str,
@@ -441,8 +450,15 @@ def run_planned_step_task(
         {**runner_kwargs, "scan_surveyed_at": surveyed_at}
         if entity_type == "database" and surveyed_at else runner_kwargs
     )
+    # F-AB-1: the repo runner (SurveyOrchestrator) records its own step_runs row. Hand it the run's time, and run
+    # it inside this flow run's scope (as `_run_step_as_flow_run` does, TR-21) so that row carries the flow run id;
+    # then the row below is written only for a runner that recorded none (or a planner-added step: the runner's row
+    # does not carry its demanded_by). One row per step, all under one run.
+    if entity_type == "repo" and surveyed_at:
+        step_kwargs = {**step_kwargs, "surveyed_at": surveyed_at}
+    fr_id = _current_flow_run_id()
     try:
-        with step_cost_observer.observe(
+        with step_cost_observer.in_flow_run(fr_id or "") as recorded, step_cost_observer.observe(
             step_key, getattr(info, "fetch_cost", ""), getattr(info, "compute_cost", ""),
             executor="prefect", source="prefect",
             demanded_by=demanded_by,
@@ -457,8 +473,7 @@ def run_planned_step_task(
         return {"step_key": step_key, "step": qualified_name, "status": "error",
                 "engine": "prefect", "guard": None, "detail": str(exc)}
 
-    fr_id = None
-    if observed:
+    if observed and not (fr_id and not demanded_by and (step_key, "") in recorded):
         # Dispatch honesty completeness (2026-09-28,
         # PREFECT-DISPATCH-HONESTY-IMPLEMENTED.md): this
         # function only ever reaches this line by genuinely executing as a
@@ -467,12 +482,6 @@ def run_planned_step_task(
         # always trustworthy here — this just fills in the id for the same
         # "checkable against Prefect's own API" reason the per-step path's
         # flow_run_id carries one.
-        try:
-            from prefect.runtime import flow_run as _flow_run_ctx
-
-            fr_id = _flow_run_ctx.id
-        except Exception:  # pragma: no cover - defensive, never fatal
-            fr_id = None
         if fr_id:
             observed[0].flow_run_id = str(fr_id)
         _record_step_cost(entity_type, slug, observed[0], output, surveyed_at)
