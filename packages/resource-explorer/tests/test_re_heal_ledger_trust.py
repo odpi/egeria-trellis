@@ -92,8 +92,8 @@ def test_a_plain_batch_heal_stops_at_the_document_whose_commands_failed(tmp_path
         (docs / "plainb" / name).write_text("x")
     (docs / "plainb" / bs.BATCH_MANIFEST_FILE).write_text(json.dumps(
         {"canary": {"qualified_name": "Q"}, "files": ["one.md", "two.md"]}))
-    monkeypatch.setenv("EGERIA_USER_ID", "svc")
-    monkeypatch.setenv("EGERIA_USER_PASSWORD", "pw")
+    monkeypatch.setenv("RE_DAEMON_USER_ID", "svc")
+    monkeypatch.setenv("RE_DAEMON_USER_PASSWORD", "pw")
     calls = _child(monkeypatch, _summary(RESET_ROWS))
     ok, detail = bs.heal_batch(bs.discover_batches(docs)[0])
     assert ok is False and detail.startswith("one.md: 3 of 6 commands failed")

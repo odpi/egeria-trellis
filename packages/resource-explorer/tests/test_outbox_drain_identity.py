@@ -150,7 +150,7 @@ class TestDrainCallsAsTheServiceIdentity:
 class TestABlankIdentityFailsLoudly:
     def test_it_is_a_configuration_error_not_an_egeria_call(self, monkeypatch, calls):
         monkeypatch.setattr("resource_explorer.egeria_clients._daemon_credential", lambda: ("", "pw-fake"))
-        with pytest.raises(OutboxIdentityError, match="EGERIA_USER_ID"):
+        with pytest.raises(OutboxIdentityError, match="RE_DAEMON_USER_ID"):
             outbox._default_clients(_loop())
         assert calls.members == [] and calls.publishers == []
 
@@ -159,15 +159,15 @@ class TestABlankIdentityFailsLoudly:
         ids = _enqueue_members(db, 3)
         with caplog.at_level(logging.ERROR):
             summary = drain_outbox(db, identity=_loop())
-        assert summary["config_error"] and "EGERIA_USER_ID" in summary["config_error"]
+        assert summary["config_error"] and "RE_DAEMON_USER_ID" in summary["config_error"]
         assert summary["done"] == 0 and summary["failed"] == 0 and summary["dead"] == 0
         assert calls.members == []
-        assert any(r.levelno == logging.ERROR and "EGERIA_USER_ID" in r.getMessage() for r in caplog.records)
+        assert any(r.levelno == logging.ERROR and "RE_DAEMON_USER_ID" in r.getMessage() for r in caplog.records)
         rows = {r["id"]: r for r in db.peek_due_outbox_elements()}
         assert set(rows) == set(ids)
         for r in rows.values():
             assert r["status"] == "pending" and r["attempts"] == 0
-            assert "EGERIA_USER_ID" in r["last_error"]
+            assert "RE_DAEMON_USER_ID" in r["last_error"]
 
     def test_fixing_the_configuration_lets_the_same_rows_through(self, db, calls, monkeypatch):
         monkeypatch.setattr("resource_explorer.egeria_clients._daemon_credential", lambda: ("", "pw-fake"))

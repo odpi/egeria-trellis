@@ -135,3 +135,26 @@ test('RE worker live on another pool than RE dispatches to: a warning line in th
   assert.equal(line.dataset.prefectPoolLine, 'workers_elsewhere');
   assert.equal(text(document.querySelector('[data-prefect-pool-word]')), `Prefect: ${summary}`);
 });
+
+/* ── The banner's close box (2026-11-17) ───────────────────────────────── */
+
+const PARITY = { enabled: true, reachable: true, pool_exists: true, live_count: 1, parity_unchecked: ['w1'],
+  summary: 'commit parity not checked: worker w1 advertises no commit' };
+
+test('banner close box: closing hides the banner, and the next poll does not bring it back', async () => {
+  const { document, mod } = await loadShell();
+  mod.renderBootstrapBanner(document, STATUS(PARITY));
+  assert.ok(document.getElementById('bootstrap-banner'), 'shown first');
+  document.querySelector('[data-banner-close]').click();
+  assert.equal(document.getElementById('bootstrap-banner'), null, 'closed');
+  mod.renderBootstrapBanner(document, STATUS(PARITY));
+  assert.equal(document.getElementById('bootstrap-banner'), null, 'the same condition stays closed on the next poll');
+});
+
+test('banner close box: a different condition draws the banner again', async () => {
+  const { document, mod } = await loadShell();
+  mod.renderBootstrapBanner(document, STATUS(PARITY));
+  document.querySelector('[data-banner-close]').click();
+  mod.renderBootstrapBanner(document, STATUS({ ...PARITY, live_count: 0, parity_unchecked: [], summary: 'no live worker' }));
+  assert.ok(document.getElementById('bootstrap-banner'), 'a changed condition is shown');
+});

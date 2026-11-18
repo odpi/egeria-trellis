@@ -146,7 +146,7 @@ _PGVECTOR_AVAILABLE = _PG_PASSWORD_SUPPLIED and _pgvector_reachable()
 # Enqueueing, reading and reconciling are unaffected — only claiming.
 os.environ.setdefault("EXPLORER_RUN_QUEUE_ENABLED", "false")
 
-# RE has no code default for its service account (config.EgeriaConfig.user_id is blank when EGERIA_USER_ID is unset
+# RE has no code default for its service account (config.EgeriaConfig.user_id is blank when RE_DAEMON_USER_ID is unset
 # and every path that needs it refuses). The tests that act as the daemon get an explicit test account here.
 #
 # Clearly fake, non-person values, and ONLY when the live tier is off: an env var outranks the package .env
@@ -159,8 +159,8 @@ def _live_tier_requested() -> bool:
 
 
 if not _live_tier_requested():
-    os.environ.setdefault("EGERIA_USER_ID", "re-test-service-account")
-    os.environ.setdefault("EGERIA_USER_PASSWORD", "re-test-password")
+    os.environ.setdefault("RE_DAEMON_USER_ID", "re-test-service-account")
+    os.environ.setdefault("RE_DAEMON_USER_PASSWORD", "re-test-password")
 
 
 def _egeria_reachable() -> bool:

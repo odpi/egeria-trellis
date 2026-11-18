@@ -136,8 +136,8 @@ EGERIA_VIEW_SERVER=view-server
 EGERIA_ENGINE_HOST=engine-host
 # RE's daemon identity: RE's own Egeria account (see "RE's daemon account" below).
 # Development bootstrap; not for a shipped product.
-EGERIA_USER_ID=resourceexplorernpa
-EGERIA_USER_PASSWORD=…
+RE_DAEMON_USER_ID=resourceexplorernpa
+RE_DAEMON_USER_PASSWORD=…
 # Optional login-form prefill; never the daemon's userId (which is never offered or accepted)
 RE_LOGIN_DEFAULT_USER=
 # Further Egeria platforms RE may send a credential to (comma separated); the platform above is
@@ -191,9 +191,9 @@ account in Egeria's platform user directory, in its `governanceEngine` and `omag
 (ITProfile `ITProfile::ResourceExplorer`). Egeria's administrator creates and maintains the
 account; RE holds only the credential it presents.
 
-- **Today: `.env`.** `EGERIA_USER_ID` / `EGERIA_USER_PASSWORD`. **Development bootstrap; not for a
+- **Today: `.env`.** `RE_DAEMON_USER_ID` / `RE_DAEMON_USER_PASSWORD` (the old `EGERIA_USER_ID` / `EGERIA_USER_PASSWORD` are read for one release, removed after 6.3). **Development bootstrap; not for a
   shipped product.** RE logs one INFO line at startup naming the source, e.g. `daemon identity:
-  'resourceexplorernpa' from .env (EGERIA_USER_ID) — development bootstrap; not for a shipped
+  'resourceexplorernpa' from .env (RE_DAEMON_USER_ID) — development bootstrap; not for a shipped
   product` (never a password).
 - **The product source is an open decision**, pending a discussion with the Egeria lead. The
   options: an RE-side secret store or file, or an Egeria API path (being researched). Whatever is
@@ -205,7 +205,7 @@ account; RE holds only the credential it presents.
   login form, a Portal token, or a raw Egeria bearer on the agent endpoint) is refused with "this
   is Resource Explorer's own service account; sign in as yourself", and the public login-form
   defaults (`GET /api/auth/defaults`) never offer it: they return `RE_LOGIN_DEFAULT_USER` when
-  set, else nothing. Anyone who used to sign in with the old shared persona in `EGERIA_USER_ID`
+  set, else nothing. Anyone who used to sign in with the old shared persona in `EGERIA_USER_ID` (now `RE_DAEMON_USER_ID`)
   now signs in as themselves.
 - **Where to see it.** The connection popover's "Background work as" row and `GET
   /api/egeria/whoami` (`daemon: {user_id, source}`).
@@ -213,7 +213,7 @@ account; RE holds only the credential it presents.
 ### RE in Egeria's actor graph (7h)
 
 - **At startup** (the worker's one-shot bootstrap, as the daemon) RE ensures the ITProfile
-  `ITProfile::ResourceExplorer`, a UserIdentity `UserIdentity::<EGERIA_USER_ID>` and their
+  `ITProfile::ResourceExplorer`, a UserIdentity `UserIdentity::<RE_DAEMON_USER_ID>` and their
   ProfileIdentity link. It adopts existing ones by qualifiedName, creates only when Egeria says
   they are absent, and refuses (creating nothing) on duplicates, on a UserIdentity for the same
   userId under another qualifiedName, or on a link to another profile. A changed daemon userId
@@ -778,7 +778,7 @@ host does. Design: [`design-notes/DESIGN-RE-ENGINE-HOST-BY-EQUIVALENCE.md`](desi
     present, "declared in this Egeria · N of 8 documents applied · checked …" (W67: the count comes from the same
     run-row read as the press's words, without a press; an unreadable history reads "documents applied: not
     known", never 0) — the self-heal setting and the price: the documents, the elements they create, who they apply
-    as (RE's service account, `EGERIA_USER_ID`), and how long the last run took. When N < 8 the press is offered as
+    as (RE's service account, `RE_DAEMON_USER_ID`), and how long the last run took. When N < 8 the press is offered as
     "Complete the declaration" (F55). The press asks in the page, then runs the batch once through the same lock as
     the heal. It is refused with "a bootstrap heal is already running" while one runs. It is refused without a
     write if the engine is already declared and every document is verified present in Egeria ("already declared ·

@@ -78,7 +78,7 @@ platform tokens last one hour; an app session is the shorter of that and the app
 | `PGVECTOR_PASSWORD` | the `egeria_advisor` Postgres role. Required, no default: compose, RE and EA refuse to start without it | `compose-configs/shared-infra/.env` (`gen-env.sh` generates it on a new install; `init_trellis.sh` creates the role with it). A role still on the old `advisor`: change it first (shared-infra README) |
 | `GITHUB_TOKEN` | RE's GitHub API access for surveys and discovery | a personal token with read scope; without it GitHub's 60 calls/hour are gone in one survey |
 | `EGERIA_USER` / `EGERIA_USER_PASSWORD` | the service account above | `erinoverview` / `secret` |
-| `EGERIA_USER_ID` / `EGERIA_USER_PASSWORD` for RE | RE's daemon identity, RE's own account `resourceexplorernpa` (not a person: RE refuses an interactive sign-in as it). Development bootstrap; not for a shipped product | the account's password in Egeria's user directory; see RE's `docs/admin-guide.md`, "RE's daemon account" |
+| `RE_DAEMON_USER_ID` / `RE_DAEMON_USER_PASSWORD` for RE | RE's daemon identity (TR-37, 2026-11-17: these replace RE's `EGERIA_USER_ID` / `EGERIA_USER_PASSWORD`, still read for one release and removed after 6.3; keep `EGERIA_USER` / `EGERIA_USER_PASSWORD` out of RE's environment), RE's own account `resourceexplorernpa` (not a person: RE refuses an interactive sign-in as it). Development bootstrap; not for a shipped product | the account's password in Egeria's user directory; see RE's `docs/admin-guide.md`, "RE's daemon account" |
 
 Never commit any of these, and never bake them into an image (the trellis `.dockerignore`
 excludes `.env` files for that reason).
