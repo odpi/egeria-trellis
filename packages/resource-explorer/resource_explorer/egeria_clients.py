@@ -187,14 +187,14 @@ def Caller() -> EgeriaIdentity:  # noqa: N802 - named as the brief names it
 
 
 SOURCE_ENV = "env"
-SOURCE_DEFAULT = "default"          # EGERIA_USER_ID unset: the code default from config.py
+SOURCE_DEFAULT = "default"          # RE_DAEMON_USER_ID unset: the code default from config.py
 
 _source_lock = threading.Lock()
 _source_logged = False
 
 
 def _daemon_source(egeria) -> str:
-    """`env` when EGERIA_USER_ID was set (environment or .env file), `default` when the value is
+    """`env` when RE_DAEMON_USER_ID (or the deprecated EGERIA_USER_ID) was set (environment or .env file), `default` when the value is
     config.py's code default (pydantic's `model_fields_set` says which)."""
     fields_set = getattr(egeria, "model_fields_set", None)
     if fields_set is None:
@@ -205,22 +205,22 @@ def _daemon_source(egeria) -> str:
 def daemon_identity_source_line(user_id: str, source: str = SOURCE_ENV) -> str:
     """The one line naming where the daemon identity came from. The userId only, never a password."""
     if source == SOURCE_DEFAULT:
-        return (f"daemon identity: {user_id!r} from the code default (EGERIA_USER_ID unset) — a "
-                "person's persona as RE's daemon; set EGERIA_USER_ID to RE's own account")
-    return (f"daemon identity: {user_id!r} from .env (EGERIA_USER_ID) — development bootstrap; "
+        return (f"daemon identity: {user_id!r} from the code default (RE_DAEMON_USER_ID unset) — a "
+                "person's persona as RE's daemon; set RE_DAEMON_USER_ID to RE's own account")
+    return (f"daemon identity: {user_id!r} from .env (RE_DAEMON_USER_ID) — development bootstrap; "
             "not for a shipped product")
 
 
 def _daemon_credential() -> tuple[str, str]:
     """THE one place RE's daemon credential is loaded.
 
-    Today: `config.egeria` (EGERIA_USER_ID / EGERIA_USER_PASSWORD), set to RE's own Egeria account
+    Today: `config.egeria` (RE_DAEMON_USER_ID / RE_DAEMON_USER_PASSWORD; the old EGERIA_USER_ID / EGERIA_USER_PASSWORD are read for one release), set to RE's own Egeria account
     `resourceexplorernpa` (ITProfile `ITProfile::ResourceExplorer`). **Development bootstrap; not
     for a shipped product** (owner, 2026-10-09: ".env is ok for the short term — we just can't ship
     that as product"). The product source (an RE-side secret store, or an Egeria API path) is an
     open decision; it replaces THIS function and no caller changes.
 
-    Logs `daemon_identity_source_line` once per process: INFO when EGERIA_USER_ID is set, WARNING
+    Logs `daemon_identity_source_line` once per process: INFO when RE_DAEMON_USER_ID is set, WARNING
     when it is unset and the code default (a person's persona) is the daemon. Never a value."""
     global _source_logged
     from resource_explorer.config import get_config
@@ -263,17 +263,29 @@ def daemon_identity_status() -> dict:
 DAEMON_SIGN_IN_SENTENCE = "this is Resource Explorer's own service account; sign in as yourself"
 
 
-NO_SERVICE_ACCOUNT_SENTENCE = "EGERIA_USER_ID not set: RE has no service account; set it in .env"
-NO_SERVICE_PASSWORD_SENTENCE = "EGERIA_USER_PASSWORD not set: RE has no service account credential; set it in .env"
+NO_SERVICE_ACCOUNT_SENTENCE = "RE_DAEMON_USER_ID not set: RE has no service account; set it in .env"
+NO_SERVICE_PASSWORD_SENTENCE = "RE_DAEMON_USER_PASSWORD not set: RE has no service account credential; set it in .env"
 
 
 class NoServiceAccount(PermissionError):
-    """RE's service account is not configured (EGERIA_USER_ID, or its password, is blank). Anything that needs the
-    service account refuses with this; it never falls back to a person's name (a missing EGERIA_USER_ID once
+    """RE's service account is not configured (RE_DAEMON_USER_ID, or its password, is blank). Anything that needs the
+    service account refuses with this; it never falls back to a person's name (a missing RE_DAEMON_USER_ID once
     fell back to a person's persona)."""
 
     def __init__(self, message: str = NO_SERVICE_ACCOUNT_SENTENCE) -> None:
         super().__init__(message)
+
+
+def daemon_user_id() -> str:
+    """RE's service account's userId from config (RE_DAEMON_USER_ID, or the deprecated EGERIA_USER_ID), for code
+    that records WHICH account it is, not for one that authenticates. Fails closed: unset raises NoServiceAccount,
+    never a person's persona (TR-37; the two surveyors that read the variable themselves used to default to one)."""
+    from resource_explorer.config import get_config
+
+    user_id = (get_config().egeria.user_id or "").strip()
+    if not user_id:
+        raise NoServiceAccount()
+    return user_id
 
 
 class DaemonSignInRefused(PermissionError):

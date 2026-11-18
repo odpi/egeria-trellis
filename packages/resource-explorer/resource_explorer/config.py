@@ -7,7 +7,7 @@ from pathlib import Path
 import json
 from typing import Annotated, Any, Optional
 
-from pydantic import BaseModel, BeforeValidator, Field
+from pydantic import AliasChoices, BaseModel, BeforeValidator, Field, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 log = logging.getLogger(__name__)
@@ -333,16 +333,32 @@ class EgeriaConfig(BaseSettings):
     #: the same endpoint under any other. Declared here only; `endpoint_identity.host_aliases` is its one reader.
     #: Configured, never guessed: a host not listed compares as itself.
     host_aliases: str = Field(default="localhost,127.0.0.1,host.docker.internal,laz", alias="EGERIA_HOST_ALIASES")
-    #: RE's own service account. NO default: a code default here was once a person's persona ("erinoverview"), so a
-    #: missing EGERIA_USER_ID silently made RE act as that person. Unset now means every path that needs the
-    #: service account refuses (egeria_clients.NoServiceAccount).
-    user_id: str = Field(default="", alias="EGERIA_USER_ID")
-    user_password: str = Field(default="", alias="EGERIA_USER_PASSWORD")
+    #: RE's own service account, never a person (TR-37, owner decision 2026-11-17). NO default: a code default here
+    #: was once a person's persona ("erinoverview"), so a missing id silently made RE act as that person. Unset
+    #: means every path that needs the service account refuses (egeria_clients.NoServiceAccount).
+    #: Named `RE_DAEMON_USER_ID` / `RE_DAEMON_USER_PASSWORD`, which is what the trellis compose already passes.
+    #: The old names `EGERIA_USER_ID` / `EGERIA_USER_PASSWORD` are read for one release (removed after 6.3, see
+    #: `LEGACY_DAEMON_ENV`): the new name wins when both are set, and `warn_daemon_env_once()` says so, by name only.
+    #: Why not the old names: pyegeria's own fallback identity (settings.User_Profile) reads EGERIA_USER and
+    #: EGERIA_USER_PASSWORD, so a service password kept under that name was one half of a silent fallback login.
+    user_id: str = Field(default="", validation_alias=AliasChoices("RE_DAEMON_USER_ID", "EGERIA_USER_ID"))
+    user_password: str = Field(default="", validation_alias=AliasChoices("RE_DAEMON_USER_PASSWORD", "EGERIA_USER_PASSWORD"))
+
+    @model_validator(mode="after")
+    def _new_daemon_names_win(self) -> "EgeriaConfig":
+        """AliasChoices alone lets the old name win when it sits in a higher-priority SOURCE (the process
+        environment outranks `.env`), so an old name in the environment would beat the new name in `.env`.
+        The ruling is that the new name wins wherever it is: resolve it here, from the same sources."""
+        for new, attr in (("RE_DAEMON_USER_ID", "user_id"), ("RE_DAEMON_USER_PASSWORD", "user_password")):
+            value = _setting_value(new, dict(os.environ), _ENV_FILES)
+            if value and getattr(self, attr) != value:
+                setattr(self, attr, value)
+        return self
     #: Further Egeria platforms a credential may be sent to, comma separated (Brief I). The
     #: configured `platform_url` is always allowed; any other URL is refused before a request.
     allowed_platform_urls: str = Field(default="", alias="EGERIA_ALLOWED_PLATFORM_URLS")
     #: Optional login-form prefill (`GET /api/auth/defaults`). Never the daemon's userId: the
-    #: daemon (EGERIA_USER_ID) is RE's service account, and the endpoint is public (Brief L).
+    #: daemon (RE_DAEMON_USER_ID) is RE's service account, and the endpoint is public (Brief L).
     login_default_user: str = Field(default="", alias="RE_LOGIN_DEFAULT_USER")
     kafka_endpoint: str = Field(default="localhost:9092", alias="EGERIA_KAFKA_ENDPOINT")
     # Base URL for Egeria Workspaces' "The Catalog" app (egeria-workspaces-fs
@@ -1049,10 +1065,81 @@ def check_database_settings_at_startup(cfg: "ExplorerConfig | None" = None) -> N
                        "it is (TR-12: there is no built-in password any more)")
 
 
+# ── The service account's variable names (TR-37, owner decision 2026-11-17) ─────────────────────────
+#: new name -> the old name read for one release. Remove the old names after 6.3 (Architect ruling TR-37 §2).
+LEGACY_DAEMON_ENV = {
+    "RE_DAEMON_USER_ID": "EGERIA_USER_ID",
+    "RE_DAEMON_USER_PASSWORD": "EGERIA_USER_PASSWORD",
+}
+#: pyegeria's own fallback identity (settings.User_Profile) reads these two. They are pyegeria's CLI convention
+#: for running its tools as yourself in a shell, so they must not be in a server process's environment at all.
+PYEGERIA_CLI_ENV = ("EGERIA_USER", "EGERIA_USER_PASSWORD")
+_daemon_env_warned = False
+
+
+def _setting_value(name: str, environ: dict[str, str], env_files: tuple) -> str:
+    """The effective value of one setting: the process environment, else the `.env` files (later wins), as
+    pydantic-settings reads them. Used only to compare and to say which names are set, never to report a value."""
+    if environ.get(name, "") != "":
+        return environ[name]
+    value = ""
+    try:
+        from dotenv import dotenv_values
+        for f in env_files:
+            if Path(f).is_file():
+                value = dotenv_values(f).get(name) or value
+    except Exception:  # noqa: BLE001 - a .env that cannot be read is pydantic-settings' error, not this check's
+        return value
+    return value
+
+
+def daemon_env_findings(environ: dict[str, str] | None = None, env_files: tuple | None = None) -> list[str]:
+    """What is wrong with how the service account's variables are named, as warning sentences. Names only: no
+    sentence carries a value (a password's length, prefix or fingerprint included). Empty list: nothing to say.
+
+      - old name set, new name not: the old name is used, once-a-release warning naming both;
+      - both set and different: the new name wins, and it says so;
+      - EGERIA_USER / EGERIA_USER_PASSWORD present in the process environment: pyegeria's fallback identity
+        would read them (TR-37 §3)."""
+    environ = dict(os.environ if environ is None else environ)
+    files = _ENV_FILES if env_files is None else env_files
+    out: list[str] = []
+    old_only: list[str] = []
+    for new, old in LEGACY_DAEMON_ENV.items():
+        new_v, old_v = _setting_value(new, environ, files), _setting_value(old, environ, files)
+        if old_v and not new_v:
+            old_only.append(f"{old} -> {new}")
+        elif old_v and new_v and old_v != new_v:
+            out.append(f"{new} and {old} are both set and differ: {new} is used; remove {old}")
+    if old_only:
+        out.insert(0, "the service account is set under deprecated names, read for one more release (removed after "
+                      "6.3); rename: " + "; ".join(old_only))
+    present = [n for n in PYEGERIA_CLI_ENV if environ.get(n, "") != ""]
+    if present:
+        out.append(f"{' and '.join(present)} {'is' if len(present) == 1 else 'are'} set in this server process's "
+                   "environment: they are pyegeria's CLI convention for running its tools as yourself in a shell, and "
+                   "pyegeria's fallback identity reads them. Unset them for a server (RE_DAEMON_USER_ID / "
+                   "RE_DAEMON_USER_PASSWORD are the service account)")
+    return out
+
+
+def warn_daemon_env_once() -> list[str]:
+    """Log `daemon_env_findings` once per process, at WARNING. Returns what it logged ([] after the first call)."""
+    global _daemon_env_warned
+    if _daemon_env_warned:
+        return []
+    _daemon_env_warned = True
+    findings = daemon_env_findings()
+    for line in findings:
+        logging.getLogger(__name__).warning("service account: %s", line)
+    return findings
+
+
 def get_config() -> ExplorerConfig:
     global _config
     if _config is None:
         _config = ExplorerConfig()
+        warn_daemon_env_once()
         # TR-12: the three shared-Postgres URLs come from PGVECTOR_* when not set themselves; empty when
         # PGVECTOR_PASSWORD is unset too, and each user then refuses with require_database_url().
         for _env, _what, holder, attr in DATABASE_URL_SETTINGS:

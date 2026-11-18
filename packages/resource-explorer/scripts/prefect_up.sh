@@ -80,7 +80,7 @@ if _pid_alive worker; then
   echo "✓ Worker already running (pid $(cat "$STATE_DIR/worker.pid"))"
 else
   echo "→ Starting worker for pool '$WORK_POOL' (log: $STATE_DIR/worker.log)…"
-  nohup uv run --package resource-explorer resource-explorer prefect worker --pool "$WORK_POOL" \
+  nohup env -u EGERIA_USER -u EGERIA_USER_PASSWORD uv run --package resource-explorer resource-explorer prefect worker --pool "$WORK_POOL" \
     > "$STATE_DIR/worker.log" 2>&1 &
   echo $! > "$STATE_DIR/worker.pid"
   sleep 2

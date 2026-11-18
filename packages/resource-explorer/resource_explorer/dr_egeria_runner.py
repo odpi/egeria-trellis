@@ -721,7 +721,8 @@ def _child_env() -> dict:
     """The `dr_egeria` child's environment: this process's, minus any Egeria user or password variable (the
     identity travels in explicit arguments, never in what a variable happens to hold), with a wide console."""
     env = {k: v for k, v in os.environ.items()
-           if k not in ("EGERIA_USER", "EGERIA_USER_PASSWORD", "EGERIA_USER_ID") and not k.startswith("RE_DR_EGERIA_P")}
+           if k not in ("EGERIA_USER", "EGERIA_USER_PASSWORD", "EGERIA_USER_ID", "RE_DAEMON_USER_ID",
+                        "RE_DAEMON_USER_PASSWORD") and not k.startswith("RE_DR_EGERIA_P")}
     env.update({"EGERIA_WIDTH": _CONSOLE_WIDTH, "NO_COLOR": "1"})
     return env
 
