@@ -7,7 +7,7 @@ import json
 from typing import Any
 from prefect import flow, task
 from resource_explorer.registry import ProjectRegistry
-from resource_explorer.surveyors import step_cost_observer
+from resource_explorer.surveyors import step_cost_observer, step_dispatch_policy
 from resource_explorer.surveyors.survey_definition_executor import get_adapter
 
 log = logging.getLogger(__name__)
@@ -19,6 +19,22 @@ def _daemon_entry(fn):
     from resource_explorer.egeria_clients import DaemonReason, daemon_entry
 
     return daemon_entry(DaemonReason.PREFECT_FLOW)(fn)
+
+
+def _one_acquisition_per_run(fn):
+    """F-AB-2: a whole-definition run acquires its source tree once, by the first step that reads it, and holds it
+    until the flow returns; each planned step otherwise builds its own orchestrator and fetches it again. The pool
+    reaches the step tasks through the context Prefect copies into them (surveyors/run_resource_pool.py)."""
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        from resource_explorer.surveyors.run_resource_pool import run_resource_scope
+
+        with run_resource_scope():
+            return fn(*args, **kwargs)
+
+    return wrapper
 
 
 @task(name="Run Surveyor Step")
@@ -209,7 +225,8 @@ def output_json_and_hash(output: Any) -> tuple[str, str]:
 
 def _run_step_as_flow_run(flow_run_id: str, entity_type: str, slug: str, step_name: str,
                           runner_kwargs: dict[str, Any], *, credential_ref: str = "",
-                          keep_result: bool) -> tuple[dict[str, Any], dict[str, Any]]:
+                          keep_result: bool,
+                          placement: str = step_dispatch_policy.WORKER) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run one step as the work of flow run `flow_run_id`: (output, summary). TR-21 (Architect ruling 2026-11-15):
 
       - exactly ONE work row in step_runs for the flow run, for every entity type: every row observed while the
@@ -225,7 +242,8 @@ def _run_step_as_flow_run(flow_run_id: str, entity_type: str, slug: str, step_na
     registry = ProjectRegistry()
     info = _step_info_for(entity_type, step_name)
     kwargs = {"credential_ref": credential_ref} if credential_ref else {}
-    with step_cost_observer.in_flow_run(flow_run_id) as recorded:
+    # R1 (TR-11 F-AB-3): a worker's step flow records placement=worker; RE's own in-process step flow, in-process.
+    with step_cost_observer.in_flow_run(flow_run_id) as recorded, step_cost_observer.placement(placement):
         with step_cost_observer.observe(
             step_name, getattr(info, "fetch_cost", ""), getattr(info, "compute_cost", ""),
             entity_type=entity_type, slug=slug, job_family="survey",
@@ -314,7 +332,8 @@ def re_survey_step_in_process_flow(
     # In RE's own process: the output comes straight back, so nothing is kept in flow_run_results; the one work row
     # carries this flow run's id like a worker's (TR-21).
     result, _summary = _run_step_as_flow_run(flow_run_id, entity_type, slug, step_name, runner_kwargs,
-                                             credential_ref=credential_ref, keep_result=False)
+                                             credential_ref=credential_ref, keep_result=False,
+                                             placement=step_dispatch_policy.IN_PROCESS)
     return {"result": result, "flow_run_id": flow_run_id}
 
 
@@ -378,6 +397,15 @@ def _record_step_cost(entity_type: str, slug: str, obs, output, surveyed_at: str
         log.debug("could not record step cost for %s/%s: %s", slug, obs.step_key, exc)
 
 
+def _current_flow_run_id() -> str | None:
+    try:
+        from prefect.runtime import flow_run as _flow_run_ctx
+
+        return _flow_run_ctx.id
+    except Exception:  # pragma: no cover - defensive, never fatal
+        return None
+
+
 @task(name="Run Planned Step")
 def run_planned_step_task(
     entity_type: str,
@@ -392,8 +420,14 @@ def run_planned_step_task(
     credential_ref: str = "",
     added_because: str = "",
     demanded_by: str = "",
+    executes_at: str = "resource-explorer",
 ) -> dict[str, Any]:
     """One planned step, plus the guard decision for its incoming edges.
+
+    Where the step runs (TR-11 F-AB-3) is `step_dispatch_policy.dispatch_decision`'s answer, the same one the
+    in-process loop and the startup summary use: in this process (the default), or on a Prefect worker through
+    `run_prefect_step` (`_run_on_worker`) for an executes_at=prefect step or one PREFECT_DISPATCH_STEPS selects.
+    The report entry's `dispatch` says which and why; a dispatch that fell back says so, never "worker".
 
     `upstream` is the results of everything this step depends on. Prefect
     resolves those futures before this task starts, which is what makes the
@@ -441,8 +475,21 @@ def run_planned_step_task(
         {**runner_kwargs, "scan_surveyed_at": surveyed_at}
         if entity_type == "database" and surveyed_at else runner_kwargs
     )
+    # F-AB-1: the repo runner (SurveyOrchestrator) records its own step_runs row. Hand it the run's time, and run
+    # it inside this flow run's scope (as `_run_step_as_flow_run` does, TR-21) so that row carries the flow run id;
+    # then the row below is written only for a runner that recorded none (or a planner-added step: the runner's row
+    # does not carry its demanded_by). One row per step, all under one run.
+    if entity_type == "repo" and surveyed_at:
+        step_kwargs = {**step_kwargs, "surveyed_at": surveyed_at}
+    where, why = _where_to_run(step_key, executes_at, info, credential_ref)
+    if where == step_dispatch_policy.WORKER:
+        return _run_on_worker(
+            entity_type, slug, step_key, qualified_name, info, step_kwargs, surveyed_at, why,
+            satisfied_by_stored=satisfied_by_stored, added_because=added_because, demanded_by=demanded_by)
+    fr_id = _current_flow_run_id()
     try:
-        with step_cost_observer.observe(
+        with step_cost_observer.in_flow_run(fr_id or "") as recorded, \
+                step_cost_observer.placement(step_dispatch_policy.IN_PROCESS), step_cost_observer.observe(
             step_key, getattr(info, "fetch_cost", ""), getattr(info, "compute_cost", ""),
             executor="prefect", source="prefect",
             demanded_by=demanded_by,
@@ -457,8 +504,7 @@ def run_planned_step_task(
         return {"step_key": step_key, "step": qualified_name, "status": "error",
                 "engine": "prefect", "guard": None, "detail": str(exc)}
 
-    fr_id = None
-    if observed:
+    if observed and not (fr_id and not demanded_by and (step_key, "") in recorded):
         # Dispatch honesty completeness (2026-09-28,
         # PREFECT-DISPATCH-HONESTY-IMPLEMENTED.md): this
         # function only ever reaches this line by genuinely executing as a
@@ -467,12 +513,6 @@ def run_planned_step_task(
         # always trustworthy here — this just fills in the id for the same
         # "checkable against Prefect's own API" reason the per-step path's
         # flow_run_id carries one.
-        try:
-            from prefect.runtime import flow_run as _flow_run_ctx
-
-            fr_id = _flow_run_ctx.id
-        except Exception:  # pragma: no cover - defensive, never fatal
-            fr_id = None
         if fr_id:
             observed[0].flow_run_id = str(fr_id)
         _record_step_cost(entity_type, slug, observed[0], output, surveyed_at)
@@ -488,7 +528,13 @@ def run_planned_step_task(
     result = {"step_key": step_key, "step": qualified_name, "status": "ok",
               "engine": "prefect", "guard": (output or {}).get("guard"),
               "flow_run_id": str(fr_id) if fr_id else "",
+              "dispatch": {"where": step_dispatch_policy.IN_PROCESS, "why": why},
+              "placement": step_dispatch_policy.IN_PROCESS,
               "output": output}
+    return _mark_planned(result, satisfied_by_stored, added_because, demanded_by)
+
+
+def _mark_planned(result: dict[str, Any], satisfied_by_stored, added_because: str, demanded_by: str) -> dict:
     if satisfied_by_stored:
         result["satisfied_by_stored"] = dict(satisfied_by_stored)
     if added_because:
@@ -501,8 +547,103 @@ def run_planned_step_task(
     return result
 
 
+def _where_to_run(step_key: str, executes_at: str, info, credential_ref: str) -> tuple[str, str]:
+    """`dispatch_decision` for a step of a whole-definition flow, plus the one case only this path has: a
+    one-run override credential lives in this process's memory (credential_handoff), so it cannot go to a
+    worker; that step stays here, said so."""
+    try:
+        from resource_explorer.config import get_config
+
+        policy = step_dispatch_policy.resolve(get_config().prefect)
+    except Exception as exc:  # noqa: BLE001 - an unreadable config dispatches nothing, and says so
+        return step_dispatch_policy.IN_PROCESS, f"could not read the dispatch policy ({type(exc).__name__})"
+    where, why = step_dispatch_policy.dispatch_decision(step_key, executes_at, info, policy)
+    if where == step_dispatch_policy.WORKER and credential_ref:
+        return (step_dispatch_policy.IN_PROCESS,
+                f"{why}, but this run's override credential cannot leave this process")
+    if where not in (step_dispatch_policy.WORKER, step_dispatch_policy.IN_PROCESS):
+        # executes_at names another engine: `_all_steps_prefect_runnable` keeps such a step out of a
+        # whole-definition flow, so this is not reached in practice; run it as the flow always has.
+        return step_dispatch_policy.IN_PROCESS, why
+    return where, why
+
+
+def _run_on_worker(entity_type: str, slug: str, step_key: str, qualified_name: str, info,
+                   step_kwargs: dict[str, Any], surveyed_at: str, why: str, *,
+                   satisfied_by_stored=None, added_because: str = "", demanded_by: str = "") -> dict[str, Any]:
+    """Send one step of a whole-definition flow to a Prefect worker (TR-11 F-AB-3).
+
+    Rows (C5, TR-21): a step that reached the worker has its WORK row written by the worker's own step flow
+    (executor=prefect, that flow run's id); what is measured here is only the wait, which goes to the report as
+    `dispatch_wait_ms`, never into step_runs. A dispatch that fell back ran the step HERE: its row is
+    executor=local with `dispatch_failed` naming why (the runner's own row via `dispatch_fallback`, else the one
+    written below), and the report says "in-process (fallback: ...)". Outside `in_flow_run(<this flow's id>)` on
+    purpose: inside it a local fallback row would be relabelled executor=prefect."""
+    from resource_explorer.config import get_config
+    from resource_explorer.surveyors.prefect_adapter import run_prefect_step
+
+    dispatch: dict[str, Any] = {}
+    try:
+        enabled = bool(get_config().prefect.enabled)
+    except Exception:  # noqa: BLE001
+        enabled = False
+    disabled_reason = "" if enabled else "Prefect is disabled (PREFECT_ENABLED=false)"
+    try:
+        with step_cost_observer.in_flow_run("") as recorded, step_cost_observer.observe(
+            step_key, getattr(info, "fetch_cost", ""), getattr(info, "compute_cost", ""),
+            executor="local", source="local", demanded_by=demanded_by,
+            entity_type=entity_type, slug=slug,
+        ) as observed:
+            if enabled:
+                output = run_prefect_step(entity_type, slug, step_key, step_kwargs, dispatch_info=dispatch)
+            else:
+                with step_cost_observer.dispatch_fallback(disabled_reason):
+                    output = run_surveyor_step_task.fn(
+                        entity_type=entity_type, slug=slug, step_name=step_key, runner_kwargs=step_kwargs)
+    except Exception as exc:  # noqa: BLE001 - any failure is this step's error entry, as for an in-process step
+        entry = {"step_key": step_key, "step": qualified_name, "status": "error",
+                 "engine": dispatch.get("engine") or "prefect", "guard": None, "detail": str(exc),
+                 "flow_run_id": str(dispatch.get("flow_run_id") or getattr(exc, "flow_run_id", "") or ""),
+                 "dispatch": {"where": step_dispatch_policy.WORKER, "why": why}}
+        if getattr(exc, "status", ""):
+            entry["prefect_status"] = exc.status
+        return entry
+
+    wait_ms = round(observed[0].elapsed * 1000.0, 1) if observed else None
+    if dispatch.get("engine") == "prefect":
+        flow_run_id = str(dispatch.get("flow_run_id") or "")
+        log.info("Prefect step %s dispatched to a worker (%s): flow run %s, dispatch_wait_ms=%s",
+                 step_key, why, flow_run_id, wait_ms)
+        result = {"step_key": step_key, "step": qualified_name, "status": "ok", "engine": "prefect",
+                  "guard": (output or {}).get("guard"), "flow_run_id": flow_run_id,
+                  "dispatch_wait_ms": wait_ms,
+                  "dispatch": {"where": step_dispatch_policy.WORKER, "why": why},
+                  "placement": step_dispatch_policy.WORKER,
+                  "output": output}
+        return _mark_planned(result, satisfied_by_stored, added_because, demanded_by)
+
+    reason = dispatch.get("dispatch_failed") or disabled_reason or "Prefect dispatch did not happen"
+    if observed and not (not demanded_by and (step_key, "") in recorded):
+        observed[0].executor = observed[0].source = "local"
+        observed[0].flow_run_id = observed[0].executor_ref = ""
+        observed[0].dispatch_failed = reason
+        observed[0].placement = step_cost_observer.fallback_placement(reason)
+        _record_step_cost(entity_type, slug, observed[0], output, surveyed_at)
+    log.warning("Prefect step %s was to run on a worker (%s) but ran in-process: %s", step_key, why, reason)
+    result = {"step_key": step_key, "step": qualified_name, "status": "ok", "engine": "local",
+              "guard": (output or {}).get("guard"), "flow_run_id": "",
+              "dispatch": {"where": step_cost_observer.fallback_placement(reason), "why": why},
+              "placement": step_cost_observer.fallback_placement(reason),
+              "output": output}
+    result = _mark_planned(result, satisfied_by_stored, added_because, demanded_by)
+    if not added_because:
+        result["detail"] = f"ran locally: Prefect dispatch failed — {reason}"
+    return result
+
+
 @flow(name="RE Survey Definition Flow")
 @_daemon_entry
+@_one_acquisition_per_run
 def re_survey_definition_flow(
     entity_type: str,
     slug: str,
@@ -539,6 +680,7 @@ def re_survey_definition_flow(
             credential_ref=credential_ref,
             added_because=entry.get("added_because", "") or "",
             demanded_by=entry.get("demanded_by", "") or "",
+            executes_at=entry.get("executes_at", "") or "resource-explorer",
         )
     # Resolved in plan order so the report reads in the order authored, not the
     # order Prefect happened to finish them in.

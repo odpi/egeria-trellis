@@ -528,7 +528,16 @@ class PrefectConfig(BaseSettings):
     #
     # Wanting RE's own steps run through Prefect for retries and telemetry is a
     # legitimate deployment choice; it just has to be asked for.
+    #
+    # DEPRECATED (TR-11 F-AB-3, 2026-11-17): `true` is an alias for PREFECT_DISPATCH_STEPS=all. Read through
+    # surveyors/step_dispatch_policy.resolve, never on its own; PREFECT_DISPATCH_STEPS wins when both are set.
     route_local_steps: bool = Field(default=False, alias="PREFECT_ROUTE_LOCAL_STEPS")
+    # Which of Resource Explorer's own (executes_at: resource-explorer) steps go to a Prefect worker, per step:
+    # a comma list of step keys and/or the tokens `heavy` (StepInfo.compute_cost in
+    # step_dispatch_policy.HEAVY_COMPUTE) and `all`. "" (default) dispatches none of them. Each dispatched step
+    # costs ~15 s of hand-off (TR-11 A/B, 2026-11-17), so list only steps heavy enough to move off RE's process.
+    # Decided in one place, step_dispatch_policy.dispatch_decision; validated and logged at startup.
+    dispatch_steps: str = Field(default="", alias="PREFECT_DISPATCH_STEPS")
     # A pool worker with no Prefect `status` of its own counts as live when its last heartbeat is within
     # this many heartbeat intervals (the worker's own `heartbeat_interval_seconds`, else 30 s). Read by
     # bootstrap.check_prefect_pool_workers, which counts live workers rather than registrations.

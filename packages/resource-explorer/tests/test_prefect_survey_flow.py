@@ -150,3 +150,36 @@ def test_a_planner_added_step_runs_through_prefect_and_is_marked_in_the_report()
     assert report[0]["added_because"] == note and report[0]["detail"] == note
     assert report[0]["auto_run"] is True and report[0]["demanded_by"] == "consumer"
     assert "added_because" not in report[1]
+
+
+def test_one_flow_run_of_a_three_step_repo_definition_reads_as_one_run():
+    """F-AB-1: every step of one whole-definition flow run writes ONE step_runs
+    row, under the run's shared `surveyed_at` and the flow run's id.
+
+    Runs the real repo runner (SurveyOrchestrator, which records its own row)
+    with its surveyors faked. Before the fix each step's orchestrator stamped
+    its own `surveyed_at` on a local row with no flow run id, and the flow added
+    a second row per step: one run of three steps read as three runs."""
+    from resource_explorer.registry import Project, ProjectRegistry
+    from tests.test_survey_orchestrator import _patch_all_surveyors
+
+    run_at = "2026-11-17T09:00:00.123456+00:00"
+    steps = ["repo_language", "repo_health", "repo_security"]
+    registry = ProjectRegistry()
+    registry.add(Project(slug="fab1", display_name="F", github_url="https://github.com/t/fab1"))
+    _mocks, patchers = _patch_all_surveyors()
+    try:
+        with patch("resource_explorer.surveyors.survey_orchestrator.log_survey"):
+            report = flows.re_survey_definition_flow(
+                "repo", "fab1", _plan(*((k, [], {}) for k in steps)), {}, surveyed_at=run_at)
+    finally:
+        for p in patchers:
+            p.stop()
+
+    assert [r["status"] for r in report] == ["ok", "ok", "ok"]
+    flow_run_id = report[0]["flow_run_id"]
+    assert flow_run_id and {r["flow_run_id"] for r in report} == {flow_run_id}
+    rows = registry.query_step_runs(slug="fab1")
+    assert sorted(r["step_key"] for r in rows) == sorted(steps)
+    assert {r["surveyed_at"] for r in rows} == {run_at}
+    assert {(r["executor"], r["flow_run_id"]) for r in rows} == {("prefect", flow_run_id)}

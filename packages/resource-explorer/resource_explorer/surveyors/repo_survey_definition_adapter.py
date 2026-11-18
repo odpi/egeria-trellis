@@ -386,15 +386,37 @@ def _acquire_zipball_root(project, registry, served: dict | None = None):
     logic lives in GitHubClient.zipball_root() (D6.7) — the one
     implementation IngestionPipeline.refresh_profile() also wraps, instead
     of each maintaining its own copy.
+
+    Inside a `run_resource_pool.run_resource_scope()` (a Prefect-ordered
+    Survey Definition, F-AB-2) the root is acquired once for the whole run
+    and handed to every later step, whose own orchestrator call would
+    otherwise fetch it again.
     """
+    from resource_explorer.surveyors import run_resource_pool
+
+    pool = run_resource_pool.current()
+    if pool is None:
+        with _fetch_zipball_root(project) as (root, sha):
+            if served is not None:
+                served["zipball_root"] = sha
+            yield root
+        return
+    (root, sha), _reused = pool.get_or_acquire(
+        ("zipball_root", project.github_url), lambda: _fetch_zipball_root(project))
+    if served is not None:
+        served["zipball_root"] = sha
+    yield root
+
+
+@contextmanager
+def _fetch_zipball_root(project):
+    """(extracted root, served commit SHA) — the actual acquisition."""
     from resource_explorer.github.client import GitHubClient
 
     client = GitHubClient()
     repo = client.get_repo(project.github_url)
     with client.zipball_root(repo) as root:
-        if served is not None:
-            served["zipball_root"] = getattr(client, "last_served_sha", None)
-        yield root
+        yield root, getattr(client, "last_served_sha", None)
 
 
 @contextmanager
@@ -1283,7 +1305,7 @@ STEP_REGISTRY: dict[str, StepInfo] = {
 
 
 def _run_step(step_key: str, **orchestrator_kwargs):
-    def runner(project, registry, fast: bool = False, **_) -> dict:
+    def runner(project, registry, fast: bool = False, surveyed_at: str = "", **_) -> dict:
         from resource_explorer.surveyors.survey_orchestrator import SurveyOrchestrator
 
         orch = SurveyOrchestrator(registry, **orchestrator_kwargs)
@@ -1291,7 +1313,10 @@ def _run_step(step_key: str, **orchestrator_kwargs):
         # True (repo_health today) — SurveyOrchestrator.run() ignores it for
         # every other step, so forwarding it unconditionally here is safe
         # for any step_key, not just the ones that care.
-        result = orch.run(project.slug, steps=[step_key], fast=fast)
+        # surveyed_at: the shared time of the run this step is one of (a whole-definition Prefect flow passes
+        # it, F-AB-1), so the orchestrator's rows carry the run's time rather than one of its own per step.
+        result = orch.run(project.slug, steps=[step_key], fast=fast,
+                          **({"surveyed_at": surveyed_at} if surveyed_at else {}))
         # The commit this step read, only if it completed (SurveyResult.commit_by_step); the executor's
         # and Prefect's step_runs rows take it from here.
         return {"annotations": result.annotations, "survey_commit_sha": result.commit_by_step.get(step_key)}

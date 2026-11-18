@@ -215,12 +215,16 @@ def _c(enabled, route_local):
 
 
 def _predicate(step, cfg):
+    # TR-11 F-AB-3: the policy is step_dispatch_policy.dispatch_decision; the executor adds only "is Prefect
+    # enabled" for RE's own steps (engine_override is exercised in test_survey_definition_executor).
+    from resource_explorer.surveyors import step_dispatch_policy as sdp
+
     prefect_only = ("soda_data_quality", "great_expectations_validation")
-    if step.executes_at == "prefect" or step.re_analysis_step in prefect_only:
-        return True
-    if step.executes_at == "resource-explorer":
-        return bool(cfg.enabled and getattr(cfg, "route_local_steps", False))
-    return False
+    own_step = step.executes_at == "resource-explorer" and step.re_analysis_step not in prefect_only
+    where, _why = sdp.dispatch_decision(step.re_analysis_step, step.executes_at, None, sdp.resolve(cfg))
+    if where != sdp.WORKER:
+        return False
+    return bool(cfg.enabled) or not own_step
 
 
 def test_predicate_matches_production():
@@ -235,10 +239,11 @@ def test_predicate_matches_production():
     # non-Egeria-hosted entry point — could share it), not `run` itself and
     # not the module-level run_survey_definition wrapper.
     src = inspect.getsource(ex.SurveyDefinitionExecutor._execute)
-    assert "route_local_steps" in src, (
-        "production no longer consults route_local_steps — the mirror in this test "
+    assert "step_dispatch_policy.dispatch_decision(" in src, (
+        "production no longer asks step_dispatch_policy.dispatch_decision — the mirror in this test "
         "file is stale and its assertions no longer mean anything")
-    assert 'cfg.enabled and getattr(cfg, "route_local_steps", False)' in src
+    assert "step_dispatch_policy.resolve(cfg)" in src
+    assert "return enabled or not own_step" in src
 
 
 def test_route_local_steps_defaults_to_off():
