@@ -6,6 +6,7 @@ a fallback that is recorded as a fallback, never as a dispatch.
 """
 import logging
 import types
+import uuid
 from unittest.mock import patch
 
 import pytest
@@ -188,6 +189,12 @@ def test_the_pool_summary_names_the_steps_the_policy_dispatches(monkeypatch):
 
 # ── C5: the whole-definition flow dispatches per step, and records where each ACTUALLY ran ──────────────────────
 
+def _unique_slug(prefix: str) -> str:
+    """CI runs the registry on a Postgres schema shared by every test in a worker, so a fixed slug collides
+    (projects_pkey) from the second test on; SQLite's per-test file hid that."""
+    return f"{prefix}_{uuid.uuid4().hex[:8]}"   # "_", not "-": the registry stores a slug with "-" as "_"
+
+
 def _three_step_flow(monkeypatch, dispatch_steps, run_api):
     """Run a 3-step repo definition through the real flow with surveyors faked; `run_api` stands in for the
     worker dispatch (`_run_prefect_step_api`)."""
@@ -202,19 +209,20 @@ def _three_step_flow(monkeypatch, dispatch_steps, run_api):
     monkeypatch.setattr(get_config().prefect, "dispatch_steps", dispatch_steps)
     monkeypatch.setattr(prefect_adapter, "_run_prefect_step_api", run_api)
     steps = ["repo_language", "repo_health", "repo_security"]
+    slug = _unique_slug("fab3")
     registry = ProjectRegistry()
-    registry.add(Project(slug="fab3", display_name="F", github_url="https://github.com/t/fab3"))
+    registry.add(Project(slug=slug, display_name="F", github_url=f"https://github.com/t/{slug}"))
     plan = [{"step_key": k, "qualified_name": f"QN::{k}", "executes_at": "resource-explorer",
              "depends_on": [], "guarded_by": {}} for k in steps]
     _mocks, patchers = _patch_all_surveyors()
     try:
         with patch("resource_explorer.surveyors.survey_orchestrator.log_survey"):
             report = flows.re_survey_definition_flow(
-                "repo", "fab3", plan, {}, surveyed_at="2026-11-17T12:00:00+00:00")
+                "repo", slug, plan, {}, surveyed_at="2026-11-17T12:00:00+00:00")
     finally:
         for p in patchers:
             p.stop()
-    return {r["step_key"]: r for r in report}, registry.query_step_runs(slug="fab3")
+    return {r["step_key"]: r for r in report}, registry.query_step_runs(slug=slug)
 
 
 @pytest.mark.usefixtures("ephemeral_prefect")
@@ -296,19 +304,20 @@ def test_placement_worker_is_recorded_by_the_workers_step_flow(monkeypatch):
     report, _rows = _three_step_flow(monkeypatch, "repo_language", worker)
     assert report["repo_language"]["placement"] == sdp.WORKER
 
+    slug = _unique_slug("fab3w")
     registry = ProjectRegistry()
-    registry.add(Project(slug="fab3w", display_name="W", github_url="https://github.com/t/fab3w"))
+    registry.add(Project(slug=slug, display_name="W", github_url=f"https://github.com/t/{slug}"))
     _mocks, patchers = _patch_all_surveyors()
     try:
         with patch("resource_explorer.surveyors.survey_orchestrator.log_survey"):
-            flows._run_step_as_flow_run("fr-worker-3", "repo", "fab3w", "repo_language",
+            flows._run_step_as_flow_run(f"fr-{slug}", "repo", slug, "repo_language",
                                         {"surveyed_at": "2026-11-17T12:00:00+00:00"}, keep_result=False)
     finally:
         for p in patchers:
             p.stop()
-    rows = registry.query_step_runs(slug="fab3w")
+    rows = registry.query_step_runs(slug=slug)
     assert _placements(rows, "repo_language") == [sdp.WORKER]
-    assert {(r["executor"], r["flow_run_id"]) for r in rows} == {("prefect", "fr-worker-3")}
+    assert {(r["executor"], r["flow_run_id"]) for r in rows} == {("prefect", f"fr-{slug}")}
 
 
 @pytest.mark.usefixtures("ephemeral_prefect")
