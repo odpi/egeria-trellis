@@ -423,7 +423,7 @@ Keys the apps read, grouped by concern. `<APP>_` forms override the shared `TREL
 | Ollama | `LLM__OLLAMA__BASE_URL`, `LLM__OLLAMA__MODEL` | `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OLLAMA_CODE_MODEL` | `TRELLIS_MODEL_GENERAL`, `TRELLIS_MODEL_CODE`, plus the overlay choice |
 | Model tier | `EXPLORER_MODEL_TIER` | `ADVISOR_MODEL_TIER` | `TRELLIS_MODEL_TIER` |
 | Postgres / pgvector | `PGVECTOR_*` or `REGISTRY_DATABASE_URL` | `PGVECTOR_*` | `PGVECTOR_PASSWORD` |
-| Prefect (RE only) | `PREFECT_ENABLED` (default `true` in a native install), `PREFECT_API_URL`, `PREFECT_WORK_POOL` (must name the pool your worker serves: the bundled workers use `resource-explorer-pool`), `PREFECT_DISPATCH_STEPS` (see §5.1) | | `PREFECT_ENABLED=false` |
+| Prefect (RE only) | `PREFECT_ENABLED` (on by default), `PREFECT_API_URL`, `PREFECT_WORK_POOL` (default `resource-explorer-pool`, the pool the bundled workers serve), `PREFECT_DISPATCH_STEPS` (see §5.1) | | `PREFECT_ENABLED=false` |
 | Kroki | `KROKI_URL` | `KROKI_URL` | set in compose |
 | GitHub | `GITHUB_TOKEN`, `GITHUB_WEBHOOK_SECRET` | | `GITHUB_TOKEN` |
 | Process roles | `EXPLORER_EMBED_WORKER`, `EXPLORER_SYNC_POOL_SIZE` | | `TRELLIS_RE_WEB_WORKERS`; `WORKERS` / `EMBED_WORKER` read by the image entrypoint |
@@ -431,6 +431,12 @@ Keys the apps read, grouped by concern. `<APP>_` forms override the shared `TREL
 | Observability (optional) | `OBSERVABILITY__MLFLOW__*`, `OBSERVABILITY__PHOENIX__*` | `MLFLOW_*`, `PHOENIX_*` | off |
 
 ### 5.1 Prefect step dispatch (Resource Explorer)
+
+Prefect is **on by default**. With no Prefect server reachable, RE says so at startup and runs everything
+in-process. Set `PREFECT_ENABLED=false` only if you will never use Prefect. The work pool defaults to
+`resource-explorer-pool`, which is the pool the bundled workers serve. If an older install used `prefect_up.sh`'s
+earlier default (`default-agent-pool`), restart the worker first after upgrading, then RE, so both use the same pool;
+RE's startup check names both pools if they differ.
 
 With Prefect enabled, `PREFECT_DISPATCH_STEPS` chooses which of Resource Explorer's own steps
 (`executes_at: resource-explorer`) run on a Prefect **worker** instead of in RE's own process. Steps a survey
@@ -475,7 +481,7 @@ in the shared Postgres.
 | Stack "disappeared", or `docker inspect` says `no such object` for a container that is running | The active context flipped to `desktop-linux` and you are addressing the wrong engine. Desktop may have started itself. `docker context show` to confirm, `docker context use default` to fix, and `export DOCKER_CONTEXT=default` for anything scripted. |
 | A Portal tile shows as reachable but the link is dead in the browser | `advisor_check_urls()` / `resource_explorer_check_urls()` probe a `host.docker.internal` fallback as well as the configured URL, so the server-side check passes whenever the app is up on the box. It says nothing about whether a *browser* can reach the URL you configured. Test the configured URL itself, from where the browser actually runs. |
 | Docker Desktop's log pane is blank for a container | A viewer glitch after restart or log rotation; reopen the tab, or use `docker logs -f <container>`. |
-| Orphaned `prefect` server processes | The QuickStart demo compose runs both apps with `PREFECT_ENABLED=false`; a native install turns it on (`.env.example`, and the code default). `make ps` lists strays. Use Prefect only against the Prefect optional runtime (§5.1). |
+| Orphaned `prefect` server processes | Prefect is on by default in a native install (with no server, RE says so and runs in-process); the QuickStart demo compose turns it off (`PREFECT_ENABLED=false`). `make ps` lists strays. See §5.1. |
 | `qs-engine-host` logs `startMissedEngineActions` errors every few seconds on a fresh repository | Egeria-side (egeria-python `PYEGERIA_ISSUES.md` ISSUE-90); costs CPU but does not affect the apps. |
 | The apps talk to Egeria through `host.docker.internal` rather than the container name | Deliberate: the platform image's certificate names only `localhost` and `host.docker.internal`. A request for more SANs is filed with Egeria; do not switch to the container name until it lands. |
 

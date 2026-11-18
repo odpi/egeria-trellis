@@ -112,11 +112,11 @@ RE_PUBLIC_URL=http://<box-hostname>:8810
 
 ### Prefect (optional): running steps on a worker
 
-RE can hand chosen survey steps to a Prefect worker instead of running them in its own process. A native install
-turns Prefect on (`PREFECT_ENABLED=true` in `.env.example`); the QuickStart demo compose turns it off. The settings
-are `PREFECT_API_URL`, `PREFECT_WORK_POOL` and `PREFECT_DISPATCH_STEPS`. `PREFECT_WORK_POOL` must name the pool
-your worker serves: the bundled workers (the container image and `scripts/launchd/re-prefect-worker.sh`) use
-`resource-explorer-pool`.
+RE can hand chosen survey steps to a Prefect worker instead of running them in its own process. Prefect is on by
+default: with no Prefect server, RE says so at startup and runs everything in-process. Set `PREFECT_ENABLED=false`
+only if you will never use Prefect (the QuickStart demo compose does). The settings are `PREFECT_API_URL`,
+`PREFECT_WORK_POOL` (default `resource-explorer-pool`, the pool the bundled workers serve) and
+`PREFECT_DISPATCH_STEPS`.
 
 `PREFECT_DISPATCH_STEPS` (empty by default, so nothing is dispatched) and where each step's placement is recorded
 are described in [deploying-trellis-with-quickstart.md §5.1](../../../docs/deploying-trellis-with-quickstart.md#51-prefect-step-dispatch-resource-explorer).
