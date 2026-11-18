@@ -106,7 +106,9 @@ def _build_client(conn: Dict[str, str]):
         if not token:  # _get_egeria_conn never builds this; refuse, don't mint
             raise DrEgeriaAuthError(SIGN_IN_TO_RUN, "no_token")
         from advisor.auth import apply_token
-        client = EgeriaTech(conn["server_name"], conn["url"], conn["user_id"])
+        from pyegeria.core._no_password import NO_PASSWORD
+        # NO_PASSWORD (TR-34 R1): without it pyegeria's constructor fills user_pwd from its settings
+        client = EgeriaTech(conn["server_name"], conn["url"], conn["user_id"], user_pwd=NO_PASSWORD)
         apply_token(client, token)
         return client
     if conn.get("auth") == "service":

@@ -77,7 +77,8 @@ platform tokens last one hour; an app session is the shorter of that and the app
 | `ADVISOR_PORTAL_SECRET` / `TRELLIS_PORTAL_SECRET` | lets the Portal hand a signed-in user to EA and RE | the same value as the QuickStart's `EGERIA_ADVISOR_SSO_SECRET` |
 | `PGVECTOR_PASSWORD` | the `egeria_advisor` Postgres role. Required, no default: compose, RE and EA refuse to start without it | `compose-configs/shared-infra/.env` (`gen-env.sh` generates it on a new install; `init_trellis.sh` creates the role with it). A role still on the old `advisor`: change it first (shared-infra README) |
 | `GITHUB_TOKEN` | RE's GitHub API access for surveys and discovery | a personal token with read scope; without it GitHub's 60 calls/hour are gone in one survey |
-| `EGERIA_USER` / `EGERIA_USER_PASSWORD` | the service account above | `erinoverview` / `secret` |
+| `EA_DAEMON_USER_ID` / `EA_DAEMON_USER_PASSWORD` | EA's own service account (the app's own account, never a person): the background report-spec sync and anonymous reads, and EA's MCP children. Required for those; no default, unset refuses in words. Before TR-34: `EGERIA_USER` / `EGERIA_PASSWORD`, read with a warning until after 6.3 | `egeriaadvisornpa`; its password from the QuickStart's user directory |
+| `EGERIA_USER` / `EGERIA_USER_PASSWORD` | CLI only: pyegeria's own names for running its tools as yourself in a shell. Never in a server's `.env`: EA and RE warn at startup if they see them | your own demo user, e.g. `erinoverview` |
 | `EGERIA_USER_ID` / `EGERIA_USER_PASSWORD` for RE | RE's daemon identity, RE's own account `resourceexplorernpa` (not a person: RE refuses an interactive sign-in as it). Development bootstrap; not for a shipped product | the account's password in Egeria's user directory; see RE's `docs/admin-guide.md`, "RE's daemon account" |
 
 Never commit any of these, and never bake them into an image (the trellis `.dockerignore`

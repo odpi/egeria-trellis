@@ -400,8 +400,11 @@ def apply_token(client: Any, token: Optional[str]) -> None:
         from advisor.egeria_signin import SIGN_IN_TO_READ_EGERIA
         raise PermissionError(f"{SIGN_IN_TO_READ_EGERIA} (an anonymous caller has no Egeria identity)")
     if not token and not (uid and getattr(client, "user_pwd", None)):
-        # TR-34: no bearer token, and no user and password of its own: minting would let pyegeria fill the identity
-        # from its own settings (EGERIA_USER / EGERIA_USER_PASSWORD, or a built-in default). Refused, in words.
+        # TR-34: no bearer token, and no user and password of its own: refused, in words, before any mint. This
+        # catches "nothing configured"; it can't tell a password pyegeria's constructor filled from its settings
+        # (EGERIA_USER_PASSWORD) from one passed in. What closes that: EGERIA_USER* unset in the server (the start
+        # scripts unset them; startup warns if present), and every client built with explicit credentials or
+        # NO_PASSWORD (tests/unit/test_client_constructors_explicit.py), so pyegeria has no identity to fill.
         from advisor.config import NO_SERVICE_ACCOUNT
         raise PermissionError(f"No Egeria identity for this call: no sign-in token, and {NO_SERVICE_ACCOUNT}")
     _trellis_apply_token(client, token)
@@ -702,8 +705,11 @@ def check_portal_egeria_token(token: str) -> tuple[str, str]:
     except ImportError as exc:
         return PORTAL_TOKEN_UNREACHABLE, f"pyegeria is not available ({exc})"
     try:
+        from pyegeria.core._no_password import NO_PASSWORD
+        # NO_PASSWORD (TR-34 R1): pyegeria's constructor fills an absent user_pwd from its settings
+        # (EGERIA_USER_PASSWORD); a token client must never hold that password beside the token.
         client = EgeriaTech(view_server=cfg.egeria_view_server, platform_url=cfg.egeria_platform_url,
-                            user_id=cfg.egeria_service_account_user or "unknown")
+                            user_id=cfg.egeria_service_account_user or "unknown", user_pwd=NO_PASSWORD)
         apply_token(client, token)
         client.get_my_profile()
         return PORTAL_TOKEN_ACCEPTED, ""

@@ -192,3 +192,50 @@ def test_the_dr_egeria_service_path_refuses_without_an_account(clean):
     from advisor.agents import dr_egeria_agent as dra
     with pytest.raises(dra.DrEgeriaAuthError):
         dra._build_client({"server_name": "s", "url": "https://127.0.0.1:9", "auth": "service", "user_id": "", "user_pass": ""})
+
+
+# ── the MCP children (read-back question 1): no persona; EA's service account, explicitly ──
+
+def test_the_shipped_mcp_config_carries_no_persona():
+    import json
+    d = json.loads((PKG / "advisor" / "configdata" / "mcp_servers.json").read_text())
+    for name in ("pyegeria", "dr-egeria"):
+        env = d["mcpServers"][name].get("env") or {}
+        assert not {"EGERIA_USER", "EGERIA_PASSWORD", "EGERIA_USER_PASSWORD"} & set(env), name
+
+
+@pytest.mark.parametrize("name", ["pyegeria", "dr-egeria"])
+def test_an_egeria_child_runs_as_ea_daemon_never_a_persona(clean, monkeypatch, name):
+    from advisor import mcp_agent
+    monkeypatch.setattr(cfg.settings, "daemon_user_id", "egeriaadvisornpa")
+    monkeypatch.setattr(cfg.settings, "daemon_user_password", "daemon-secret")
+    monkeypatch.setenv("EGERIA_USER", "erinoverview")                 # a shell's persona in the parent
+    monkeypatch.setenv("EGERIA_USER_PASSWORD", "persona-secret")
+    env, ok = mcp_agent._child_identity(name, {"EGERIA_USER": "erinoverview", "EGERIA_PASSWORD": "x",
+                                               "EGERIA_VIEW_SERVER": "qs-view-server"})
+    assert ok and env["EGERIA_USER"] == "egeriaadvisornpa" and env["EGERIA_USER_PASSWORD"] == "daemon-secret"
+    assert "EGERIA_PASSWORD" not in env and env["EGERIA_VIEW_SERVER"] == "qs-view-server"
+    merged = mcp_agent.MCPServerConfig(command="python3", env=env).get_env_with_defaults()
+    assert merged["EGERIA_USER"] == "egeriaadvisornpa" and merged["EGERIA_USER_PASSWORD"] == "daemon-secret"
+
+
+def test_an_egeria_child_is_not_started_without_a_service_account(clean, monkeypatch, caplog):
+    import logging
+    from advisor import mcp_agent
+    caplog.set_level(logging.WARNING, logger=mcp_agent.logger.name)       # mcp_agent logs through stdlib logging
+    monkeypatch.setattr(cfg.settings, "daemon_user_id", "")
+    monkeypatch.setattr(cfg.settings, "daemon_user_password", "")
+    monkeypatch.setenv("EGERIA_USER", "erinoverview")
+    servers = mcp_agent._build_servers({"pyegeria": {"command": "python3", "args": ["-m", "pyegeria.core.mcp_server"],
+                                                     "env": {"EGERIA_USER": "erinoverview"}}})
+    s = servers["pyegeria"]
+    assert s.enabled is False
+    assert s.env["EGERIA_USER"] == "" and s.env["EGERIA_USER_PASSWORD"] == ""      # and never the parent's persona
+    assert any("MCP server 'pyegeria' disabled" in r.getMessage() and cfg.NO_SERVICE_ACCOUNT in r.getMessage()
+               for r in caplog.records)
+
+
+def test_other_children_are_left_alone(clean):
+    from advisor import mcp_agent
+    env = {"SOME": "thing"}
+    assert mcp_agent._child_identity("_example_remote_sse", env) == (env, True)

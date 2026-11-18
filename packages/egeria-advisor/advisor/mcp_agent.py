@@ -10,7 +10,7 @@ import shutil
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from advisor.mcp_client import (
     MCPClient,
@@ -40,6 +40,27 @@ def _resolve_dr_egeria_env(env: Dict[str, str]) -> Dict[str, str]:
         env = dict(env)
         env["EGERIA_ROOT_PATH"] = root
     return env
+
+
+#: The MCP children that sign in to Egeria themselves, by pyegeria's own variable names (their code reads only
+#: EGERIA_USER / EGERIA_USER_PASSWORD; neither takes a user's token per call). TR-34: they run as EA's own service
+#: account, passed explicitly; never a person's persona from the JSON or the parent environment.
+EGERIA_SIGN_IN_CHILDREN = ("pyegeria", "dr-egeria")
+_CHILD_IDENTITY_VARS = ("EGERIA_USER", "EGERIA_PASSWORD", "EGERIA_USER_PASSWORD")
+
+
+def _child_identity(name: str, env: Dict[str, str]) -> Tuple[Dict[str, str], bool]:
+    """(env, ok) for an Egeria sign-in child: any identity in its JSON env dropped, and EA's service account set
+    under the names the child reads. ok is False when EA has no service account: the child is then not started
+    (one of them falls back to a built-in persona of its own otherwise)."""
+    out = {k: v for k, v in env.items() if k not in _CHILD_IDENTITY_VARS}
+    if name not in EGERIA_SIGN_IN_CHILDREN:
+        return env, True
+    from advisor.config import settings
+    user, pwd = settings.daemon_user_id or "", settings.daemon_user_password or ""
+    # Always set, so the child never inherits a shell's persona (MCPServerConfig merges os.environ under these).
+    out["EGERIA_USER"], out["EGERIA_USER_PASSWORD"] = user, pwd
+    return out, bool(user and pwd)
 
 
 def _resolve_server_env(name: str, env: Dict[str, str]) -> Dict[str, str]:
@@ -161,10 +182,15 @@ def _build_servers(raw: Dict[str, Any]) -> Dict[str, "MCPServerConfig"]:
                 "EGERIA_WORKSPACES) or edit configdata/mcp_servers.json."
             )
             enabled = False
+        child_env, has_identity = _child_identity(name, _resolve_server_env(name, server_data.get("env", {})))
+        if enabled and not has_identity:
+            from advisor.config import NO_SERVICE_ACCOUNT
+            logger.warning(f"MCP server {name!r} disabled: it signs in to Egeria itself, and {NO_SERVICE_ACCOUNT}")
+            enabled = False
         servers[name] = MCPServerConfig(
             command=resolved_command,
             args=resolved_args,
-            env=_resolve_server_env(name, server_data.get("env", {})),
+            env=child_env,
             url=server_data.get("url"),
             transport=server_data.get("transport", "stdio"),
             headers=server_data.get("headers", {}),

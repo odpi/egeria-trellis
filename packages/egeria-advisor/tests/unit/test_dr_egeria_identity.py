@@ -7,6 +7,7 @@ import json
 
 import httpx
 import pytest
+from pyegeria.core._no_password import NO_PASSWORD
 
 import pyegeria
 from pyegeria import PyegeriaUnauthorizedException
@@ -110,8 +111,8 @@ class TestSignedInRunUsesTheUsersToken:
         assert env.get("auth_required") is None
         [client] = FakeEgeriaTech.instances
         assert client.args["user_id"] == "erinoverview"
-        assert client.args["user_pwd"] is None
-        assert "svc-secret" not in json.dumps(client.args)
+        assert client.args["user_pwd"] is NO_PASSWORD   # explicit (TR-34 R1), never the settings password
+        assert "svc-secret" not in json.dumps(client.args, default=str)
         assert client.bearer_tokens == ["user-token-abc"]
         assert client.minted == []
         # the dispatcher ran on that very client, validate only
@@ -122,12 +123,12 @@ class TestSignedInRunUsesTheUsersToken:
         _run(agent, USER, service_operation=True)
         [client] = FakeEgeriaTech.instances
         assert client.bearer_tokens == ["user-token-abc"] and client.minted == []
-        assert client.args["user_pwd"] is None
+        assert client.args["user_pwd"] is NO_PASSWORD   # explicit (TR-34 R1), never the settings password
 
     def test_a_password_in_the_credentials_is_never_used(self, fakes, agent):
         _run(agent, {**USER, "password": "leaked"})
         [client] = FakeEgeriaTech.instances
-        assert client.args["user_pwd"] is None and client.minted == []
+        assert client.args["user_pwd"] is NO_PASSWORD and client.minted == []   # explicit (TR-34 R1)
 
     def test_credentials_are_not_cached_across_users(self, fakes, agent):
         _run(agent, USER)
@@ -178,7 +179,7 @@ class TestRefusedTokenSaysSignInAgain:
         assert env["output"] == SIGN_IN_AGAIN and "Sign in again" in SIGN_IN_AGAIN
         assert env["auth_reason"] == "token_refused"
         [client] = FakeEgeriaTech.instances  # one client, never rebuilt with a password
-        assert client.minted == [] and client.args["user_pwd"] is None
+        assert client.minted == [] and client.args["user_pwd"] is NO_PASSWORD   # explicit (TR-34 R1), never the settings password
         assert fakes["dispatchers"] == []  # nothing validated on a refused token
 
     def test_expired_token_refused_before_any_call(self, fakes, agent, monkeypatch):

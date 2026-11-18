@@ -12,11 +12,13 @@ host. The dev profile on a laptop is at the end.
 ## 0. Identities and secrets used
 
 Nothing here comes from another machine. All identities are the quickstart's own demo users, defined in
-`compose-configs/egeria-quickstart/secrets/coco-user-directory.omsecrets` (password `secret` for all):
+`compose-configs/egeria-quickstart/secrets/coco-user-directory.omsecrets` (password `secret` for the demo users; the two service accounts have their own):
 
 | Purpose | User |
 |---|---|
-| RE and EA service account (`EGERIA_USER` / `EGERIA_USER_PASSWORD` in the trellis `.env`), the worker role's own Egeria identity | `erinoverview` |
+| RE's service account (`RE_DAEMON_USER_ID` / `RE_DAEMON_USER_PASSWORD` in the trellis `.env`), the worker role's own Egeria identity | `resourceexplorernpa` |
+| EA's service account (`EA_DAEMON_USER_ID` / `EA_DAEMON_USER_PASSWORD`): background spec sync, anonymous reads, EA's MCP children | `egeriaadvisornpa` |
+| CLI only (`EGERIA_USER` / `EGERIA_USER_PASSWORD`, pyegeria's own names, never in a server's `.env`) | your own demo user |
 | Signed-in surveys and CLI login in the verification below | `erinoverview` (any demo user works) |
 | EA login in the verification below | `peterprofile` |
 | Platform-services reads (origin, server status) | `garygeeke` |
