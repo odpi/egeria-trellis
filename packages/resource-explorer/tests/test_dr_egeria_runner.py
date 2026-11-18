@@ -1079,10 +1079,13 @@ def test_an_unset_service_account_refuses_and_never_falls_back_to_a_persona(monk
     from resource_explorer import egeria_clients
     from resource_explorer.config import EgeriaConfig, get_config
 
-    monkeypatch.delenv("RE_DAEMON_USER_ID", raising=False)
-    monkeypatch.delenv("RE_DAEMON_USER_PASSWORD", raising=False)
-    assert EgeriaConfig(_env_file=None).user_id == ""
-    assert EgeriaConfig(_env_file=None).user_password == ""
+    # Both names of each setting: an inherited legacy EGERIA_USER_ID / EGERIA_USER_PASSWORD (a shell profile that
+    # exports pyegeria's CLI convention) would otherwise fill the field through the deprecated alias.
+    for name in ("RE_DAEMON_USER_ID", "RE_DAEMON_USER_PASSWORD", "EGERIA_USER_ID", "EGERIA_USER_PASSWORD"):
+        monkeypatch.delenv(name, raising=False)
+    # `not x`, never `x == ""`: a failed comparison prints the value, and this one is a credential.
+    assert not EgeriaConfig(_env_file=None).user_id
+    assert not EgeriaConfig(_env_file=None).user_password
     monkeypatch.setattr(get_config().egeria, "user_id", "")
     with pytest.raises(egeria_clients.NoServiceAccount, match="RE_DAEMON_USER_ID not set"):
         egeria_clients.Daemon(egeria_clients.DaemonReason.OUTBOX)

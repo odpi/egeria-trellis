@@ -36,6 +36,13 @@ def _set(way, monkeypatch, tmp_path, values):
         (tmp_path / ".env").write_text("".join(f"{k}={v}\n" for k, v in values.items()))
 
 
+def _secret_is(actual: str, expected: str) -> None:
+    """Compare a credential without ever printing it: a bare `assert a == b` shows both operands when it fails, and
+    in a shell that inherits a real EGERIA_USER_PASSWORD the actual one is a real password."""
+    if actual != expected:
+        pytest.fail("the password is not the expected one (values are never printed)")
+
+
 def _cfg():
     return EgeriaConfig(_env_file=(cfg_mod._ENV_FILES))
 
@@ -47,7 +54,8 @@ WAYS = ["env", "dotenv"]
 def test_new_names_are_read(way, monkeypatch, tmp_path):
     _set(way, monkeypatch, tmp_path, {"RE_DAEMON_USER_ID": "re-svc", "RE_DAEMON_USER_PASSWORD": "pw-new"})
     c = _cfg()
-    assert (c.user_id, c.user_password) == ("re-svc", "pw-new")
+    assert c.user_id == "re-svc"
+    _secret_is(c.user_password, "pw-new")
     assert daemon_env_findings() == [], "the new names alone say nothing"
 
 
@@ -55,7 +63,8 @@ def test_new_names_are_read(way, monkeypatch, tmp_path):
 def test_old_names_alone_still_work_and_say_so_once_by_name(way, monkeypatch, tmp_path, caplog):
     _set(way, monkeypatch, tmp_path, {"EGERIA_USER_ID": "old-svc", "EGERIA_USER_PASSWORD": "old-pw-VALUE"})
     c = _cfg()
-    assert (c.user_id, c.user_password) == ("old-svc", "old-pw-VALUE")
+    assert c.user_id == "old-svc"
+    _secret_is(c.user_password, "old-pw-VALUE")
     with caplog.at_level(logging.WARNING, logger=cfg_mod.__name__):
         first = cfg_mod.warn_daemon_env_once()
         second = cfg_mod.warn_daemon_env_once()
@@ -71,7 +80,8 @@ def test_both_set_and_different_the_new_name_wins_with_a_warning(way, monkeypatc
     _set(way, monkeypatch, tmp_path, {"RE_DAEMON_USER_ID": "new-svc", "EGERIA_USER_ID": "old-svc",
                                       "RE_DAEMON_USER_PASSWORD": "new-pw", "EGERIA_USER_PASSWORD": "old-pw"})
     c = _cfg()
-    assert (c.user_id, c.user_password) == ("new-svc", "new-pw")
+    assert c.user_id == "new-svc"
+    _secret_is(c.user_password, "new-pw")
     findings = daemon_env_findings()
     assert any("RE_DAEMON_USER_ID and EGERIA_USER_ID are both set and differ" in f for f in findings)
     assert any("RE_DAEMON_USER_PASSWORD and EGERIA_USER_PASSWORD are both set and differ" in f for f in findings)
@@ -97,7 +107,7 @@ def test_new_name_wins_across_sources(monkeypatch, tmp_path):
 @pytest.mark.parametrize("way", WAYS)
 def test_neither_set_fails_closed(way, monkeypatch, tmp_path):
     c = _cfg()
-    assert (c.user_id, c.user_password) == ("", "")
+    assert not c.user_id and not c.user_password
     from resource_explorer import egeria_clients
     monkeypatch.setattr(cfg_mod, "_config", None)
     with pytest.raises(egeria_clients.NoServiceAccount, match="RE_DAEMON_USER_ID not set"):

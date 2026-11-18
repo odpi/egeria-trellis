@@ -244,9 +244,10 @@ def test_a_cached_cli_session_for_the_daemon_is_refused(cfg, monkeypatch, tmp_pa
 def test_an_unset_egeria_user_id_is_warned_and_has_no_persona_default(cfg, monkeypatch, caplog):
     from resource_explorer.config import EgeriaConfig
 
-    monkeypatch.delenv("RE_DAEMON_USER_ID", raising=False)
+    for name in ("RE_DAEMON_USER_ID", "EGERIA_USER_ID"):         # the deprecated name fills the field too
+        monkeypatch.delenv(name, raising=False)
     cfg.egeria = EgeriaConfig(_env_file=None)                   # nothing set: no code default names a person
-    assert cfg.egeria.user_id == ""
+    assert not cfg.egeria.user_id
     with caplog.at_level(logging.INFO, logger="resource_explorer.egeria_clients"):
         ec.log_daemon_identity_at_startup()
     lines = [(r.levelno, r.getMessage()) for r in caplog.records if r.name == "resource_explorer.egeria_clients"]
