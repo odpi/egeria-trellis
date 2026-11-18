@@ -54,14 +54,19 @@ before starting either app.
 
 ### 1.3 Identities
 
-All identities are the QuickStart's demo users, defined in
-`compose-configs/egeria-quickstart/secrets/coco-user-directory.omsecrets` (password `secret`):
+All identities are in the QuickStart's user directory,
+`compose-configs/egeria-quickstart/secrets/coco-user-directory.omsecrets` (each account's `clearPassword`):
 
-| Purpose | User |
-|---|---|
-| Service account for background work (the RE worker role, EA's non-interactive calls) | `erinoverview` |
-| Signing in to either app, in the browser or on the command line | any demo user, e.g. `peterprofile` |
-| Platform-services reads used in the checks below | `garygeeke` |
+| Purpose | User | Set in |
+|---|---|---|
+| Resource Explorer's own service account (background work: the worker role, surveys, publishing) | `resourceexplorernpa` | `RE_DAEMON_USER_ID` / `RE_DAEMON_USER_PASSWORD` |
+| Egeria Advisor's own service account (its report-spec sync and anonymous reads) | `egeriaadvisornpa` | `EA_DAEMON_USER_ID` / `EA_DAEMON_USER_PASSWORD` |
+| Signing in to either app, in the browser or on the command line | any demo user, e.g. `peterprofile` (the demo users share the QuickStart's standard demo password) | nothing: you type it |
+| Platform-services reads used in the checks below | `garygeeke` | nothing |
+
+A service account is the app's own account, never a person, and no one can sign in to an app as one. Don't
+put a person's account in `RE_DAEMON_*` / `EA_DAEMON_*`, and don't set `EGERIA_USER` / `EGERIA_USER_PASSWORD` for
+the apps (those are pyegeria's names for running its tools as yourself in a shell).
 
 **Login is required by both apps.** A signed-in user's Egeria bearer token travels inside the app's
 session token; the apps never hold the user's password. Everything a user publishes, surveys or
@@ -323,7 +328,7 @@ Minimum edits:
 | File | Keys |
 |---|---|
 | both | `TRELLIS_JWT_SECRET=<one value shared by both files>` so sessions survive restarts (`RE_JWT_SECRET` / `ADVISOR_JWT_SECRET` per app also work) |
-| RE | `GITHUB_TOKEN`; `EGERIA_PLATFORM_URL=https://localhost:9443`, `EGERIA_VIEW_SERVER=qs-view-server`, `EGERIA_USER=erinoverview`, `EGERIA_USER_PASSWORD=secret`; `LLM__OLLAMA__BASE_URL=http://localhost:11434` |
+| RE | `GITHUB_TOKEN`; `EGERIA_PLATFORM_URL=https://localhost:9443`, `EGERIA_VIEW_SERVER=qs-view-server`, `RE_DAEMON_USER_ID=resourceexplorernpa` / `RE_DAEMON_USER_PASSWORD` (RE's own service account, never a person; its password is in the QuickStart's `coco-user-directory.omsecrets`); `LLM__OLLAMA__BASE_URL=http://localhost:11434` |
 | EA | `EGERIA_VIEW_SERVER_URL=https://localhost:9443`, `EGERIA_VIEW_SERVER=qs-view-server`, `EA_DAEMON_USER_ID` / `EA_DAEMON_USER_PASSWORD` (EA's own service account, never a person; before TR-34 `EGERIA_USER` / `EGERIA_PASSWORD`, read with a warning until after 6.3); `OLLAMA_BASE_URL=http://localhost:11434`; `ADVISOR_DATA_PATH` for EA's **writable** state (cache, feedback, index — default `./data`), and `ADVISOR_EGERIA_PYTHON_PATH` for the **read-only** egeria-python checkout its data-prep pipeline ingests. These were one env var until 2026-09-06, so setting it for either meaning silently redirected the other |
 | optional | `ADVISOR_PORTAL_SECRET` / `RE_PORTAL_SECRET` equal to the QuickStart's `EGERIA_ADVISOR_SSO_SECRET` for tile handoff; `EXPLORER_MODEL_TIER` / `ADVISOR_MODEL_TIER` (default `dev`) |
 

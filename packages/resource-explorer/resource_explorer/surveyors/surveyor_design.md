@@ -161,7 +161,9 @@ EGERIA_USER_PASSWORD=secret
 PYEGERIA_TIMEOUT_SECONDS=30
 ```
 
-If none are set, pyegeria falls back to its own `config/config.json`. `EgeriaPublisher` checks for `EGERIA_PLATFORM_URL` at startup and raises a clear error if `--publish` is requested but credentials are missing, rather than failing mid-run.
+If none are set, pyegeria falls back to its own `config/config.json`.
+
+> **Superseded 2026-11-18 (TR-39):** the RE server signs in as its own service account, `RE_DAEMON_USER_ID` / `RE_DAEMON_USER_PASSWORD` (`resourceexplorernpa`), never `EGERIA_USER*`. Those are for the CLI only. See `docs/deploying-trellis-with-quickstart.md` §1.3. `EgeriaPublisher` checks for `EGERIA_PLATFORM_URL` at startup and raises a clear error if `--publish` is requested but credentials are missing, rather than failing mid-run.
 
 ---
 

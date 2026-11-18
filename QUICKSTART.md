@@ -26,8 +26,21 @@ Python itself is handled by `uv` from `.python-version` — you do not need to i
 
 **Required: an Egeria platform.** It is what both apps authenticate against — login is required
 and there is no local user store, so without Egeria there is no way to sign in. An
-`egeria-quickstart` deployment at `https://localhost:9443` is the usual local answer. Set it in
-each app's `.env` (`EGERIA_VIEW_SERVER_URL`, `EGERIA_VIEW_SERVER`, `EGERIA_USER`).
+`egeria-quickstart` deployment at `https://localhost:9443` is the usual local answer. In each app's `.env`:
+
+- **Where Egeria is:** Resource Explorer reads `EGERIA_PLATFORM_URL` and `EGERIA_VIEW_SERVER`; Egeria Advisor reads
+  `EGERIA_VIEW_SERVER_URL` and `EGERIA_VIEW_SERVER`.
+- **Each app's own service account** (the app's account, never a person): `RE_DAEMON_USER_ID` /
+  `RE_DAEMON_USER_PASSWORD` for Resource Explorer, and `EA_DAEMON_USER_ID` / `EA_DAEMON_USER_PASSWORD` for Egeria
+  Advisor. On the Egeria QuickStart these are `resourceexplorernpa` and `egeriaadvisornpa`. Their passwords are in
+  the QuickStart's user directory, egeria-workspaces'
+  `compose-configs/egeria-quickstart/secrets/coco-user-directory.omsecrets` (each account's `clearPassword`). On
+  any other Egeria, ask its administrator for the two accounts.
+- Don't set `EGERIA_USER` / `EGERIA_USER_PASSWORD` for the apps: those are pyegeria's names for running its tools
+  as yourself in a shell, and both apps warn at startup if they see them. You sign in to each app as yourself.
+
+[deploying-trellis-with-quickstart.md](docs/deploying-trellis-with-quickstart.md) §1.3 and §1.4 list every identity and
+secret.
 
 `TRELLIS_ANONYMOUS_READ=true` relaxes this on a development box — unauthenticated `GET`/`HEAD`
 pass, writes still require a signed-in user — but it is a dev-only override, not a supported way
@@ -154,9 +167,22 @@ Ingestion runs as part of `add` and takes a few minutes — pick a small repo fi
 itself is large enough to be a poor first choice.
 
 **Egeria Advisor** — open <http://localhost:8880>, sign in with your Egeria user id and
-password, then ask *"what is a governance zone?"*. The answer comes from its own bundled corpus,
-so nothing needs indexing first; the sign-in is what lets anything it creates be attributed to
-you in Egeria.
+password, then ask *"what is a governance zone?"*.
+
+**Build EA's knowledge base first.** EA answers from collections it builds from Egeria's own repositories, and
+a new install has none: until they are built, every answer says it has no information. Build them once, from the
+repository root:
+
+```bash
+uv run python packages/egeria-advisor/scripts/clone_repos.py      # clones egeria-python, egeria, egeria-docs,
+                                                                  # egeria-workspaces and egeria-trellis
+                                                                  # into ~/egeria-advisor-data/repos
+(cd packages/egeria-advisor && uv run python -m advisor.incremental_indexer --all)   # embeds them
+```
+
+The clone includes `odpi/egeria`, which is large, and the indexing embeds every collection, so allow time and
+disk space. Later runs of the indexer update only what changed. The sign-in is what lets anything EA creates be
+attributed to you in Egeria.
 
 From the terminal, cache a session once instead of signing in per command:
 
@@ -229,9 +255,9 @@ run does not by itself prove your database is wired up. The honest check is step
 | Symptom | Likely cause |
 |---|---|
 | `relation "..." does not exist` from Resource Explorer | The `resource_explorer` schema was never created — step 2 |
-| Empty or "I don't have enough information" answers | Ollama is not running, or the model was never pulled |
+| Empty or "I don't have enough information" answers | EA's knowledge base hasn't been built yet (see "Build EA's knowledge base first" above), or Ollama is not running, or the model was never pulled |
 | GitHub calls failing after a few minutes | No `GITHUB_TOKEN`; you are on the 60/hour anonymous limit |
-| Egeria calls failing | Expected without a platform — the 10-minute path does not need one |
+| Egeria calls failing, or sign-in refused | Both apps need an Egeria platform to sign in. Check it answers (`curl -k https://localhost:9443/open-metadata/platform-services/users/garygeeke/server-platform/origin`), that `EGERIA_VIEW_SERVER` names a running view server, and that each app's service account (above) is set |
 | A survey reports zero findings | May be honest. Both apps distinguish *measured zero* from *never ran*; check the result's own status rather than assuming |
 
 ---

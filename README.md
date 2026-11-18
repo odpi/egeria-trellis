@@ -72,7 +72,7 @@ a supported deployment mode.
 
 ```bash
 git clone https://github.com/odpi/egeria-trellis.git
-cd trellis
+cd egeria-trellis
 uv sync
 ```
 
