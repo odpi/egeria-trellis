@@ -991,24 +991,24 @@ def command_outcome(stdout: str) -> tuple[bool, str]:
 
 
 def heal_identity() -> DrEgeriaIdentity:
-    """The identity a bootstrap heal applies documents as: RE's service account (`EGERIA_USER_ID` and its
+    """The identity a bootstrap heal applies documents as: RE's service account (`RE_DAEMON_USER_ID` and its
     password, read by `egeria_clients._daemon_credential()`). The only service-account case for Dr.Egeria."""
     from resource_explorer.egeria_clients import _daemon_credential
 
     try:
         user, password = _daemon_credential()
-    except PermissionError as exc:          # NoServiceAccount: EGERIA_USER_ID / its password not set
+    except PermissionError as exc:          # NoServiceAccount: RE_DAEMON_USER_ID / its password not set
         raise NoDrEgeriaIdentity(str(exc)) from exc
     return DrEgeriaIdentity(user=user, source=SOURCE_STARTUP_HEAL, password=password)
 
 
 def log_heal_identity_at_startup() -> dict:
     """At startup: log who the heal applies Dr.Egeria documents as, and where that identity comes from. Both are the
-    same source (`EGERIA_USER_ID` / `EGERIA_USER_PASSWORD` via `_daemon_credential()`), so there is nothing to
+    same source (`RE_DAEMON_USER_ID` / `RE_DAEMON_USER_PASSWORD` via `_daemon_credential()`), so there is nothing to
     compare; a heal with no service account is logged as a loud warning. Never a password. Returns what it logged."""
     from resource_explorer.config import get_config
 
-    source = "EGERIA_USER_ID (environment or .env)"
+    source = "RE_DAEMON_USER_ID (environment or .env)"
     try:
         heal_user = heal_identity().user
     except NoDrEgeriaIdentity as exc:
@@ -1548,7 +1548,7 @@ def batch_price(batch_id: str, docs_dir: Path = DOCS_DIR, registry=None) -> dict
     # the press's words use (`applied_documents`), so a partial declaration is visible without a press.
     applied = applied_count(batch, registry)
     words = (f"runs {n} Dr.Egeria document{'s' if n != 1 else ''} in order as "
-             f"{applying_as or 'NO service account (EGERIA_USER_ID unset): refused'} · creates "
+             f"{applying_as or 'NO service account (RE_DAEMON_USER_ID unset): refused'} · creates "
              f"{len(engines)} engine, {len(services)} services, {gats} governance action types, "
              f"{processes} process{'es' if processes != 1 else ''} · "
              + (f"about {seconds} s" if seconds is not None else "time not measured here yet")

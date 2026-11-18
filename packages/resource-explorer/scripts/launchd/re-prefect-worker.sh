@@ -32,6 +32,8 @@ HOST="$(hostname -s)"
 [ -f "$RE_RUNTIME_ENV" ] || { echo "re-prefect-worker: $RE_RUNTIME_ENV is missing; not starting a worker on other settings than the web app" >&2; exit 1; }
 # shellcheck source=/dev/null
 . "$RE_RUNTIME_ENV"
+# TR-37: pyegeria's CLI-convention identity must not be in a server process (its fallback reads these two).
+unset EGERIA_USER EGERIA_USER_PASSWORD
 cd "$RE_TREE"
 export PATH="$VENV_BIN:$PATH"
 export TRELLIS_RE_SHA="$(git -C "$RE_TREE" rev-parse HEAD)"

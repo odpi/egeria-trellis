@@ -1750,7 +1750,7 @@ def drain_identity(identity=None):
     if identity.kind == "daemon" and not (identity.client_user or identity.user_id or "").strip():
         raise OutboxIdentityError(
             "The Egeria service identity has no user id, so the outbox cannot write to Egeria. "
-            "Set EGERIA_USER_ID (and EGERIA_USER_PASSWORD) for the worker."
+            "Set RE_DAEMON_USER_ID (and RE_DAEMON_USER_PASSWORD) for the worker."
         )
     return identity
 

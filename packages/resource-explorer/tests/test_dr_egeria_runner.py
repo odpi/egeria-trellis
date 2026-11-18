@@ -142,8 +142,8 @@ def root(tmp_path, monkeypatch):
     (docs / "plain").mkdir()
     (docs / "plain" / "only.md").write_text(DOC)
     monkeypatch.setenv("RE_DR_EGERIA_DOCS_DIR", str(docs))
-    monkeypatch.setenv("EGERIA_USER_ID", DAEMON)
-    monkeypatch.setenv("EGERIA_USER_PASSWORD", "daemon-secret")
+    monkeypatch.setenv("RE_DAEMON_USER_ID", DAEMON)
+    monkeypatch.setenv("RE_DAEMON_USER_PASSWORD", "daemon-secret")
     monkeypatch.setenv("EGERIA_USER", "someone-else")          # what an inherited env would have run as
     return docs
 
@@ -512,7 +512,7 @@ def test_every_client_and_the_child_run_as_the_supplied_user(root, reg, monkeypa
     assert fakes.subprocess_envs[0]["RE_DR_EGERIA_CHILD_PASSWORD"] == IDENT_PASSWORD
     assert "--server" in argv and "--url" in argv
     env = fakes.subprocess_envs[0]
-    assert not {"EGERIA_USER", "EGERIA_USER_PASSWORD", "EGERIA_USER_ID"} & set(env)
+    assert not {"EGERIA_USER", "EGERIA_USER_PASSWORD", "EGERIA_USER_ID", "RE_DAEMON_USER_ID", "RE_DAEMON_USER_PASSWORD"} & set(env)
     assert lines == ["applying as tester from --as"]
     row = _rows(reg)[0]
     detail = json.loads(row["detail"])
@@ -587,7 +587,7 @@ def test_the_heal_refuses_when_the_service_account_is_not_set(tmp_path, monkeypa
     doc = tmp_path / "d.md"
     doc.write_text("x")
     ok, detail = bootstrap._run_dr_egeria(doc)
-    assert not ok and "EGERIA_USER_ID not set" in detail and fakes.argvs == []
+    assert not ok and "RE_DAEMON_USER_ID not set" in detail and fakes.argvs == []
 
 
 def test_the_startup_check_logs_the_heal_identity_and_its_source_never_the_password(monkeypatch, caplog):
@@ -600,7 +600,7 @@ def test_the_startup_check_logs_the_heal_identity_and_its_source_never_the_passw
     monkeypatch.setattr(get_config().egeria, "user_password", "svc-pass")
     with caplog.at_level(logging.INFO):
         out = bootstrap.log_heal_identity_at_startup()
-    assert out["heal_user"] == "svc-account" and out["set"] is True and "EGERIA_USER_ID" in out["source"]
+    assert out["heal_user"] == "svc-account" and out["set"] is True and "RE_DAEMON_USER_ID" in out["source"]
     assert "svc-account" in caplog.text and "svc-pass" not in caplog.text
     assert "DIFFER" not in caplog.text and "differs" not in out
 
@@ -1075,21 +1075,21 @@ def test_the_route_has_no_signed_in_egeria_session_is_401_and_runs_nothing(root,
 
 
 def test_an_unset_service_account_refuses_and_never_falls_back_to_a_persona(monkeypatch):
-    """Fail on purpose: EGERIA_USER_ID unset must refuse the daemon path, not become a person."""
+    """Fail on purpose: RE_DAEMON_USER_ID unset must refuse the daemon path, not become a person."""
     from resource_explorer import egeria_clients
     from resource_explorer.config import EgeriaConfig, get_config
 
-    monkeypatch.delenv("EGERIA_USER_ID", raising=False)
-    monkeypatch.delenv("EGERIA_USER_PASSWORD", raising=False)
+    monkeypatch.delenv("RE_DAEMON_USER_ID", raising=False)
+    monkeypatch.delenv("RE_DAEMON_USER_PASSWORD", raising=False)
     assert EgeriaConfig(_env_file=None).user_id == ""
     assert EgeriaConfig(_env_file=None).user_password == ""
     monkeypatch.setattr(get_config().egeria, "user_id", "")
-    with pytest.raises(egeria_clients.NoServiceAccount, match="EGERIA_USER_ID not set"):
+    with pytest.raises(egeria_clients.NoServiceAccount, match="RE_DAEMON_USER_ID not set"):
         egeria_clients.Daemon(egeria_clients.DaemonReason.OUTBOX)
     assert egeria_clients.daemon_identity_status() == {"user_id": None, "source": "unset"}
     monkeypatch.setattr(get_config().egeria, "user_id", "svc")
     monkeypatch.setattr(get_config().egeria, "user_password", "")
-    with pytest.raises(egeria_clients.NoServiceAccount, match="EGERIA_USER_PASSWORD not set"):
+    with pytest.raises(egeria_clients.NoServiceAccount, match="RE_DAEMON_USER_PASSWORD not set"):
         egeria_clients.Daemon(egeria_clients.DaemonReason.OUTBOX)
 
 

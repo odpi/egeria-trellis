@@ -26,10 +26,10 @@ re: ## Run a resource-explorer CLI command: make re CMD="survey ..."
 	uv run --package resource-explorer resource-explorer $(CMD)
 
 re-web: ## Start Resource Explorer's web UI (http://localhost:8810)
-	uv run --package resource-explorer resource-explorer web
+	env -u EGERIA_USER -u EGERIA_USER_PASSWORD uv run --package resource-explorer resource-explorer web
 
 re-worker: ## Start Resource Explorer's worker role (background loops only, no HTTP)
-	uv run --package resource-explorer resource-explorer worker
+	env -u EGERIA_USER -u EGERIA_USER_PASSWORD uv run --package resource-explorer resource-explorer worker
 
 ea: ## Run an egeria-advisor CLI command: make ea CMD="..."
 	uv run --package egeria-advisor egeria-advisor $(CMD)
@@ -41,7 +41,7 @@ dev: ## Start both web UIs concurrently; Ctrl-C stops both
 	@echo "Resource Explorer -> $(RE_WEB_URL)"
 	@echo "Egeria Advisor    -> $(EA_WEB_URL)"
 	@trap 'kill 0' INT TERM; \
-	( uv run --package resource-explorer resource-explorer web 2>&1 | sed -u 's/^/[RE] /' ) & \
+	( env -u EGERIA_USER -u EGERIA_USER_PASSWORD uv run --package resource-explorer resource-explorer web 2>&1 | sed -u 's/^/[RE] /' ) & \
 	( uv run --package egeria-advisor egeria-advisor-web 2>&1 | sed -u 's/^/[EA] /' ) & \
 	wait
 

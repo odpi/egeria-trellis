@@ -87,7 +87,7 @@ def login_command(
     if not user:
         from resource_explorer.config import get_config
 
-        # Never the daemon's userId (EGERIA_USER_ID is RE's service account, Brief L).
+        # Never the daemon's userId (RE_DAEMON_USER_ID is RE's service account, Brief L).
         prefill = (get_config().egeria.login_default_user or "").strip()
         user = typer.prompt("Egeria user id", default=(None if not prefill or is_daemon_user(prefill) else prefill))
     try:

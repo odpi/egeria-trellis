@@ -10,7 +10,7 @@ CONFTEST = Path(__file__).with_name("conftest.py")
 
 def test_the_defaults_are_clearly_fake_and_not_a_persona():
     src = CONFTEST.read_text()
-    assert "erinoverview" not in src.split("_live_tier_requested")[0].split("EGERIA_USER_ID")[-1]
+    assert "erinoverview" not in src.split("_live_tier_requested")[0].split("RE_DAEMON_USER_ID")[-1]
     assert '"re-test-service-account"' in src and '"re-test-password"' in src
 
 
@@ -18,7 +18,7 @@ def test_the_defaults_are_set_only_when_the_live_tier_is_off():
     tree = ast.parse(CONFTEST.read_text())
     guarded = [n for n in tree.body if isinstance(n, ast.If)
                and "_live_tier_requested" in ast.dump(n.test)
-               and "EGERIA_USER_ID" in ast.dump(n)]
-    assert guarded, "the EGERIA_USER_ID default must sit under `if not _live_tier_requested()`"
-    top_level_sets = [n for n in tree.body if isinstance(n, ast.Expr) and "EGERIA_USER_ID" in ast.dump(n)]
+               and "RE_DAEMON_USER_ID" in ast.dump(n)]
+    assert guarded, "the RE_DAEMON_USER_ID default must sit under `if not _live_tier_requested()`"
+    top_level_sets = [n for n in tree.body if isinstance(n, ast.Expr) and "RE_DAEMON_USER_ID" in ast.dump(n)]
     assert top_level_sets == []

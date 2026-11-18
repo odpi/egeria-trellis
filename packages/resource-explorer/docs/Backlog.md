@@ -10,6 +10,16 @@ This is a list, not a design doc — keep entries short. Link to a full design d
 
 ---
 
+## Remove the old service-account variable names after 6.3 (registered 2026-11-17, TR-37)
+
+**Decision (project owner, 2026-11-17):** RE's service account is `RE_DAEMON_USER_ID` / `RE_DAEMON_USER_PASSWORD`;
+the old `EGERIA_USER_ID` / `EGERIA_USER_PASSWORD` are read for one release with a startup warning, then removed.
+
+To do in the release after 6.3: drop the `EGERIA_*` choices from `EgeriaConfig.user_id` / `user_password` and
+`LEGACY_DAEMON_ENV` in `config.py`, the two `os.getenv("EGERIA_USER_ID", ...)` fallbacks in
+`surveyors/egeria_tech_type_catalog.py` and `surveyors/egeria_project_finder.py`, and their tests
+(`tests/test_re_daemon_env_names.py`). EA's `EA_DAEMON_*` follows only after TR-33 is deployed and U3 passes.
+
 ## A schedule proposal is completed by hand (logged 2026-11-10, from the step 2c read-back)
 
 **What:** closed-loop step 2c's schedule-proposal RFA (`feedback_routing._propose_schedule`) is left open after its drawer button saves the schedule, because scheduling is not the fix: a fresh result reaching a compile is.
