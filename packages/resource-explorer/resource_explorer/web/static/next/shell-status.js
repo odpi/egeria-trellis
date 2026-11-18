@@ -202,6 +202,29 @@ function healLine(status) {
 /** True while a run is in flight: a poll must not rebuild the button under it, or a second run could be started. */
 let runInFlight = false;
 
+/* The banner's close box (2026-11-17). Closing hides exactly what is showing now: the dismissal is keyed by the
+ * words of every line, so any change (a new condition, a different worker, the need going from missing to
+ * restoring) draws the banner again, and a new tab or session starts with it showing. It is kept for the tab only
+ * (sessionStorage), never sent anywhere, and never makes a condition healthier: the checks and the log lines
+ * still run, only this tab's banner is hidden. */
+export const BANNER_DISMISSED_KEY = 're_bootstrap_banner_dismissed';
+function bannerSignature(need, eng, pool) {
+  return JSON.stringify([need ? [need.kind, need.word] : null, eng ? [eng.kind, eng.word] : null, pool ? [pool.kind, pool.word] : null]);
+}
+function dismissedSignature(doc) {
+  try { return doc.defaultView?.sessionStorage?.getItem(BANNER_DISMISSED_KEY) ?? globalThis.sessionStorage?.getItem(BANNER_DISMISSED_KEY) ?? null; }
+  catch { return null; }
+}
+function rememberDismissed(doc, sig) {
+  try { (doc.defaultView?.sessionStorage ?? globalThis.sessionStorage)?.setItem(BANNER_DISMISSED_KEY, sig); } catch { /* storage off: closed until the next poll */ }
+}
+const CLOSE_HTML = '<button type="button" data-banner-close aria-label="Close this banner" title="Close this banner (it returns if the condition changes)"'
+  + ' class="ml-auto cursor-pointer border-0 bg-transparent px-2 text-ink-muted hover:text-ink">×</button>';
+function bindClose(doc, bar, sig) {
+  bar.insertAdjacentHTML('beforeend', CLOSE_HTML);
+  bar.querySelector('[data-banner-close]').addEventListener('click', () => { rememberDismissed(doc, sig); bar.remove(); });
+}
+
 /** Draw, update or remove the bootstrap banner for `status` (null = could not be read: no banner, no claim). */
 export function renderBootstrapBanner(doc, status, { run = runBootstrapMissingOnly, onDone, locked = false } = {}) {
   const need = bootstrapAttention(status);
@@ -209,6 +232,8 @@ export function renderBootstrapBanner(doc, status, { run = runBootstrapMissingOn
   const pool = prefectPoolLine(status);
   if (runInFlight && doc.getElementById(BOOTSTRAP_BANNER_ID)) return need;
   if (!need && !eng && !pool) { removeEl(doc, BOOTSTRAP_BANNER_ID); return null; }
+  const sig = bannerSignature(need, eng, pool);
+  if (dismissedSignature(doc) === sig) { removeEl(doc, BOOTSTRAP_BANNER_ID); return need; }
   let bar = doc.getElementById(BOOTSTRAP_BANNER_ID);
   if (!bar) {
     bar = doc.createElement('div');
@@ -221,6 +246,7 @@ export function renderBootstrapBanner(doc, status, { run = runBootstrapMissingOn
     // Only the engine and/or pool lines: no batch word, no run button (neither is healed by a bootstrap run).
     bar.dataset.bootstrapKind = eng ? 'engine' : 'prefect-pool';
     bar.innerHTML = engineLineHtml(eng) + poolLineHtml(pool);
+    bindClose(doc, bar, sig);
     return eng ? { kind: 'engine', word: eng.word, missing: 0 } : { kind: 'prefect-pool', word: pool.word, missing: 0 };
   }
   const canRun = need.kind === 'missing';
@@ -234,6 +260,7 @@ export function renderBootstrapBanner(doc, status, { run = runBootstrapMissingOn
     <span data-bootstrap-heal class="text-provenance text-ink-muted">${esc(healLine(status))}</span>`;
   const btn = bar.querySelector('[data-bootstrap-run]');
   if (btn) bindRun(btn, bar, { run, onDone });
+  bindClose(doc, bar, sig);
   return need;
 }
 
