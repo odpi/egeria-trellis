@@ -57,8 +57,8 @@ Secrets the trellis `.env` needs, and where each comes from:
 
 ```bash
 mkdir -p ~/localGit/trellis-demo && cd ~/localGit/trellis-demo
-git clone --branch main https://github.com/dwolfson/egeria-workspaces.git
-git clone --branch re/docs-consolidation-part-2 https://github.com/dwolfson/trellis.git   # until merged
+git clone https://github.com/odpi/egeria-workspaces.git
+git clone https://github.com/odpi/egeria-trellis.git trellis
 ```
 
 Keep them separate from any existing live checkout on the box; that one stays untouched.

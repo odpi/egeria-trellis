@@ -54,8 +54,8 @@ to run without Egeria.
 ### 1. Install
 
 ```bash
-git clone https://github.com/dwolfson/trellis.git
-cd trellis
+git clone https://github.com/odpi/egeria-trellis.git
+cd egeria-trellis
 uv sync
 ```
 
@@ -177,22 +177,22 @@ itself is large enough to be a poor first choice.
 password, then ask *"what is a governance zone?"*.
 
 **Build EA's knowledge base first.** EA answers from collections it builds from Egeria's own repositories, and
-a new install has none: until they are built, every answer says it has no information. Build them once, from the
-repository root:
+a new install has none: until they are built, every answer says it has no information. Build them once. Run these
+from `packages/egeria-advisor`, where EA's `.env` (with `PGVECTOR_PASSWORD`) is read:
 
 ```bash
 cd packages/egeria-advisor
-uv run python scripts/clone_repos.py --phase all         # clones egeria-python, egeria, egeria-docs,
-                                                         # egeria-workspaces and egeria-trellis
-                                                         # into ~/egeria-advisor-data/repos
-uv run python scripts/ingest_collections.py --phase all  # embeds them into pgvector
+../../.venv/bin/python scripts/clone_repos.py --phase all        # egeria-python, egeria, egeria-docs,
+                                                                 # egeria-workspaces and egeria-trellis
+                                                                 # into ~/egeria-advisor-data/repos
+../../.venv/bin/python scripts/ingest_collections.py --phase all # embeds them into pgvector
 cd ../..
 ```
 
 Use `--phase all` on both commands. Without it, both default to phase 1, which is only egeria-python, and
 a concept question such as "what is a governance zone?" needs egeria-docs (phase 2). The clone includes
 `odpi/egeria`, which is large, and the first ingest embeds every collection, so allow time and disk space.
-Afterwards, `python -m advisor.incremental_indexer --collection <name>` updates one collection with only what
+Afterwards, `../../.venv/bin/python -m advisor.incremental_indexer --collection <name>` (from the same folder) updates one collection with only what
 changed. The sign-in is what lets anything EA creates be
 attributed to you in Egeria.
 

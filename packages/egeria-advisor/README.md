@@ -338,15 +338,15 @@ cd packages/egeria-advisor
 
 # First build: clone the source repositories, then embed every enabled collection.
 # Use --phase all on both; phase 1 is egeria-python only and can't answer concept questions.
-uv run python scripts/clone_repos.py --phase all
-uv run python scripts/ingest_collections.py --phase all
+../../.venv/bin/python scripts/clone_repos.py --phase all
+../../.venv/bin/python scripts/ingest_collections.py --phase all
 
 # Start real-time monitoring dashboard
-uv run python -m advisor.dashboard.terminal_dashboard
+../../.venv/bin/python -m advisor.dashboard.terminal_dashboard
 
 # Detect changes in one collection (dry-run), then apply them
-uv run python -m advisor.incremental_indexer --collection pyegeria --dry-run
-uv run python -m advisor.incremental_indexer --collection pyegeria
+../../.venv/bin/python -m advisor.incremental_indexer --collection pyegeria --dry-run
+../../.venv/bin/python -m advisor.incremental_indexer --collection pyegeria
 ```
 
 `--collection` takes an enabled collection name. egeria-docs is indexed as `egeria_concepts`, `egeria_types`
