@@ -139,7 +139,10 @@ def cli() -> None:
          'service-account setting (advisor.config.settings.daemon_user_id) — '
          'that identity is a live-Egeria-call fallback only and is '
          'explicitly excluded from owning artifacts (see advisor/auth.py\'s '
-         'module docstring).'
+         'module docstring). This runs as a user, so EA\'s MCP tools (pyegeria and '
+         'Dr.Egeria, which sign in as EA\'s service account) are not used: a step '
+         'that would need one says "That tool can\'t run as you yet, so I '
+         'didn\'t use it." (TR-34; per-call tokens come with TR-43.)'
 )
 def ask(
     query: Optional[str],

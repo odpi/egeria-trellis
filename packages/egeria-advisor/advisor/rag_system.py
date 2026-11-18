@@ -1518,6 +1518,8 @@ class RAGSystem:
                         "I couldn't find a matching report spec for that query.\n\n"
                         "Try **Create** to build a new report spec, or rephrase to match a catalog report name."
                     )
+                if getattr(specs, "note", ""):          # TR-34 R3 W1: the search stopped at EA's local copy
+                    response_text += f"\n\n*{specs.note}*"
 
                 result = {
                     "query": user_query,

@@ -122,3 +122,66 @@ def test_the_report_pipelines_mcp_calls_are_refused_for_a_user_request(monkeypat
     with using_user("erinoverview"):
         with pytest.raises(ma.MCPRunsAsServiceAccount):
             pipeline._call_tool("list_reports", {})
+
+
+# ── W1: words that say the tool was deliberately not used ────────────────────
+
+@pytest.fixture
+def pipeline(monkeypatch):
+    from advisor.report_pipeline import get_report_pipeline
+    p = get_report_pipeline()
+    agent = _bare_mcp_agent()
+    agent.tools = {"egeria_list_glossaries": object()}
+    agent.get_tool = lambda name: agent.tools.get(name)
+    monkeypatch.setattr(p, "_ensure_agent", lambda: None)
+    monkeypatch.setattr(p, "_agent", agent, raising=False)
+    return p
+
+
+def test_a_listing_for_a_user_request_says_not_used_not_failed(pipeline):
+    with using_user("erinoverview"):
+        out, reason = pipeline._try_listing_tool("Glossaries")
+    assert out is None
+    assert reason == ("The egeria_list_glossaries listing on the dr-egeria MCP server was not used: "
+                      "That tool can't run as you yet, so I didn't use it.")
+    assert "failed" not in reason
+
+
+def test_a_user_spec_search_stops_at_the_local_copy_and_says_so(pipeline, monkeypatch):
+    from advisor import report_pipeline as rp
+    monkeypatch.setattr(rp._question_index, "search", lambda q, perspective=None: [])     # no local hit
+    with using_user("erinoverview"):
+        hits = pipeline.find_specs("show me data quality rules")
+        reply = pipeline._discover_reports("show me data quality rules", None)
+    assert list(hits) == [] and hits.note == rp.LOCAL_ONLY_SEARCH
+    assert rp.LOCAL_ONLY_SEARCH == ("Searched EA's local copy only; Egeria's own spec search can't run as you yet, "
+                                    "so results may be incomplete.")
+    assert rp.LOCAL_ONLY_SEARCH in reply["response"] and reply["notes"] == [rp.LOCAL_ONLY_SEARCH]
+
+
+def test_a_local_hit_needs_no_note(pipeline, monkeypatch):
+    from advisor import report_pipeline as rp
+    hit = [{"report_spec": "Glossaries", "score": 0.9}]
+    monkeypatch.setattr(rp._question_index, "search", lambda q, perspective=None: hit)
+    with using_user("erinoverview"):
+        hits = pipeline.find_specs("list glossaries")
+    assert hits == hit and getattr(hits, "note", "") == ""
+
+
+def test_background_spec_search_still_uses_egerias_search(pipeline, monkeypatch):
+    """No request context: strategies 2 and 3 run (as EA's service account), with no local-only note."""
+    from advisor import report_pipeline as rp
+    monkeypatch.setattr(rp._question_index, "search", lambda q, perspective=None: [])
+    called = []
+    monkeypatch.setattr(pipeline, "_call_tool", lambda tool, args: called.append(tool) or [])
+    hits = pipeline.find_specs("show me data quality rules")
+    assert "find_report_specs" in called and getattr(hits, "note", "") == ""
+
+
+@pytest.mark.parametrize("command", [["ask", "--help"], ["plans", "--help"]])
+def test_the_cli_help_says_mcp_tools_are_not_used_as_a_user(command):
+    from click.testing import CliRunner
+    from advisor.cli.main import cli
+    out = CliRunner().invoke(cli, command).output
+    flat = " ".join(out.split())
+    assert "EA's MCP tools" in flat and "are not used" in flat and "TR-43" in flat, out

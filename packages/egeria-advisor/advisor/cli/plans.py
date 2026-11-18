@@ -59,7 +59,7 @@ def _get_doc_manager():
          "in, and with neither it behaves like an anonymous web request "
          "(shared namespace only). See egeria-advisor's own --user for why "
          "this doesn't fall back to the EA_DAEMON_USER_ID service-account "
-         "setting."
+         "setting. This runs as a user, so EA's MCP tools (pyegeria and Dr.Egeria, which sign in as EA's service account) are not used: a step that would need one says \"That tool can't run as you yet, so I didn't use it.\" (TR-34; per-call tokens come with TR-43.)"
 )
 @click.pass_context
 def plans(ctx: click.Context, user_id: Optional[str]):
