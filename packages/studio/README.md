@@ -26,10 +26,26 @@ Studio embeds EA's chat as a side panel.
 
 The login policy is trellis-auth's shared one (`TRELLIS_*` then `STUDIO_*`).
 
-## Starting it
+## Install and run
 
-`scripts/start-studio.sh [port]` (dotenv `--no-override`, `EGERIA_USER`/`EGERIA_PASSWORD` unset). On laz, only
-when the Coordinator says so.
+Studio is part of the Trellis workspace; it needs an Egeria to sign in to (the QuickStart's, by default) and, for
+its AI panel, Egeria Advisor.
+
+1. From the repository root, install the workspace once: `make sync` (it creates `.venv` with Studio's `studio`
+   command).
+2. Create Studio's settings: `cp packages/studio/.env.example packages/studio/.env`, then set what you need. The one
+   required value, `TRELLIS_JWT_SECRET`, is written for you by step 3 if no Trellis app has one yet (the same value
+   as Resource Explorer's and Egeria Advisor's, so one sign-in works across them).
+3. Start it:
+   - with the other Trellis apps: `make up` (Resource Explorer, Egeria Advisor and Studio), or
+   - on its own: `make up-studio` (or `make studio-web`, without trellis-up's secret and start checks).
+   trellis-up reports an app that fails to start, by name with its first error line, and exits non-zero.
+4. Open http://localhost:8840 and sign in with your Egeria user id and password (a QuickStart demo user such as
+   `erinoverview`, never a service account).
+
+`scripts/start-studio.sh [port]` is what the make targets run: it loads `packages/studio/.env` without overriding
+values already in the environment (`--no-override`), and unsets `EGERIA_USER` / `EGERIA_PASSWORD` /
+`EGERIA_USER_PASSWORD` (Studio has no service account). `STUDIO_ENV_FILE` points it at another settings file.
 
 ## Tests
 

@@ -31,7 +31,7 @@ from loguru import logger
 REPOS = {
     "egeria-python": {
         "url": "https://github.com/odpi/egeria-python.git",
-        "collections": ["pyegeria", "pyegeria_cli", "pyegeria_drE"],
+        "collections": ["pyegeria", "pyegeria_cli", "pyegeria_drE", "egeria_templates"],
         "phase": 1
     },
     "egeria": {
@@ -41,7 +41,8 @@ REPOS = {
     },
     "egeria-docs": {
         "url": "https://github.com/odpi/egeria-docs.git",
-        "collections": ["egeria_docs"],
+        # TR-51: egeria_docs is disabled; the docs are indexed as these three (collection_config.REPLACED_BY).
+        "collections": ["egeria_concepts", "egeria_types", "egeria_general"],
         "phase": 2
     },
     "egeria-workspaces": {

@@ -316,6 +316,12 @@ class ExamplesAgent(BaseAdvisorAgent):
         return any(sig in q for sig in _METHOD_DISCOVERY_SIGNALS)
 
     def handle(self, query: str, perspective: str | None = None) -> dict:
+        from advisor.agents.tools import recording_retrieval, with_retrieval
+        with recording_retrieval() as log:      # TR-51 c: the answer reports what it retrieved
+            res = self._handle(query, perspective=perspective)
+        return with_retrieval(res, log)
+
+    def _handle(self, query: str, perspective: str | None = None) -> dict:
         if self._is_method_discovery(query):
             logger.info("ExamplesAgent: method-discovery mode")
             res = self._handle_api_reference(query, perspective=perspective)

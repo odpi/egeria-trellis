@@ -411,6 +411,7 @@ class IncrementalIndexer:
             with track_operation(f"incremental_update_{self.collection_name}", params=params) as tracker:
                 chunks_added = 0
                 chunks_removed = 0
+                failures_before = len(getattr(self.ingester, "failed_files", None) or [])
                 
                 # Process deleted files
                 for file_path in changeset.deleted_files:
@@ -460,7 +461,21 @@ class IncrementalIndexer:
                         logger.info(f"Added {chunks} chunks for {file_path} (entity IDs: {len(entity_ids)})")
                 
                 duration = time.time() - start_time
-                
+
+                # TR-51: ingest_file logs and swallows a per-file error. Every file failing is a failed update, said
+                # with the error, never "+0 / -0 chunks" and success.
+                attempted = len(changeset.new_files) + len(changeset.modified_files)
+                failed = (getattr(self.ingester, "failed_files", None) or [])[failures_before:]
+                if attempted and len(failed) >= attempted:
+                    first = failed[0][1] if failed else "unknown error"
+                    return UpdateResult(files_added=0, files_modified=0, files_deleted=len(changeset.deleted_files),
+                                        chunks_added=0, chunks_removed=chunks_removed, duration=duration,
+                                        success=False,
+                                        error=f"every one of the {attempted} file(s) failed to index; first: {first}")
+                if failed:
+                    logger.warning(f"{self.collection_name}: {len(failed)} of {attempted} file(s) failed to index; "
+                                   f"first: {failed[0][1]}")
+
                 # Update metadata
                 total_files = len(changeset.new_files) + len(changeset.modified_files) + len(changeset.unchanged_files)
                 self.tracker.update_metadata(self.collection_name, total_files, chunks_added - chunks_removed)
@@ -523,7 +538,17 @@ def build_indexer(collection_name: str) -> "IncrementalIndexer":
     if collection is None:
         raise KeyError(
             f"Unknown collection '{collection_name}'. "
-            f"Known: {', '.join(sorted(ALL_COLLECTIONS))}"
+            f"Known: {', '.join(sorted(n for n, c in ALL_COLLECTIONS.items() if c.enabled))}"
+        )
+    if not collection.enabled:
+        # TR-51: indexing a disabled collection wrote to a table nobody creates ('relation "egeria_docs" does not
+        # exist' for every file) and still reported success. Refused, naming what replaced it.
+        from advisor.collection_config import REPLACED_BY
+        instead = REPLACED_BY.get(collection_name)
+        raise KeyError(
+            f"Collection '{collection_name}' is disabled"
+            + (f": it was split into {', '.join(instead)}. Index those instead." if instead else
+               f". Enabled: {', '.join(sorted(n for n, c in ALL_COLLECTIONS.items() if c.enabled))}.")
         )
 
     source_paths = get_collection_source_paths(collection)
@@ -610,7 +635,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     try:
         indexer = build_indexer(args.collection)
     except (KeyError, FileNotFoundError) as exc:
-        logger.error(str(exc))
+        logger.error(exc.args[0] if exc.args else str(exc))   # the words, not KeyError's quoted repr
         return 1
 
     changeset = indexer.detect_changes()

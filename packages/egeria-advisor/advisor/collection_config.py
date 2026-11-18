@@ -7,7 +7,7 @@ source repositories, paths, domain terms, and relationships.
 Domain terms can be loaded from config/routing.yaml or use defaults.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -497,22 +497,34 @@ def get_collections_by_priority() -> List[CollectionMetadata]:
 
 
 def get_phase1_collections() -> List[CollectionMetadata]:
-    """Get Phase 1 (Python) collections."""
+    """Get Phase 1 (Python) collections: everything from egeria-python, the Dr.Egeria templates included (TR-50)."""
     return [
         PYEGERIA_COLLECTION,
         PYEGERIA_CLI_COLLECTION,
         PYEGERIA_DRE_COLLECTION,
+        EGERIA_TEMPLATES_COLLECTION,
     ]
 
 
 def get_phase2_collections() -> List[CollectionMetadata]:
-    """Get Phase 2 (Java + Docs + Workspaces + Trellis) collections."""
+    """Get Phase 2 (Java + Docs + Workspaces + Trellis) collections.
+
+    TR-50: the docs are the three split collections; egeria_docs is disabled (REPLACED_BY) and is not listed."""
     return [
         EGERIA_JAVA_COLLECTION,
-        EGERIA_DOCS_COLLECTION,
+        EGERIA_CONCEPTS_COLLECTION,
+        EGERIA_TYPES_COLLECTION,
+        EGERIA_GENERAL_COLLECTION,
         EGERIA_WORKSPACES_COLLECTION,
         TRELLIS_COLLECTION,
     ]
+
+
+#: A disabled collection and the enabled ones that replaced it (TR-51): a request for the old name is refused
+#: with these words, and the clone script lists these for the repository.
+REPLACED_BY: Dict[str, Tuple[str, ...]] = {
+    "egeria_docs": ("egeria_concepts", "egeria_types", "egeria_general"),
+}
 
 
 def enable_collection(name: str) -> bool:

@@ -5,7 +5,7 @@
   "advisor/agents/dr_egeria_agent.py::extract_params": 1,
   "advisor/agents/dre_template_agent.py::handle": 1,
   "advisor/agents/examples_agent.py::_search_report_specs": 1,
-  "advisor/agents/examples_agent.py::handle": 1,
+  "advisor/agents/examples_agent.py::_handle": 1,
   "advisor/agents/governance_plan_agent.py::_handle_legacy_generate": 2,
   "advisor/agents/governance_plan_agent.py::_infer_type_from_context": 1,
   "advisor/agents/governance_plan_agent.py::_parse_dr_egeria_response": 2,
