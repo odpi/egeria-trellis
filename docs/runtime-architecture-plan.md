@@ -247,6 +247,7 @@ on Dev 1 this week:
 - No library may start a server on its own. `PREFECT_ENABLED` defaults to `False`;
   `PREFECT_SERVER_EPHEMERAL_ENABLED=false` is set in every profile; Prefect is enabled only
   where a compose service provides it. (Thirteen orphaned ephemeral servers.)
+  (Changed since: on 2026-09-19 the owner made Prefect **on by default**; with no server RE says so and runs in-process. The ephemeral-server guard stays. Current wording: [deploying-trellis-with-quickstart.md §5.1](deploying-trellis-with-quickstart.md#51-prefect-step-dispatch-resource-explorer).)
 - Every long-running unit of work has a row: who owns it, when it last heartbeated, how to kill
   it. (The reconciler exists because none of this is recorded today.)
 - Every process answers `SIGUSR1` with a thread dump and shuts down within a bound. (Added

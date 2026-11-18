@@ -1759,6 +1759,23 @@ class RAGSystem:
 
         collections_searched = getattr(self.retriever, "_last_collections_searched", [])
 
+        # TR-49: nothing retrieved and EVERY collection empty is an unbuilt knowledge base, not a model failure.
+        # Say so, with the commands that build it, instead of the LLM's "I don't have enough information".
+        if include_context and not sources:
+            outcome = getattr(self.retriever, "_last_outcome", None)
+            if outcome is not None and getattr(outcome, "reason", "") in ("never_ingested", "collection_empty"):
+                from advisor import knowledge_base
+                words = knowledge_base.not_built(getattr(self.retriever, "vector_store", None))
+                if words:
+                    return {
+                        "query": user_query, "response": words, "query_type": query_analysis["query_type"],
+                        "routing_agent": "rag_fallback", "sources": [], "num_sources": 0,
+                        "retrieval_time": retrieval_time, "generation_time": 0.0, "avg_relevance_score": 0.0,
+                        "context_length": 0,
+                        "context_diagnosis": {**outcome.as_dict(), "reason": "knowledge_base_not_built",
+                                              "message": words},
+                    }
+
         # Build prompt
         prompt_manager = get_prompt_manager()
         query_type_enum = (

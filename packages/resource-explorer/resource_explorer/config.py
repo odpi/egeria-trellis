@@ -509,7 +509,7 @@ class PrefectConfig(BaseSettings):
     # Steps that don't declare executes_at: prefect are unaffected regardless
     # of this setting (see route_local_steps).
     enabled: bool = Field(default=True, alias="PREFECT_ENABLED")
-    work_pool: str = Field(default="default-agent-pool", alias="PREFECT_WORK_POOL")
+    work_pool: str = Field(default="resource-explorer-pool", alias="PREFECT_WORK_POOL")   # TR-45: the bundled workers' pool
     # Deadline for a dispatched step's flow run (seconds); see
     # DEFAULT_PREFECT_STEP_TIMEOUT_SECONDS for the basis of the default.
     step_timeout_seconds: float = Field(

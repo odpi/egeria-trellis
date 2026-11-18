@@ -98,9 +98,7 @@ Edit the configuration to match your environment:
         "/path/to/pyegeria/core/mcp_server.py"
       ],
       "env": {
-        "EGERIA_USER": "your_user",
         "EGERIA_VIEW_SERVER": "your_server",
-        "EGERIA_PASSWORD": "your_password",
         "EGERIA_VIEW_SERVER_URL": "https://your-server:9443"
       },
       "enabled": true,
@@ -117,15 +115,21 @@ Edit the configuration to match your environment:
 }
 ```
 
+Don't put a user or password in this file. EA drops any `EGERIA_USER` / `EGERIA_PASSWORD` given here and starts the
+`pyegeria` and `dr-egeria` children as EA's own service account (`EA_DAEMON_USER_ID` / `EA_DAEMON_USER_PASSWORD`,
+TR-34). With no service account set, those two children are not started.
+
 ### 2. Environment Variables
 
 For security, you can use environment variables instead of hardcoding credentials:
 
 ```bash
-export EGERIA_USER="erinoverview"
-export EGERIA_PASSWORD="secret"
+export EA_DAEMON_USER_ID="egeriaadvisornpa"
+export EA_DAEMON_USER_PASSWORD="<from coco-user-directory.omsecrets>"
 export EGERIA_VIEW_SERVER_URL="https://localhost:9443"
 ```
+
+These are EA's own service-account credentials (TR-34), not a person's. The old `EGERIA_USER` / `EGERIA_PASSWORD` are still read, with a warning, until after 6.3.
 
 Then in your config:
 

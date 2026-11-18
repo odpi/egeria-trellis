@@ -32,7 +32,7 @@ _env_var() {
 API_URL="${PREFECT_API_URL:-$(_env_var PREFECT_API_URL)}"
 API_URL="${API_URL:-http://localhost:4200/api}"
 WORK_POOL="${PREFECT_WORK_POOL:-$(_env_var PREFECT_WORK_POOL)}"
-WORK_POOL="${WORK_POOL:-default-agent-pool}"
+WORK_POOL="${WORK_POOL:-resource-explorer-pool}"   # TR-45: matches config.py and the bundled workers
 DEPLOYMENT_NAME="RE Survey Flow/re-survey-step-deployment"
 
 _reachable() {

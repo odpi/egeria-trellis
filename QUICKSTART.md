@@ -2,7 +2,8 @@
 
 From a fresh clone to a running app. Fifteen minutes, most of it waiting for model downloads.
 
-Trellis is a `uv` workspace holding two apps and six shared libraries. You do not need to
+Trellis is a `uv` workspace holding three apps (Resource Explorer, Egeria Advisor and Trellis
+Studio) and its shared libraries. You do not need to
 understand the whole thing to run one app — start with the [10-minute path](#the-10-minute-path).
 
 **You need a running Egeria platform.** Both apps sign you in against Egeria, so Egeria is the
@@ -26,8 +27,21 @@ Python itself is handled by `uv` from `.python-version` — you do not need to i
 
 **Required: an Egeria platform.** It is what both apps authenticate against — login is required
 and there is no local user store, so without Egeria there is no way to sign in. An
-`egeria-quickstart` deployment at `https://localhost:9443` is the usual local answer. Set it in
-each app's `.env` (`EGERIA_VIEW_SERVER_URL`, `EGERIA_VIEW_SERVER`, `EGERIA_USER`).
+`egeria-quickstart` deployment at `https://localhost:9443` is the usual local answer. In each app's `.env`:
+
+- **Where Egeria is:** Resource Explorer reads `EGERIA_PLATFORM_URL` and `EGERIA_VIEW_SERVER`; Egeria Advisor reads
+  `EGERIA_VIEW_SERVER_URL` and `EGERIA_VIEW_SERVER`.
+- **Each app's own service account** (the app's account, never a person): `RE_DAEMON_USER_ID` /
+  `RE_DAEMON_USER_PASSWORD` for Resource Explorer, and `EA_DAEMON_USER_ID` / `EA_DAEMON_USER_PASSWORD` for Egeria
+  Advisor. On the Egeria QuickStart these are `resourceexplorernpa` and `egeriaadvisornpa`. Their passwords are in
+  the QuickStart's user directory, egeria-workspaces'
+  `compose-configs/egeria-quickstart/secrets/coco-user-directory.omsecrets` (each account's `clearPassword`). On
+  any other Egeria, ask its administrator for the two accounts.
+- Don't set `EGERIA_USER` / `EGERIA_USER_PASSWORD` for the apps: those are pyegeria's names for running its tools
+  as yourself in a shell, and both apps warn at startup if they see them. You sign in to each app as yourself.
+
+[deploying-trellis-with-quickstart.md](docs/deploying-trellis-with-quickstart.md) §1.3 and §1.4 list every identity and
+secret.
 
 `TRELLIS_ANONYMOUS_READ=true` relaxes this on a development box — unauthenticated `GET`/`HEAD`
 pass, writes still require a signed-in user — but it is a dev-only override, not a supported way
@@ -40,8 +54,8 @@ to run without Egeria.
 ### 1. Install
 
 ```bash
-git clone https://github.com/dwolfson/trellis.git
-cd trellis
+git clone https://github.com/odpi/egeria-trellis.git
+cd egeria-trellis
 uv sync
 ```
 
@@ -95,7 +109,10 @@ wants `qwen2.5-coder:32b` (~20GB) — leave it until you need it.
 ```bash
 cp packages/resource-explorer/.env.example packages/resource-explorer/.env
 cp packages/egeria-advisor/.env.example packages/egeria-advisor/.env
+cp packages/studio/.env.example packages/studio/.env
 ```
+
+Studio needs no database password; its required `TRELLIS_JWT_SECRET` is written by `make up` below.
 
 Put the database password in both (the same value as step 2). Safe to re-run: it replaces an
 existing `PGVECTOR_PASSWORD=` line rather than adding a second one.
@@ -124,15 +141,18 @@ survey much.
 ### 5. Run
 
 ```bash
-make up         # preflight + shared JWT secret + start both   ← start here
+make up         # preflight + shared JWT secret + start RE, EA and Studio   ← start here
 make re-web     # Resource Explorer → http://localhost:8810
 make ea-web     # Egeria Advisor    → http://localhost:8880
-make dev        # both at once; Ctrl-C stops both
+make studio-web # Trellis Studio    → http://localhost:8840
+make dev        # RE and EA at once; Ctrl-C stops both
 ```
 
-Prefer `make up` on a fresh box: it generates the shared `TRELLIS_JWT_SECRET` both apps need
+Prefer `make up` on a fresh box: it generates the shared `TRELLIS_JWT_SECRET` the apps need
 (without it, sessions silently stop surviving restarts) and tells you if Egeria, Postgres or
-Ollama is not up, instead of letting the app fail later. `make check` runs those checks and
+Ollama is not up, instead of letting the app fail later. If an app fails to start, `make up` names
+it with its first error line (full log in `logs/trellis-up/<app>.log`) and exits non-zero.
+`make up-re`, `make up-ea` and `make up-studio` start one app the same way. `make check` runs those checks and
 starts nothing.
 
 `make help` lists every target.
@@ -154,9 +174,27 @@ Ingestion runs as part of `add` and takes a few minutes — pick a small repo fi
 itself is large enough to be a poor first choice.
 
 **Egeria Advisor** — open <http://localhost:8880>, sign in with your Egeria user id and
-password, then ask *"what is a governance zone?"*. The answer comes from its own bundled corpus,
-so nothing needs indexing first; the sign-in is what lets anything it creates be attributed to
-you in Egeria.
+password, then ask *"what is a governance zone?"*.
+
+**Build EA's knowledge base first.** EA answers from collections it builds from Egeria's own repositories, and
+a new install has none: until they are built, every answer says it has no information. Build them once. Run these
+from `packages/egeria-advisor`, where EA's `.env` (with `PGVECTOR_PASSWORD`) is read:
+
+```bash
+cd packages/egeria-advisor
+../../.venv/bin/python scripts/clone_repos.py --phase all        # egeria-python, egeria, egeria-docs,
+                                                                 # egeria-workspaces and egeria-trellis
+                                                                 # into ~/egeria-advisor-data/repos
+../../.venv/bin/python scripts/ingest_collections.py --phase all # embeds them into pgvector
+cd ../..
+```
+
+Use `--phase all` on both commands. Without it, both default to phase 1, which is only egeria-python, and
+a concept question such as "what is a governance zone?" needs egeria-docs (phase 2). The clone includes
+`odpi/egeria`, which is large, and the first ingest embeds every collection, so allow time and disk space.
+Afterwards, `../../.venv/bin/python -m advisor.incremental_indexer --collection <name>` (from the same folder) updates one collection with only what
+changed. The sign-in is what lets anything EA creates be
+attributed to you in Egeria.
 
 From the terminal, cache a session once instead of signing in per command:
 
@@ -199,14 +237,15 @@ None of these are needed to run either app; all are off unless configured.
 | MLflow | `localhost:5025` | Experiment tracking | `mlflow server --port 5025` |
 | Phoenix | `localhost:6006` | LLM tracing | `python -m phoenix.server.main` |
 
-With Prefect enabled and no server running, steps still fall back to running in-process — just
-slower by one connection attempt per step. Prefect itself stays off by default (`PREFECT_ENABLED`
-defaults to `False`) because leaving it enabled with no server reachable used to leak an ephemeral
-subprocess server that nothing shut down (13 found orphaned on one machine, 2026-09-04) — RE now
-also forces `PREFECT_SERVER_EPHEMERAL_ENABLED=false` as a second guard regardless of this setting.
-Enable it only where a compose service actually provides Prefect (egeria-workspaces'
-`optional-associated-runtimes/prefect`), setting both `PREFECT_ENABLED=true` and `PREFECT_API_URL`
-explicitly.
+Prefect is **on by default** (`PREFECT_ENABLED=true`). With no Prefect server reachable, RE says so at startup
+and runs every step in-process; set `PREFECT_ENABLED=false` only if you will never use Prefect (the QuickStart
+demo compose does). To use it, point `PREFECT_API_URL` at a server, for example egeria-workspaces'
+`optional-associated-runtimes/prefect`, and run a worker on the default pool, `resource-explorer-pool`.
+[deploying-trellis-with-quickstart.md §5.1](docs/deploying-trellis-with-quickstart.md#51-prefect-step-dispatch-resource-explorer)
+covers which steps go to the worker (`PREFECT_DISPATCH_STEPS`) and the restart order. RE always forces
+`PREFECT_SERVER_EPHEMERAL_ENABLED=false`: an earlier version leaked an ephemeral subprocess server when Prefect was
+enabled with no server reachable (13 found orphaned on one machine, 2026-09-04), and this guard stops that
+whatever `PREFECT_ENABLED` says.
 
 ---
 
@@ -228,9 +267,9 @@ run does not by itself prove your database is wired up. The honest check is step
 | Symptom | Likely cause |
 |---|---|
 | `relation "..." does not exist` from Resource Explorer | The `resource_explorer` schema was never created — step 2 |
-| Empty or "I don't have enough information" answers | Ollama is not running, or the model was never pulled |
+| Empty or "I don't have enough information" answers | EA's knowledge base hasn't been built yet (see "Build EA's knowledge base first" above), or Ollama is not running, or the model was never pulled |
 | GitHub calls failing after a few minutes | No `GITHUB_TOKEN`; you are on the 60/hour anonymous limit |
-| Egeria calls failing | Expected without a platform — the 10-minute path does not need one |
+| Egeria calls failing, or sign-in refused | Both apps need an Egeria platform to sign in. Check it answers (`curl -k https://localhost:9443/open-metadata/platform-services/users/garygeeke/server-platform/origin`), that `EGERIA_VIEW_SERVER` names a running view server, and that each app's service account (above) is set |
 | A survey reports zero findings | May be honest. Both apps distinguish *measured zero* from *never ran*; check the result's own status rather than assuming |
 
 ---

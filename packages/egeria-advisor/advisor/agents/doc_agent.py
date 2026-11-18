@@ -39,8 +39,11 @@ class DocAgent(BaseAdvisorAgent):
         # Direct retrieval + single LLM call — BeeAI ReAct loop skipped because
         # each Ollama round-trip costs 30-90s with a local 8B model.
         logger.info(f"DocAgent: direct retrieval, mode={mode}")
+        from advisor.agents.tools import recording_retrieval, with_retrieval
         cols = _DEBUG_COLLECTIONS if mode == "debugging" else _DOC_COLLECTIONS
-        return _make_result(query, self._fallback(query, cols), mode)
+        with recording_retrieval() as log:      # TR-51 c: the answer reports what it retrieved
+            response = self._fallback(query, cols)
+        return with_retrieval(_make_result(query, response, mode), log)
 
     def _fallback(self, query: str, collections: list[str]) -> str:
         from advisor.agents.tools import _search_egeria_content_raw
@@ -48,6 +51,16 @@ class DocAgent(BaseAdvisorAgent):
 
         context = _search_egeria_content_raw(query, collections, top_k=8)
         if not context or context == "No relevant content found.":
+            # TR-49: nothing indexed at all is an unbuilt knowledge base, not "not enough information"
+            from advisor import knowledge_base
+            from advisor.vector_store import get_vector_store
+            try:
+                words = knowledge_base.not_built(get_vector_store())
+            except Exception as exc:  # noqa: BLE001 -- the store couldn't be asked: claim nothing
+                logger.info(f"DocAgent: knowledge-base check not made: {type(exc).__name__}: {exc}")
+                words = None
+            if words:
+                return words
             return (
                 "I don't have enough information about that in my indexed documentation. "
                 "Try asking about a specific Egeria concept, class, or governance pattern."

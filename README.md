@@ -9,6 +9,8 @@ previously developed as separate repositories:
 - **[Egeria Advisor](packages/egeria-advisor/)** (`egeria-advisor`) — a RAG-based assistant
   providing conversational help for Egeria and pyegeria, including literate governance
   plan generation (LGCI) and report-spec authoring.
+- **[Trellis Studio](packages/studio/)** (`studio`) — a web workspace for authoring and running
+  report specs against Egeria, with an Egeria Advisor panel.
 
 Both apps remain independently deployable services — the monorepo is a source-organization
 and dependency-resolution decision, not a runtime-topology one. They share one `uv` workspace
@@ -72,7 +74,7 @@ a supported deployment mode.
 
 ```bash
 git clone https://github.com/odpi/egeria-trellis.git
-cd trellis
+cd egeria-trellis
 uv sync
 ```
 
@@ -163,18 +165,21 @@ A root `Makefile` wraps the common `uv run --package ...` invocations below — 
 for the full list. The two most useful:
 
 ```bash
-make up        # preflight, ensure a shared JWT secret, then start both
-make check     # preflight only — reports what is missing, starts nothing
-make re-web    # Resource Explorer web UI → http://localhost:8810
-make ea-web    # Egeria Advisor web UI    → http://localhost:8880
-make dev       # both, concurrently, in one terminal — Ctrl-C stops both
+make up         # preflight, ensure a shared JWT secret, then start RE, EA and Studio
+make check      # preflight only — reports what is missing, starts nothing
+make re-web     # Resource Explorer web UI → http://localhost:8810
+make ea-web     # Egeria Advisor web UI    → http://localhost:8880
+make studio-web # Trellis Studio web UI    → http://localhost:8840
+make dev        # RE and EA, concurrently, in one terminal — Ctrl-C stops both
 ```
 
 `make up` wraps `make dev` with the two things it does not do: it makes sure a shared
-`TRELLIS_JWT_SECRET` exists in both packages' `.env` (without one, each app derives a secret
+`TRELLIS_JWT_SECRET` exists in each app's `.env` (without one, each app derives a secret
 from its hostname — no error, but sessions do not survive a restart or a container recreate),
-and it reports up front when Egeria, Postgres or Ollama is unreachable. `./trellis-up --help`
-covers the rest: `--re` / `--ea` to start one, `--container` for the compose overlay. Once the
+and it reports up front when Egeria, Postgres or Ollama is unreachable. If an app fails to start,
+it names it with its first error line (log in `logs/trellis-up/<app>.log`), stops the others and
+exits non-zero. `./trellis-up --help` covers the rest: `--re` / `--ea` / `--studio` (additive) to
+start some, `--container` for the compose overlay (RE and EA only; Studio has no image yet). Once the
 environment is known-good, the targets below remain the direct route.
 
 Anything not covered by a target (arbitrary CLI subcommands) still works via
@@ -194,6 +199,15 @@ uv run --package resource-explorer resource-explorer web        # → http://loc
 uv run --package egeria-advisor egeria-advisor --help
 uv run --package egeria-advisor egeria-advisor-web               # → http://localhost:8880
 ```
+
+### Running Trellis Studio
+
+```bash
+cp packages/studio/.env.example packages/studio/.env   # once
+make up-studio                                          # → http://localhost:8840
+```
+
+See [packages/studio/README.md](packages/studio/README.md#install-and-run).
 
 ### Running tests
 

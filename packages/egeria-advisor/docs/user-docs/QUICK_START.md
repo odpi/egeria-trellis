@@ -1,6 +1,6 @@
 # Egeria Advisor — Quick Start
 
-**Last Updated:** 2026-07-11
+**Last Updated:** 2026-11-18
 
 Get the web UI running and ask your first question in under five minutes.
 
@@ -38,15 +38,42 @@ curl -k https://localhost:9443/open-metadata/platform-services/users/garygeeke/s
 
 ---
 
+## Configure
+
+Do the shared setup in the [top-level README](../../../../README.md) first: clone, `uv sync` at the repository root,
+and copy each package's `.env.example` to `.env`. Then, in `packages/egeria-advisor/.env`:
+
+| Setting | What it is |
+|---|---|
+| `EA_DAEMON_USER_ID` / `EA_DAEMON_USER_PASSWORD` | EA's **own** Egeria service account, never a person. EA uses it for its background report-spec sync and for anonymous reads. On the Egeria QuickStart it is `egeriaadvisornpa`, with its password from the QuickStart's user directory. Unset: those paths refuse in words. (Before TR-34 this was `EGERIA_USER` / `EGERIA_PASSWORD`, still read with a startup warning until after 6.3.) |
+| `PGVECTOR_PASSWORD` | The `egeria_advisor` Postgres role's password. Required, with no default. |
+| `EGERIA_VIEW_SERVER_URL` / `EGERIA_VIEW_SERVER` | Only if your Egeria isn't the local default (`https://localhost:9443`, `view-server`). |
+
+Don't set `EGERIA_USER` / `EGERIA_USER_PASSWORD` for the EA server: those are pyegeria's names for running its tools
+as yourself in a shell, and EA warns at startup if it sees them.
+
 ## Start the Web UI
 
+From the repository root:
+
 ```bash
-cd /home/dwolfson/localGit/egeria-v6/egeria-advisor
-uv run --package egeria-advisor python -m advisor.web.app
-# or: uvicorn advisor.web.app:app --reload --port 8880
+make up                                   # preflight, ensure secrets, then start RE and EA together
+make up-ea                                # the same, EA only
+# or start EA directly, one process, no auto-reload:
+uv run egeria-advisor-web --port 8880
+# or, loading packages/egeria-advisor/.env first:
+packages/egeria-advisor/scripts/run_web.sh
 ```
 
 Open **http://localhost:8880** in your browser.
+**Sign in with your own Egeria user id and password.** Every answer EA runs against Egeria runs as you, so you see
+what your zones let you see.
+
+> **EA's MCP tools don't run for a signed-in user yet.** The pyegeria and Dr.Egeria MCP tools sign in as EA's
+> service account, not as you, so EA doesn't use them for your questions. Where it would have, it says *"That tool
+> can't run as you yet, so I didn't use it."*, and a report-spec search covers EA's local copy only, with a note
+> saying so. Report specs, reports and Dr.Egeria templates still work. Per-user MCP access comes later (TR-43).
+
 
 ### Accessing the Web UI from another machine
 

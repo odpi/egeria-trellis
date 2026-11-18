@@ -13,6 +13,10 @@ from resource_explorer.ingestion.vendored import is_vendored_abs
 from resource_explorer.registry import Project, ProjectRegistry
 
 
+#: TR-46: a failed `add` says so plainly, after its reason, and the command exits non-zero.
+NOTHING_ADDED = "[red]Nothing was added.[/red]"
+
+
 class OnboardingWizard:
     """
     Walks the user through adding a new project:
@@ -38,7 +42,9 @@ class OnboardingWizard:
         extra_docs_paths: list[str] | None = None,
         local_path: str | None = None,
         group_slug: str | None = None,
-    ) -> None:
+    ) -> bool:
+        """Analyse, register and ingest. True when the project was added (or re-indexed); False when nothing was
+        added (the analysis failed, or no collection was chosen), after saying so (TR-46: `add` exits non-zero)."""
         label = f"{github_url}" + (f" [{subproject_path}]" if subproject_path else "")
         self.console.print(f"\n[bold]Analyzing[/bold] {label} ...")
 
@@ -47,7 +53,8 @@ class OnboardingWizard:
             plan = self._augment_plan_for_extra_paths(plan, extra_docs_paths or [], local_path)
         except ValueError as exc:
             self.console.print(f"[red]Error:[/red] {exc}")
-            return
+            self.console.print(NOTHING_ADDED)
+            return False
         except Exception as exc:
             msg = str(exc)
             if "404" in msg or "Not Found" in msg:
@@ -65,7 +72,8 @@ class OnboardingWizard:
                 )
             else:
                 self.console.print(f"[red]Failed to analyze repository:[/red] {exc}")
-            return
+            self.console.print(NOTHING_ADDED)
+            return False
 
         slug = re.sub(r"[^a-z0-9_]", "_", slug_override.lower()) if slug_override else self._url_to_slug(github_url)
         if subproject_path and not slug_override:
@@ -119,7 +127,9 @@ class OnboardingWizard:
                 for c, v in voted.items():
                     if v:
                         self.console.print(f"[dim]{c}: {chunk_votes.carry(v, inserted).words()}[/dim]")
-            return
+                return True
+            self.console.print("[dim]Left as it is: nothing re-indexed.[/dim]")
+            return True
 
         self._show_plan(plan)
 
@@ -130,7 +140,8 @@ class OnboardingWizard:
             confirmed_types = self._confirm_collections(plan)
         if not confirmed_types:
             self.console.print("[yellow]No collections selected — aborting.[/yellow]")
-            return
+            self.console.print(NOTHING_ADDED)
+            return False
 
         docs_url = "" if accept_all else Prompt.ask(
             "Documentation site URL (optional, press Enter to skip)", default=""
@@ -157,6 +168,7 @@ class OnboardingWizard:
         self.console.print(f"\n[green]Registered '{display_name}' as '{slug}'.[/green]")
         self._trigger_ingestion(slug, plan, confirmed_types, subproject_path=subproject_path,
                                 extra_docs_paths=extra_docs_paths, local_path=local_path)
+        return True
 
     def _show_plan(self, plan) -> None:
         table = Table(title=f"Proposed collections for {plan.display_name}")
