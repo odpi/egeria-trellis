@@ -243,9 +243,11 @@ Load EA's retrieval corpus once per box (clones the Egeria repositories into the
 volume and indexes them into pgvector):
 
 ```bash
-docker exec -w /app/packages/egeria-advisor trellis-ea-web python scripts/clone_repos.py --phase 1
-docker exec -w /app/packages/egeria-advisor trellis-ea-web python scripts/ingest_collections.py --phase 1
+docker exec -w /app/packages/egeria-advisor trellis-ea-web python scripts/clone_repos.py --phase all
+docker exec -w /app/packages/egeria-advisor trellis-ea-web python scripts/ingest_collections.py --phase all
 ```
+
+Phase 1 alone is only egeria-python; concept questions need egeria-docs and the other phase 2 repositories.
 
 ### 2.6 Operating
 

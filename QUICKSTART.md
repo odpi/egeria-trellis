@@ -174,14 +174,19 @@ a new install has none: until they are built, every answer says it has no inform
 repository root:
 
 ```bash
-uv run python packages/egeria-advisor/scripts/clone_repos.py      # clones egeria-python, egeria, egeria-docs,
-                                                                  # egeria-workspaces and egeria-trellis
-                                                                  # into ~/egeria-advisor-data/repos
-(cd packages/egeria-advisor && uv run python -m advisor.incremental_indexer --all)   # embeds them
+cd packages/egeria-advisor
+uv run python scripts/clone_repos.py --phase all         # clones egeria-python, egeria, egeria-docs,
+                                                         # egeria-workspaces and egeria-trellis
+                                                         # into ~/egeria-advisor-data/repos
+uv run python scripts/ingest_collections.py --phase all  # embeds them into pgvector
+cd ../..
 ```
 
-The clone includes `odpi/egeria`, which is large, and the indexing embeds every collection, so allow time and
-disk space. Later runs of the indexer update only what changed. The sign-in is what lets anything EA creates be
+Use `--phase all` on both commands. Without it, both default to phase 1, which is only egeria-python, and
+a concept question such as "what is a governance zone?" needs egeria-docs (phase 2). The clone includes
+`odpi/egeria`, which is large, and the first ingest embeds every collection, so allow time and disk space.
+Afterwards, `python -m advisor.incremental_indexer --collection <name>` updates one collection with only what
+changed. The sign-in is what lets anything EA creates be
 attributed to you in Egeria.
 
 From the terminal, cache a session once instead of signing in per command:
