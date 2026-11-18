@@ -153,6 +153,10 @@ class Observation:
     #: local / prefect / egeria / remote, and whose engine's numbers these are.
     executor: str = "local"
     source: str = "local"
+    #: Where a Prefect-routed step ACTUALLY ran (TR-11 F-AB-3, Architect R1): "worker", "in-process", or
+    #: "in-process (fallback: <reason>)" (step_dispatch_policy). Stored in `metrics` (no new column); "" for a
+    #: step Prefect had no part in, which keeps it out of the vector.
+    placement: str = ""
     #: Prefect flow-run id or Egeria engine-action GUID, for linking out.
     executor_ref: str = ""
     #: §17.1's attribution: "" for a directly-requested step, the requesting
@@ -204,6 +208,7 @@ class Observation:
             "outcomes": list(self.outcomes),
             "interpretable": self.interpretable,
             **({"openlineage": dict(self.openlineage)} if self.openlineage else {}),
+            **({"placement": self.placement} if self.placement else {}),
         }
 
     def declared_vector(self) -> dict:
@@ -270,6 +275,19 @@ def in_flow_run(flow_run_id: str):
 
 #: Why a step dispatched to Prefect is running locally instead (TR-11 F-AB-3, C5), or "".
 _FALLBACK: ContextVar[str] = ContextVar("re_step_dispatch_fallback", default="")
+#: Where the steps observed in this scope run (TR-11 F-AB-3, R1): "worker" or "in-process", or "".
+_PLACEMENT: ContextVar[str] = ContextVar("re_step_placement", default="")
+
+
+@contextmanager
+def placement(where: str):
+    """Rows observed inside this scope record `placement=where` in their metrics. A `dispatch_fallback` scope
+    inside it wins for its local rows: they record "in-process (fallback: <reason>)"."""
+    token = _PLACEMENT.set(str(where or ""))
+    try:
+        yield
+    finally:
+        _PLACEMENT.reset(token)
 
 
 @contextmanager
@@ -282,6 +300,13 @@ def dispatch_fallback(reason: str):
         yield
     finally:
         _FALLBACK.reset(token)
+
+
+def fallback_placement(reason: str) -> str:
+    """The placement of a step that was to run on a worker and ran here instead."""
+    from resource_explorer.surveyors.step_dispatch_policy import IN_PROCESS
+
+    return f"{IN_PROCESS} (fallback: {reason})"
 
 
 def current_flow_run() -> str:
@@ -361,9 +386,11 @@ def observe(step_key: str, declared_fetch: str, declared_compute: str,
                 obs.executor = obs.source = "prefect"
                 obs.executor_ref = executor_ref or flow_run
                 obs.flow_run_id = flow_run
+            obs.placement = _PLACEMENT.get()
             fallback = _FALLBACK.get()
-            if fallback and obs.executor == "local" and not obs.dispatch_failed:
-                obs.dispatch_failed = fallback
+            if fallback and obs.executor == "local":
+                obs.dispatch_failed = obs.dispatch_failed or fallback
+                obs.placement = fallback_placement(fallback)
             obs.demanded_by = demanded_by
             obs.disagreement = _disagreement(obs)
             openlineage.finish(ol_state, ol_token, raised=raised)

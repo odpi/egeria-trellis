@@ -225,7 +225,8 @@ def output_json_and_hash(output: Any) -> tuple[str, str]:
 
 def _run_step_as_flow_run(flow_run_id: str, entity_type: str, slug: str, step_name: str,
                           runner_kwargs: dict[str, Any], *, credential_ref: str = "",
-                          keep_result: bool) -> tuple[dict[str, Any], dict[str, Any]]:
+                          keep_result: bool,
+                          placement: str = step_dispatch_policy.WORKER) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run one step as the work of flow run `flow_run_id`: (output, summary). TR-21 (Architect ruling 2026-11-15):
 
       - exactly ONE work row in step_runs for the flow run, for every entity type: every row observed while the
@@ -241,7 +242,8 @@ def _run_step_as_flow_run(flow_run_id: str, entity_type: str, slug: str, step_na
     registry = ProjectRegistry()
     info = _step_info_for(entity_type, step_name)
     kwargs = {"credential_ref": credential_ref} if credential_ref else {}
-    with step_cost_observer.in_flow_run(flow_run_id) as recorded:
+    # R1 (TR-11 F-AB-3): a worker's step flow records placement=worker; RE's own in-process step flow, in-process.
+    with step_cost_observer.in_flow_run(flow_run_id) as recorded, step_cost_observer.placement(placement):
         with step_cost_observer.observe(
             step_name, getattr(info, "fetch_cost", ""), getattr(info, "compute_cost", ""),
             entity_type=entity_type, slug=slug, job_family="survey",
@@ -330,7 +332,8 @@ def re_survey_step_in_process_flow(
     # In RE's own process: the output comes straight back, so nothing is kept in flow_run_results; the one work row
     # carries this flow run's id like a worker's (TR-21).
     result, _summary = _run_step_as_flow_run(flow_run_id, entity_type, slug, step_name, runner_kwargs,
-                                             credential_ref=credential_ref, keep_result=False)
+                                             credential_ref=credential_ref, keep_result=False,
+                                             placement=step_dispatch_policy.IN_PROCESS)
     return {"result": result, "flow_run_id": flow_run_id}
 
 
@@ -485,7 +488,8 @@ def run_planned_step_task(
             satisfied_by_stored=satisfied_by_stored, added_because=added_because, demanded_by=demanded_by)
     fr_id = _current_flow_run_id()
     try:
-        with step_cost_observer.in_flow_run(fr_id or "") as recorded, step_cost_observer.observe(
+        with step_cost_observer.in_flow_run(fr_id or "") as recorded, \
+                step_cost_observer.placement(step_dispatch_policy.IN_PROCESS), step_cost_observer.observe(
             step_key, getattr(info, "fetch_cost", ""), getattr(info, "compute_cost", ""),
             executor="prefect", source="prefect",
             demanded_by=demanded_by,
@@ -525,6 +529,7 @@ def run_planned_step_task(
               "engine": "prefect", "guard": (output or {}).get("guard"),
               "flow_run_id": str(fr_id) if fr_id else "",
               "dispatch": {"where": step_dispatch_policy.IN_PROCESS, "why": why},
+              "placement": step_dispatch_policy.IN_PROCESS,
               "output": output}
     return _mark_planned(result, satisfied_by_stored, added_because, demanded_by)
 
@@ -613,6 +618,7 @@ def _run_on_worker(entity_type: str, slug: str, step_key: str, qualified_name: s
                   "guard": (output or {}).get("guard"), "flow_run_id": flow_run_id,
                   "dispatch_wait_ms": wait_ms,
                   "dispatch": {"where": step_dispatch_policy.WORKER, "why": why},
+                  "placement": step_dispatch_policy.WORKER,
                   "output": output}
         return _mark_planned(result, satisfied_by_stored, added_because, demanded_by)
 
@@ -621,11 +627,13 @@ def _run_on_worker(entity_type: str, slug: str, step_key: str, qualified_name: s
         observed[0].executor = observed[0].source = "local"
         observed[0].flow_run_id = observed[0].executor_ref = ""
         observed[0].dispatch_failed = reason
+        observed[0].placement = step_cost_observer.fallback_placement(reason)
         _record_step_cost(entity_type, slug, observed[0], output, surveyed_at)
     log.warning("Prefect step %s was to run on a worker (%s) but ran in-process: %s", step_key, why, reason)
     result = {"step_key": step_key, "step": qualified_name, "status": "ok", "engine": "local",
               "guard": (output or {}).get("guard"), "flow_run_id": "",
-              "dispatch": {"where": f"{step_dispatch_policy.IN_PROCESS} (fallback: {reason})", "why": why},
+              "dispatch": {"where": step_cost_observer.fallback_placement(reason), "why": why},
+              "placement": step_cost_observer.fallback_placement(reason),
               "output": output}
     result = _mark_planned(result, satisfied_by_stored, added_because, demanded_by)
     if not added_because:

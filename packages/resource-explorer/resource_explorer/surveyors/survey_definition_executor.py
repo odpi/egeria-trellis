@@ -992,12 +992,21 @@ class SurveyDefinitionExecutor:
                             _pf_observed[0].executor_ref = ""
                             _pf_observed[0].flow_run_id = ""
                             _pf_observed[0].dispatch_failed = _pf_dispatch_failed
+                            if _pf_dispatch_failed:
+                                # R1 (TR-11 F-AB-3): a fallback's placement, beside dispatch_failed.
+                                _pf_observed[0].placement = step_cost_observer.fallback_placement(
+                                    _pf_dispatch_failed)
                         self._record_cost(_pf_observed, entity_type, slug, output, surveyed_at)
                     _stamp_definition_provenance(output)
                     step_outputs.append(output)
                     _pf_report_entry = {
                         "step": step.qualified_name, "re_analysis_step": _step_key(step),
                         "status": "ok", "engine": _pf_engine,
+                        # R1 (TR-11 F-AB-3): where it actually ran.
+                        "placement": (step_dispatch_policy.WORKER if _pf_flow_run_id and not _pf_in_process
+                                      else step_dispatch_policy.IN_PROCESS if _pf_in_process
+                                      else step_cost_observer.fallback_placement(_pf_dispatch_failed)
+                                      if _pf_dispatch_failed else step_dispatch_policy.IN_PROCESS),
                     }
                     if _pf_flow_run_id or _pf_in_process:
                         _pf_report_entry["flow_run_id"] = _pf_flow_run_id

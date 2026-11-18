@@ -53,6 +53,8 @@ def get_status() -> dict:
         "route_local_steps": config.prefect.route_local_steps,
         # TR-11 F-AB-3: the effective per-step dispatch policy (PREFECT_DISPATCH_STEPS, or the deprecated alias).
         "dispatch_policy": _dispatch_policy_words(config.prefect),
+        # R1: where recent Prefect-routed steps ACTUALLY ran (worker | in-process | in-process (fallback: ...)).
+        "recent_placements": _recent_placements(),
         "reachable": ok,
         "error": error,
         "api_url": config.prefect.api_url,
@@ -132,3 +134,30 @@ def _dispatch_policy_words(prefect_cfg) -> str:
         return resolve(prefect_cfg).describe()
     except DispatchPolicyError as exc:
         return f"invalid: {exc}"
+
+
+#: How many recent step_runs rows /status scans for a placement, and how many it shows.
+_PLACEMENT_SCAN, _PLACEMENT_SHOW = 500, 20
+
+
+def _recent_placements(registry=None) -> list[dict] | dict:
+    """The most recent step_runs rows that record a placement (TR-11 F-AB-3, R1), newest first. A registry that
+    cannot be read gives {"error": ...}, never an empty list that would read as "nothing ran"."""
+    try:
+        if registry is None:
+            from resource_explorer.registry import ProjectRegistry
+
+            registry = ProjectRegistry()
+        rows = registry.query_step_runs(limit=_PLACEMENT_SCAN)
+    except Exception as exc:  # noqa: BLE001 - reported in the payload
+        return {"error": f"{type(exc).__name__}: {exc}"}
+    out = []
+    for row in rows:
+        where = (row.get("metrics") or {}).get("placement")
+        if where:
+            out.append({"step_key": row.get("step_key"), "slug": row.get("slug"),
+                        "surveyed_at": row.get("surveyed_at"), "executor": row.get("executor"),
+                        "flow_run_id": row.get("flow_run_id") or "", "placement": where})
+            if len(out) >= _PLACEMENT_SHOW:
+                break
+    return out

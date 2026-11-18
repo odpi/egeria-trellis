@@ -263,3 +263,88 @@ def test_a_fallback_is_recorded_as_a_fallback_never_as_dispatched(monkeypatch):
     assert "unreachable" in (row["dispatch_failed"] or "")
     # The steps the policy kept in-process are unaffected.
     assert {r["executor"] for r in rows if r["step_key"] != "repo_language"} == {"prefect"}
+
+
+# ── R1 (Architect read-back): an explicit placement in step_runs.metrics, one test per placement ────────────────
+
+def _placements(rows, key):
+    return [(r["metrics"] or {}).get("placement") for r in rows if r["step_key"] == key]
+
+
+@pytest.mark.usefixtures("ephemeral_prefect")
+def test_placement_in_process_is_recorded_for_a_step_the_policy_keeps_here(monkeypatch):
+    async def worker(*_a, **_k):  # pragma: no cover - must not be reached
+        raise AssertionError("dispatched under the default policy")
+
+    report, rows = _three_step_flow(monkeypatch, "", worker)
+    for key, entry in report.items():
+        assert entry["placement"] == sdp.IN_PROCESS
+        assert _placements(rows, key) == [sdp.IN_PROCESS]
+
+
+@pytest.mark.usefixtures("ephemeral_prefect")
+def test_placement_worker_is_recorded_by_the_workers_step_flow(monkeypatch):
+    """The dispatched step's row is written by the worker's own step flow (`re_survey_flow` ->
+    `_run_step_as_flow_run`), so that is where placement=worker is recorded; the host's report says it too."""
+    from resource_explorer.prefect import flows
+    from resource_explorer.registry import Project, ProjectRegistry
+    from tests.test_survey_orchestrator import _patch_all_surveyors
+
+    async def worker(*_a, **_k):
+        return {"annotations": []}, "fr-worker-2"
+
+    report, _rows = _three_step_flow(monkeypatch, "repo_language", worker)
+    assert report["repo_language"]["placement"] == sdp.WORKER
+
+    registry = ProjectRegistry()
+    registry.add(Project(slug="fab3w", display_name="W", github_url="https://github.com/t/fab3w"))
+    _mocks, patchers = _patch_all_surveyors()
+    try:
+        with patch("resource_explorer.surveyors.survey_orchestrator.log_survey"):
+            flows._run_step_as_flow_run("fr-worker-3", "repo", "fab3w", "repo_language",
+                                        {"surveyed_at": "2026-11-17T12:00:00+00:00"}, keep_result=False)
+    finally:
+        for p in patchers:
+            p.stop()
+    rows = registry.query_step_runs(slug="fab3w")
+    assert _placements(rows, "repo_language") == [sdp.WORKER]
+    assert {(r["executor"], r["flow_run_id"]) for r in rows} == {("prefect", "fr-worker-3")}
+
+
+@pytest.mark.usefixtures("ephemeral_prefect")
+def test_placement_fallback_is_recorded_with_its_reason(monkeypatch):
+    async def unreachable(*_a, **_k):
+        raise RuntimeError("Prefect API unreachable: test")
+
+    report, rows = _three_step_flow(monkeypatch, "repo_language", unreachable)
+    (where,) = _placements(rows, "repo_language")
+    assert where.startswith(f"{sdp.IN_PROCESS} (fallback: ") and "unreachable" in where
+    assert report["repo_language"]["placement"] == where
+
+
+def test_prefect_status_shows_recent_placements():
+    from resource_explorer.web.routes import prefect_status
+
+    rows = [{"step_key": "repo_a", "slug": "s", "surveyed_at": "t2", "executor": "prefect",
+             "flow_run_id": "fr", "metrics": {"placement": sdp.WORKER}},
+            {"step_key": "repo_b", "slug": "s", "surveyed_at": "t1", "executor": "local",
+             "flow_run_id": "", "metrics": {}}]
+    registry = types.SimpleNamespace(query_step_runs=lambda limit: rows)
+    assert prefect_status._recent_placements(registry) == [
+        {"step_key": "repo_a", "slug": "s", "surveyed_at": "t2", "executor": "prefect", "flow_run_id": "fr",
+         "placement": sdp.WORKER}]
+    broken = types.SimpleNamespace(query_step_runs=lambda limit: 1 / 0)
+    assert "error" in prefect_status._recent_placements(broken)
+
+
+# ── (c): the key/token rule rests on "every registry key has '_', a token never does" ───────────────────────────
+
+def test_every_registry_key_has_an_underscore_and_parses_as_a_key_never_a_token():
+    infos = sdp.registry_step_infos()
+    assert infos
+    without = sorted(k for k in infos if "_" not in k)
+    assert not without, (f"registry step keys without '_' {without}: step_dispatch_policy.parse would read them as "
+                         "(unknown) tokens. Change the key/token rule before adding such a key")
+    assert all("_" not in token for token in sdp.TOKENS)
+    policy = sdp.parse(",".join(infos), known_keys=infos)
+    assert policy.keys == frozenset(infos) and not policy.heavy and not policy.all and policy.warnings == ()
