@@ -110,6 +110,18 @@ re-measure the cap if you do, since the cap was chosen at 6000.
 RE_PUBLIC_URL=http://<box-hostname>:8810
 ```
 
+### Prefect (optional): running steps on a worker
+
+RE can hand chosen survey steps to a Prefect worker instead of running them in its own process. A native install
+turns Prefect on (`PREFECT_ENABLED=true` in `.env.example`); the QuickStart demo compose turns it off. The settings
+are `PREFECT_API_URL`, `PREFECT_WORK_POOL` and `PREFECT_DISPATCH_STEPS`. `PREFECT_WORK_POOL` must name the pool
+your worker serves: the bundled workers (the container image and `scripts/launchd/re-prefect-worker.sh`) use
+`resource-explorer-pool`.
+
+`PREFECT_DISPATCH_STEPS` (empty by default, so nothing is dispatched) and where each step's placement is recorded
+are described in [deploying-trellis-with-quickstart.md §5.1](../../../docs/deploying-trellis-with-quickstart.md#51-prefect-step-dispatch-resource-explorer).
+**After a code change, restart the worker first, then RE**, so RE's startup check finds a worker on its own commit.
+
 ### pgvector / registry
 
 ```bash

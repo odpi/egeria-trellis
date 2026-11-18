@@ -419,15 +419,42 @@ Keys the apps read, grouped by concern. `<APP>_` forms override the shared `TREL
 | Session lifetime | `RE_JWT_TTL_HOURS` (default 8; Egeria's token caps it at 1 h) | same mechanism | inherited |
 | Portal handoff secret | `RE_PORTAL_SECRET` or `TRELLIS_PORTAL_SECRET` | `ADVISOR_PORTAL_SECRET` or `TRELLIS_PORTAL_SECRET` | `ADVISOR_PORTAL_SECRET` (fed to both) |
 | Login policy | `TRELLIS_REQUIRE_LOGIN` (default true), `TRELLIS_ANONYMOUS_READ` (dev only), `RE_PUBLIC_PATHS` | same, `TRELLIS_PUBLIC_PATHS` | defaults |
-| Egeria platform | `EGERIA_PLATFORM_URL`, `EGERIA_VIEW_SERVER`, `EGERIA_USER`, `EGERIA_USER_PASSWORD`, `PYEGERIA_TIMEOUT_SECONDS` | `EGERIA_VIEW_SERVER_URL`, `EGERIA_VIEW_SERVER`; service account `EA_DAEMON_USER_ID`, `EA_DAEMON_USER_PASSWORD` | set in compose; service account from `EGERIA_USER` / `EGERIA_USER_PASSWORD` |
+| Egeria platform | `EGERIA_PLATFORM_URL`, `EGERIA_VIEW_SERVER`, `PYEGERIA_TIMEOUT_SECONDS`; service account `RE_DAEMON_USER_ID`, `RE_DAEMON_USER_PASSWORD` | `EGERIA_VIEW_SERVER_URL`, `EGERIA_VIEW_SERVER`; service account `EA_DAEMON_USER_ID`, `EA_DAEMON_USER_PASSWORD` | set in compose; service accounts from `RE_DAEMON_*` / `EA_DAEMON_*` in `trellis/.env` |
 | Ollama | `LLM__OLLAMA__BASE_URL`, `LLM__OLLAMA__MODEL` | `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OLLAMA_CODE_MODEL` | `TRELLIS_MODEL_GENERAL`, `TRELLIS_MODEL_CODE`, plus the overlay choice |
 | Model tier | `EXPLORER_MODEL_TIER` | `ADVISOR_MODEL_TIER` | `TRELLIS_MODEL_TIER` |
 | Postgres / pgvector | `PGVECTOR_*` or `REGISTRY_DATABASE_URL` | `PGVECTOR_*` | `PGVECTOR_PASSWORD` |
+| Prefect (RE only) | `PREFECT_ENABLED` (default `true` in a native install), `PREFECT_API_URL`, `PREFECT_WORK_POOL` (must name the pool your worker serves: the bundled workers use `resource-explorer-pool`), `PREFECT_DISPATCH_STEPS` (see §5.1) | | `PREFECT_ENABLED=false` |
 | Kroki | `KROKI_URL` | `KROKI_URL` | set in compose |
 | GitHub | `GITHUB_TOKEN`, `GITHUB_WEBHOOK_SECRET` | | `GITHUB_TOKEN` |
 | Process roles | `EXPLORER_EMBED_WORKER`, `EXPLORER_SYNC_POOL_SIZE` | | `TRELLIS_RE_WEB_WORKERS`; `WORKERS` / `EMBED_WORKER` read by the image entrypoint |
 | Data root | `data/` under the package | `ADVISOR_DATA_PATH`, `ADVISOR_CACHE_DIR` | `/app/data` volumes |
 | Observability (optional) | `OBSERVABILITY__MLFLOW__*`, `OBSERVABILITY__PHOENIX__*` | `MLFLOW_*`, `PHOENIX_*` | off |
+
+### 5.1 Prefect step dispatch (Resource Explorer)
+
+With Prefect enabled, `PREFECT_DISPATCH_STEPS` chooses which of Resource Explorer's own steps
+(`executes_at: resource-explorer`) run on a Prefect **worker** instead of in RE's own process. Steps a survey
+definition marks `executes_at: prefect` always go to the worker; `executes_at: egeria` steps never do.
+
+| Value | Meaning |
+|---|---|
+| empty (the default) | none of RE's own steps are dispatched |
+| step keys, e.g. `repo_symbol_extraction` | those steps (an unknown key is a startup warning) |
+| `heavy` | every step whose declared `compute_cost` is `high` (the startup log lists them) |
+| `all` | every one of RE's own steps |
+
+Any other value stops RE at startup, saying why. `PREFECT_ROUTE_LOCAL_STEPS=true` is a deprecated alias for `all`.
+Each dispatched step costs about 15 s of hand-off on top of the step itself, so list only steps heavy enough to be
+worth moving off RE's process.
+
+**Where each step ran** is recorded with the step: `worker`, `in-process`, or `in-process (fallback: <reason>)`
+when no worker on RE's own commit was online. A fallback never reads as dispatched. Signed in to RE,
+`/api/prefect/status` shows the policy and the most recent placements.
+
+**After a code change, restart the worker first, then RE.** The worker advertises its commit, and RE only dispatches
+to a worker on its own commit. Restarting RE first makes its startup check report "no online Prefect worker runs this
+Resource Explorer's code" until its next check (every 10 minutes). Either order fails open: a step with no matching
+worker runs in-process, recorded as a fallback.
 
 Neither app uses SQLite in these configurations; the registry, run queue and vector store are all
 in the shared Postgres.
@@ -448,7 +475,7 @@ in the shared Postgres.
 | Stack "disappeared", or `docker inspect` says `no such object` for a container that is running | The active context flipped to `desktop-linux` and you are addressing the wrong engine. Desktop may have started itself. `docker context show` to confirm, `docker context use default` to fix, and `export DOCKER_CONTEXT=default` for anything scripted. |
 | A Portal tile shows as reachable but the link is dead in the browser | `advisor_check_urls()` / `resource_explorer_check_urls()` probe a `host.docker.internal` fallback as well as the configured URL, so the server-side check passes whenever the app is up on the box. It says nothing about whether a *browser* can reach the URL you configured. Test the configured URL itself, from where the browser actually runs. |
 | Docker Desktop's log pane is blank for a container | A viewer glitch after restart or log rotation; reopen the tab, or use `docker logs -f <container>`. |
-| Orphaned `prefect` server processes | Prefect is off by default (`PREFECT_ENABLED=false`); `make ps` lists strays. Enable it only against the Prefect optional runtime. |
+| Orphaned `prefect` server processes | The QuickStart demo compose runs both apps with `PREFECT_ENABLED=false`; a native install turns it on (`.env.example`, and the code default). `make ps` lists strays. Use Prefect only against the Prefect optional runtime (§5.1). |
 | `qs-engine-host` logs `startMissedEngineActions` errors every few seconds on a fresh repository | Egeria-side (egeria-python `PYEGERIA_ISSUES.md` ISSUE-90); costs CPU but does not affect the apps. |
 | The apps talk to Egeria through `host.docker.internal` rather than the container name | Deliberate: the platform image's certificate names only `localhost` and `host.docker.internal`. A request for more SANs is filed with Egeria; do not switch to the container name until it lands. |
 

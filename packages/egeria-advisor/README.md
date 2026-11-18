@@ -221,21 +221,19 @@ curl http://localhost:5025
 curl -k https://localhost:9443/open-metadata/platform-services/users/garygeeke/server-platform/origin
 ```
 
-### Installation
+### Installation and configuration
+
+EA is one package of the Trellis monorepo, installed with the rest:
 
 ```bash
-# Navigate to project
-cd /Users/dwolfson/localGit/egeria-v6/egeria-advisor
-
-# Activate virtual environment
-source activate_venv.sh
-
-# Install with dev dependencies
-pip install -e ".[dev]"
-
-# Verify setup
-python -c "from advisor.config import settings; print('✓ Config loaded')"
+# from the repository root (see the top-level README)
+uv sync
+cp packages/egeria-advisor/.env.example packages/egeria-advisor/.env
 ```
+
+Then set EA's own service account (`EA_DAEMON_USER_ID` / `EA_DAEMON_USER_PASSWORD`) and `PGVECTOR_PASSWORD` in
+`packages/egeria-advisor/.env`. The [Quick Start](docs/user-docs/QUICK_START.md#configure) says what each one is, how to
+start EA (`make up-ea`), and that you sign in as yourself.
 
 ### Pull Ollama Models
 
