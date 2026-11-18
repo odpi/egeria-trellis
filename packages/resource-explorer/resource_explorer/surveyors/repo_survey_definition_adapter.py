@@ -386,15 +386,37 @@ def _acquire_zipball_root(project, registry, served: dict | None = None):
     logic lives in GitHubClient.zipball_root() (D6.7) — the one
     implementation IngestionPipeline.refresh_profile() also wraps, instead
     of each maintaining its own copy.
+
+    Inside a `run_resource_pool.run_resource_scope()` (a Prefect-ordered
+    Survey Definition, F-AB-2) the root is acquired once for the whole run
+    and handed to every later step, whose own orchestrator call would
+    otherwise fetch it again.
     """
+    from resource_explorer.surveyors import run_resource_pool
+
+    pool = run_resource_pool.current()
+    if pool is None:
+        with _fetch_zipball_root(project) as (root, sha):
+            if served is not None:
+                served["zipball_root"] = sha
+            yield root
+        return
+    (root, sha), _reused = pool.get_or_acquire(
+        ("zipball_root", project.github_url), lambda: _fetch_zipball_root(project))
+    if served is not None:
+        served["zipball_root"] = sha
+    yield root
+
+
+@contextmanager
+def _fetch_zipball_root(project):
+    """(extracted root, served commit SHA) — the actual acquisition."""
     from resource_explorer.github.client import GitHubClient
 
     client = GitHubClient()
     repo = client.get_repo(project.github_url)
     with client.zipball_root(repo) as root:
-        if served is not None:
-            served["zipball_root"] = getattr(client, "last_served_sha", None)
-        yield root
+        yield root, getattr(client, "last_served_sha", None)
 
 
 @contextmanager

@@ -21,6 +21,22 @@ def _daemon_entry(fn):
     return daemon_entry(DaemonReason.PREFECT_FLOW)(fn)
 
 
+def _one_acquisition_per_run(fn):
+    """F-AB-2: a whole-definition run acquires its source tree once, by the first step that reads it, and holds it
+    until the flow returns; each planned step otherwise builds its own orchestrator and fetches it again. The pool
+    reaches the step tasks through the context Prefect copies into them (surveyors/run_resource_pool.py)."""
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        from resource_explorer.surveyors.run_resource_pool import run_resource_scope
+
+        with run_resource_scope():
+            return fn(*args, **kwargs)
+
+    return wrapper
+
+
 @task(name="Run Surveyor Step")
 def run_surveyor_step_task(
     entity_type: str,
@@ -512,6 +528,7 @@ def run_planned_step_task(
 
 @flow(name="RE Survey Definition Flow")
 @_daemon_entry
+@_one_acquisition_per_run
 def re_survey_definition_flow(
     entity_type: str,
     slug: str,

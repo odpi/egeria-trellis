@@ -70,6 +70,7 @@ import time
 from contextlib import ExitStack, contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -138,7 +139,13 @@ class Observation:
     #: database survey that consults no cache at all is not filed as "warm".
     cache_hits: int = 0
     cache_misses: int = 0
+    #: ...and a fourth, `reused`: the step read a resource an earlier step of
+    #: the same run had already acquired (F-AB-2, `attribute_acquisition`).
     acquisition: str = "not-consulted"
+    #: Wall time of the run-level resource acquisition this step is charged
+    #: with (`attribute_acquisition`), in ms. Kept out of `wall_ms`, which
+    #: stays the step's own run time: 0 for a step that fetched nothing.
+    acquisition_ms: float = 0.0
     #: How many catalog questions this step's analyses answer — yield's
     #: denominator. -1 = could not be determined (the catalog did not load),
     #: which is not 0.
@@ -190,6 +197,7 @@ class Observation:
             "cache_hits": self.cache_hits,
             "cache_misses": self.cache_misses,
             "acquisition": self.acquisition,
+            "acquisition_ms": round(self.acquisition_ms, 1),
             "connects": self.connects,
             "annotations": self.annotations,
             "questions_answered": self.questions_answered,
@@ -344,6 +352,77 @@ def observe(step_key: str, declared_fetch: str, declared_compute: str,
             out.append(obs)
             if obs.disagreement:
                 log.warning("step cost: %s — %s", step_key, obs.disagreement)
+
+
+@dataclass
+class AcquisitionCost:
+    """What acquiring ONE run-level resource cost, before any step ran (F-AB-2).
+
+    `SurveyOrchestrator.run()` resolves every shared resource (the zipball,
+    the clone) up front, outside every step's `observe` scope, so a step's
+    own row could never see the download it depended on: on 2026-11-17 all
+    four rows of a step recorded bytes 0, api_calls 0 and `not-consulted`
+    against a 115 s cold call. This is measured around that resolution and
+    charged to the first step that reads the resource (`attribute_acquisition`).
+    """
+
+    name: str
+    elapsed: float = 0.0
+    calls: Any = None          # external_calls.ExternalCalls
+    seen: Any = None           # acquisition.Acquisition
+    #: Set once a step has been charged with it; every later reader is `reused`.
+    claimed: bool = False
+
+
+@contextmanager
+def measure_acquisition(name: str):
+    """Measure acquiring resource `name`. The scopes nest, so an enclosing
+    step (a Prefect task's own `observe`) still counts it too."""
+    from resource_explorer.observability import acquisition, external_calls
+
+    cost = AcquisitionCost(name)
+    t0 = time.perf_counter()
+    with external_calls.call_scope() as calls, acquisition.acquisition_scope() as seen:
+        try:
+            yield cost
+        finally:
+            cost.elapsed = time.perf_counter() - t0
+            cost.calls, cost.seen = calls, seen
+
+
+def attribute_acquisition(obs: Observation, costs) -> None:
+    """Charge `obs` with the run-level acquisitions of the resources it reads.
+
+    The first reader of a resource takes its bytes, API calls, cache
+    hits/misses and time; a later reader takes nothing and is labelled
+    `reused`. A step that reads no resource is left as observed, so
+    `not-consulted` keeps meaning the step asked for nothing.
+    """
+    from resource_explorer.observability import acquisition
+
+    costs = [c for c in costs or () if c is not None]
+    if not costs:
+        return
+    reused = obs.acquisition == "reused"
+    for cost in costs:
+        if cost.claimed:
+            reused = True
+            continue
+        cost.claimed = True
+        calls, seen = cost.calls, cost.seen
+        if calls is not None:
+            obs.bytes_fetched += calls.bytes_fetched
+            obs.bytes_complete = obs.bytes_complete and calls.bytes_complete
+            obs.api_calls += calls.api_calls
+            obs.egeria_calls += calls.egeria_calls
+            for host, n in calls.by_host.items():
+                obs.api_calls_by_host[host] = obs.api_calls_by_host.get(host, 0) + n
+        if seen is not None:
+            obs.cache_hits += seen.hits
+            obs.cache_misses += seen.misses
+            reused = reused or seen.reused > 0
+        obs.acquisition_ms += cost.elapsed * 1000.0
+    obs.acquisition = acquisition.state_of(obs.cache_hits, obs.cache_misses, reused)
 
 
 def _disagreement(obs: Observation) -> str:

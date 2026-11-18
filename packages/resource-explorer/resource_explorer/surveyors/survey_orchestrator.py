@@ -44,6 +44,13 @@ def _naive_utc(value: str) -> datetime | None:
     return moment.astimezone(UTC).replace(tzinfo=None) if moment.tzinfo else moment
 
 
+def _acquisitions_for(info, acquired: dict) -> list:
+    """The run-level acquisitions of the resources step `info` reads. A
+    resource the run did not acquire (a caller's `data_path`) is not one."""
+    return [acquired[name] for name in (getattr(info, "requires_resources", None) or {})
+            if name in acquired]
+
+
 class SurveyOrchestrator:
     """
     Runs all sub-surveyors in sequence and returns a SurveyResult.
@@ -68,7 +75,8 @@ class SurveyOrchestrator:
         self._data_path = data_path  # local clone path for DataProfilerSurveyor Tier 2
 
     def _auto_run(self, producer: str, demanding_step: str, resolution,
-                  project, result, surveyed_at: str, construct) -> str:
+                  project, result, surveyed_at: str, construct,
+                  acquired: dict | None = None) -> str:
         """Run one prerequisite step on the run's own initiative (§17.1).
 
         **An auto-run is a recorded result, never a silent omission** — the
@@ -126,6 +134,8 @@ class SurveyOrchestrator:
         if observed:
             observed[0].annotations, observed[0].outcomes = (
                 step_cost_observer.describe_work(annotations))
+            step_cost_observer.attribute_acquisition(
+                observed[0], _acquisitions_for(info, acquired or {}))
             observed[0].disagreement = step_cost_observer._disagreement(observed[0])
             commit = result.survey_commit_sha if step_cost_observer.completed(annotations, raised) else None
             if commit:
@@ -297,13 +307,16 @@ class SurveyOrchestrator:
         # projects.last_commit_sha.
         served: dict = {}
         with ExitStack() as stack:
-            resources = (
-                resolve_resources(
-                    stack, _resource_providers_for(project, self._registry, served), needed_resources
-                )
-                if needed_resources
-                else {}
-            )
+            # One resource at a time, each inside its own measurement (F-AB-2): resolved here, before any
+            # step's `observe` opens, a download is otherwise charged to no step at all. The first step
+            # that reads a resource is charged with it (`attribute_acquisition`); later readers are `reused`.
+            providers = _resource_providers_for(project, self._registry, served)
+            resources = {}
+            acquired: dict[str, step_cost_observer.AcquisitionCost] = {}
+            for resource_name in sorted(needed_resources):
+                with step_cost_observer.measure_acquisition(resource_name) as cost:
+                    resources.update(resolve_resources(stack, providers, {resource_name}))
+                acquired[resource_name] = cost
             result.survey_commit_sha = served.get("zipball_root") or served.get("git_clone_root") or None
 
             # Iterate STEP_REGISTRY's own insertion order, not
@@ -429,7 +442,7 @@ class SurveyOrchestrator:
                     for producer in resolution.auto_run:
                         why_ran = self._auto_run(
                             producer, step_key, resolution, project, result,
-                            surveyed_at, _construct)
+                            surveyed_at, _construct, acquired=acquired)
                         auto_ran.add(producer)
                         log.info("Auto-ran %s for %s — %s", producer, project.slug, why_ran)
                     if resolution.auto_run:
@@ -521,6 +534,8 @@ class SurveyOrchestrator:
                     # the absence-looks-like-zero shape inside the instrument.
                     _observed[0].annotations, _observed[0].outcomes = (
                         step_cost_observer.describe_work(locals().get("annotations")))
+                    step_cost_observer.attribute_acquisition(
+                        _observed[0], _acquisitions_for(info, acquired))
 
                     _observed[0].disagreement = step_cost_observer._disagreement(_observed[0])
                     # The commit only on a step that completed; a failed step read nothing to cite.

@@ -28,6 +28,13 @@ scope attributes each lookup to the run that made it, the same way
                                 that is NOT the same as "everything was warm".
 * scope open, lookups > 0    -- `cold` iff anything missed, because one miss
                                 means a real download happened.
+
+**And a fourth, `reused`** (F-AB-2, 2026-11-17): the run already held the
+resource — acquired by an earlier step of the SAME run and handed on by
+`surveyors/run_resource_pool.py` — so this scope neither looked in the cache nor
+fetched anything. That is not `not-consulted` (the step did ask for a resource)
+and not `warm` (no cache lookup happened, and no SHA lookup either). Recorded by
+`record_reuse`; a lookup in the same scope outranks it.
 """
 from __future__ import annotations
 
@@ -47,6 +54,9 @@ class Acquisition:
     #: A run cold on the clone but warm on the zipball is a different cost from
     #: one cold on both, and the totals alone cannot say which.
     kinds_fetched: set[str] = field(default_factory=set)
+    #: Resources handed over from earlier in the same run (`record_reuse`):
+    #: not cache lookups, so not counted in `lookups`.
+    reused: int = 0
 
     @property
     def lookups(self) -> int:
@@ -54,11 +64,9 @@ class Acquisition:
 
     @property
     def state(self) -> str:
-        """`cold` / `warm` / `not-consulted` — the three states above, as the
-        one string a reader filters on."""
-        if not self.lookups:
-            return "not-consulted"
-        return "cold" if self.misses else "warm"
+        """`cold` / `warm` / `reused` / `not-consulted` — the states above, as
+        the one string a reader filters on."""
+        return state_of(self.hits, self.misses, self.reused > 0)
 
     def as_dict(self) -> dict:
         return {
@@ -70,8 +78,20 @@ class Acquisition:
             # `not-consulted` rather than defaulting to "warm", which would
             # quietly put every database survey in the cheap bucket.
             "source_acquisition": self.state,
+            "source_in_run_reuses": self.reused,
             "source_kinds_fetched": sorted(self.kinds_fetched),
         }
+
+
+def state_of(hits: int, misses: int, reused: bool) -> str:
+    """The one place the label is derived, so a step whose run-level acquisition
+    is attributed to it after the fact (`step_cost_observer.attribute_acquisition`)
+    is labelled by the same rule as a scope that saw the lookups itself."""
+    if misses:
+        return "cold"
+    if hits:
+        return "warm"
+    return "reused" if reused else "not-consulted"
 
 
 _current: ContextVar[Acquisition | None] = ContextVar("re_acquisition", default=None)
@@ -96,6 +116,7 @@ def acquisition_scope() -> Iterator[Acquisition]:
         if outer is not None:
             outer.hits += scope.hits
             outer.misses += scope.misses
+            outer.reused += scope.reused
             outer.kinds_fetched |= scope.kinds_fetched
 
 
@@ -113,3 +134,10 @@ def record_miss(kind: str = "") -> None:
         scope.misses += 1
         if kind:
             scope.kinds_fetched.add(kind)
+
+
+def record_reuse(kind: str = "") -> None:
+    """The run already held this resource: nothing was looked up or fetched."""
+    scope = _current.get()
+    if scope is not None:
+        scope.reused += 1
