@@ -455,8 +455,8 @@ definition marks `executes_at: prefect` always go to the worker; `executes_at: e
 | `all` | every one of RE's own steps |
 
 Any other value stops RE at startup, saying why. `PREFECT_ROUTE_LOCAL_STEPS=true` is a deprecated alias for `all`.
-Each dispatched step costs about 15 s of hand-off on top of the step itself, so list only steps heavy enough to be
-worth moving off RE's process.
+Each dispatched step costs about 10–15 s of hand-off on top of the step itself (9 s measured warm, 2026-11-18). Dispatch
+moves work off RE's process; it does not make a step faster. List only steps heavy enough to be worth moving.
 
 **Where each step ran** is recorded with the step: `worker`, `in-process`, or `in-process (fallback: <reason>)`
 when no worker on RE's own commit was online. A fallback never reads as dispatched. Signed in to RE,
