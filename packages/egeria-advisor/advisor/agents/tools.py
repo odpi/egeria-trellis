@@ -1,9 +1,13 @@
 """BeeAI @tool functions shared across Egeria Advisor agents."""
 from __future__ import annotations
+import contextlib
+import contextvars
 import csv
 import re
 from functools import lru_cache
 from pathlib import Path
+import time
+from typing import Optional
 
 from beeai_framework.tools import tool
 from loguru import logger
@@ -84,13 +88,62 @@ def search_egeria_content(query: str, collections: str) -> str:
     return "\n\n---\n\n".join(parts)
 
 
+# ── What an answer retrieved (TR-51 c) ──────────────────────────────────────
+# An agent's answer built from these searches must report them: its sources, how many, how long they took. The
+# agents used to return hard-coded "sources": [], "num_sources": 0, "retrieval_time": 0.0 (absence-as-answer).
+# Each search records into the request's log; the agent's handle() reads it back (with_retrieval).
+_RETRIEVAL: "contextvars.ContextVar[Optional[dict]]" = contextvars.ContextVar("ea_agent_retrieval", default=None)
+
+
+@contextlib.contextmanager
+def recording_retrieval():
+    """`with recording_retrieval() as log:` -- every _search_egeria_content_raw inside records its hits and time."""
+    log = {"sources": [], "seconds": 0.0, "searches": 0}
+    token = _RETRIEVAL.set(log)
+    try:
+        yield log
+    finally:
+        _RETRIEVAL.reset(token)
+
+
+def _source_of(r) -> dict:
+    md = getattr(r, "metadata", None) or {}
+    col = md.get("_collection") or md.get("collection", "N/A")
+    return {"text": getattr(r, "text", ""), "score": getattr(r, "score", 0.0),
+            "file_path": md.get("file_path") or md.get("source", "unknown"), "name": md.get("name", "unnamed"),
+            "type": md.get("type", "unknown"), "module": md.get("module", ""), "collection": col, "_collection": col}
+
+
+def with_retrieval(result: dict, log: Optional[dict]) -> dict:
+    """`result` reporting what was retrieved for it: the distinct sources, their number, the search time and their
+    mean score. A result that reports its own sources keeps them; with nothing retrieved, the zeros are true."""
+    if not log or result.get("num_sources"):
+        return result
+    seen, sources = set(), []
+    for src in log["sources"]:
+        key = (src["collection"], src["file_path"], src["text"][:200])
+        if key not in seen:
+            seen.add(key)
+            sources.append(src)
+    scores = [s["score"] for s in sources if isinstance(s.get("score"), (int, float))]
+    return {**result, "sources": sources, "num_sources": len(sources),
+            "retrieval_time": log["seconds"] if log["searches"] else result.get("retrieval_time", 0.0),
+            "avg_relevance_score": (sum(scores) / len(scores)) if scores else result.get("avg_relevance_score", 0.0)}
+
+
 def _search_egeria_content_raw(query: str, collections: list[str], top_k: int = 8) -> str:
     """Direct call to the search logic without going through the BeeAI tool wrapper."""
     from advisor.multi_collection_store import get_multi_collection_store
     if not collections:
         return "No collections specified."
     store = get_multi_collection_store()
+    started = time.perf_counter()
     result = store.search_specific_collections(query=query, collection_names=collections, top_k=top_k)
+    log = _RETRIEVAL.get()
+    if log is not None:
+        log["seconds"] += time.perf_counter() - started
+        log["searches"] += 1
+        log["sources"].extend(_source_of(r) for r in (result.results or []))
     if not result.results:
         return "No relevant content found."
     parts = []
