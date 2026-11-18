@@ -1,0 +1,43 @@
+# The repo-level scripts' tests (scripts/tests): trellis-up's start check, with fake apps. No network, no Egeria, no
+# database, and no package install beyond pytest. `make test-scripts` runs the same thing locally.
+# pytest exits 5 when it collects nothing, so an empty or misplaced test directory fails this job.
+name: scripts
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths:
+      - "trellis-up"
+      - "Makefile"
+      - "scripts/**"
+      - ".github/workflows/scripts.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  scripts-tests:
+    name: scripts-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python and pytest
+        # A throwaway venv with pytest only: the tests drive trellis-up (bash) and stand-in apps (stdlib http.server).
+        run: |
+          uv python install 3.13
+          uv venv --python 3.13
+          uv pip install pytest
+
+      - name: lsof and curl (trellis-up's port and /health checks)
+        run: command -v lsof >/dev/null && command -v curl >/dev/null || (sudo apt-get update && sudo apt-get install -y lsof curl)
+
+      - name: scripts tests
+        run: uv run --no-sync python -m pytest -q scripts/tests

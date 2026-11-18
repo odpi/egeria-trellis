@@ -110,10 +110,53 @@ def test_one_named_app_starts_only_that_one(tmp_path):
     assert "Trellis Studio: started" in r.stdout and "Resource Explorer" not in r.stdout
 
 
-def test_the_secret_goes_to_studio_too():
-    src = SCRIPT.read_text()
-    assert 'STUDIO_ENV="$REPO_ROOT/packages/studio/.env"' in src
-    assert 'for f in "$RE_ENV" "$EA_ENV" "$STUDIO_ENV"; do\n    if [ "$(env_get "$f" TRELLIS_JWT_SECRET)"' in src
+def test_the_secret_goes_to_all_three_env_files_owner_only(tmp_path):
+    """TR-48 + read-back W1: one TRELLIS_JWT_SECRET in RE's, EA's and Studio's .env, each file mode 600."""
+    envs = {k: tmp_path / f"{k.lower()}.env" for k in ("RE", "EA", "STUDIO")}
+    envs["EA"].write_text("OLLAMA_BASE_URL=http://localhost:11434\n")
+    envs["EA"].chmod(0o644)
+    port = _free_port()
+    env = {k: v for k, v in os.environ.items() if not k.startswith("TRELLIS_UP_")}
+    env.update({f"TRELLIS_UP_{k}_ENV": str(p) for k, p in envs.items()})
+    env.update({"TRELLIS_UP_LOG_DIR": str(tmp_path / "logs"), "TRELLIS_UP_START_TIMEOUT": "20",
+                "TRELLIS_UP_CMD_STUDIO": _server(port), "TRELLIS_UP_HEALTH_STUDIO": _health(port),
+                "EGERIA_WORKSPACES_FS": str(tmp_path / "no-workspaces")})
+    r = subprocess.run(["bash", str(SCRIPT), "--no-preflight", "--start-check", "--studio"], env=env,
+                       capture_output=True, text=True, timeout=60, cwd=ROOT)
+    assert r.returncode == 0, r.stdout + r.stderr
+    secrets = set()
+    for p in envs.values():
+        assert oct(p.stat().st_mode & 0o777) == "0o600", p
+        line = [l for l in p.read_text().splitlines() if l.startswith("TRELLIS_JWT_SECRET=")]
+        assert len(line) == 1 and len(line[0].split("=", 1)[1]) == 64
+        secrets.add(line[0])
+    assert len(secrets) == 1
+    assert "OLLAMA_BASE_URL=http://localhost:11434" in envs["EA"].read_text()     # the rest of a file is kept
+
+
+def test_a_port_already_held_is_not_mistaken_for_the_app_starting(tmp_path):
+    """Read-back W2: with --no-preflight, an old process answering /health on the port must not read as started."""
+    port = _free_port()
+    holder = subprocess.Popen(["bash", "-c", _server(port)])
+    try:
+        deadline = time.time() + 10
+        while _port_free(port) and time.time() < deadline:
+            time.sleep(0.1)
+        r = _run(tmp_path, {"EA": ("sleep 30", _health(port))}, "--ea")
+        assert r.returncode == 1, r.stdout + r.stderr
+        assert f"Egeria Advisor not started: port {port} is already in use" in r.stderr
+        assert "Egeria Advisor: started" not in r.stdout
+    finally:
+        holder.terminate()
+        holder.wait(5)
+
+
+def test_its_own_process_must_be_alive_not_just_health(tmp_path):
+    """The app exits at once, but something answers /health later on that port: still a failed start."""
+    port = _free_port()
+    late = f"(sleep 2; {_server(port)}) >/dev/null 2>&1 & echo 'ERROR: exiting'; exit 1"
+    r = _run(tmp_path, {"EA": (late, _health(port))}, "--ea", start_timeout=8)
+    assert r.returncode == 1 and "Egeria Advisor failed to start: ERROR: exiting" in r.stderr
 
 
 def test_make_up_covers_studio_and_has_its_own_target():
