@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from loguru import logger
 
@@ -75,14 +75,19 @@ def owner_refusal(spec: Dict[str, Any]) -> Optional[str]:
 def _call_client():
     """The client for a run in this call, or None (then the answer says "sign in"). A client the caller passed
     is the caller's to close; one built here from the request's credentials is closed here."""
-    from advisor.egeria_user_client import build_user_client, close_client
+    from advisor.egeria_user_client import bound_reads, build_user_client, close_client
     scope = _SCOPE.get() or {}
     if scope.get("client") is not None:
-        yield scope["client"]
+        with bound_reads(scope["client"]):
+            yield scope["client"]
         return
     client = build_user_client(scope.get("credentials"))
     try:
-        yield client
+        if client is None:
+            yield None
+        else:
+            with bound_reads(client):      # the reads are this user's; the client itself is what runs get
+                yield client
     finally:
         if client is not None:
             close_client(client)
@@ -362,6 +367,22 @@ def retarget(spec: Dict[str, Any], user_response: str) -> List[str]:
     return update_from_request(spec, user_response) + notes
 
 
+def validation_caveats(result: Any) -> Tuple[str, str]:
+    """(heading words, list) for pyegeria's warnings and what it couldn't check. ("validated with pyegeria",
+    "") when every check ran. A warning or an unrun check is said, never a bare "validated" (ruling
+    RULING-EA-U3-IDENTITY-SWITCH appendix; read-back R2: "validated with pyegeria, with N warnings:")."""
+    warnings = list(getattr(result, "warnings", None) or [])
+    unchecked = [n for n in (getattr(result, "not_checked", None) or []) if n not in warnings]
+    lines = [f"- {w}" for w in warnings] + [f"- not checked: {n}" for n in unchecked]
+    if warnings:
+        words = f"validated with pyegeria, with {len(warnings)} warning{'s' if len(warnings) != 1 else ''}:"
+    elif unchecked:
+        words = f"validated with pyegeria; {len(unchecked)} check{'s' if len(unchecked) != 1 else ''} didn't run:"
+    else:
+        return "validated with pyegeria", ""
+    return words, "\n".join(lines)
+
+
 def generate(elicitor, spec: Dict[str, Any]) -> Dict[str, Any]:
     """Validate with pyegeria; serialize with pyegeria; run as the user when signed in."""
     refused = owner_refusal(spec)
@@ -406,7 +427,10 @@ def _generate(elicitor, spec: Dict[str, Any], client: Any) -> Dict[str, Any]:
         "can_go_back": True, "navigation": _NAV_FINAL, "doc_id": doc_id, "next_context": None,
         "validation": result.model_dump(),
     }
-    head = f"**{spec['answers'].get('Heading')}** (draft spec **{doc_id}**, validated with pyegeria)"
+    words, caveats = validation_caveats(result)
+    head = f"**{spec['answers'].get('Heading')}** (draft spec **{doc_id}**, {words.rstrip(':')})"
+    if caveats:
+        head += f"\n\n⚠️ {words}\n" + caveats
     if spec.get("unmet"):
         head += "\n\n" + narrower_line(spec)
     if client is None:

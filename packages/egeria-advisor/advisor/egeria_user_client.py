@@ -41,8 +41,28 @@ def build_user_client(creds: Optional[Dict[str, str]]) -> Optional[Any]:
                         user_pwd=NO_PASSWORD)
     apply_token(client, creds["token"])
     assert_no_password(client)
+    assert_identity(client, creds["user_id"])
+    # The CLIENT, never pyegeria's as_client(...): that is a context manager for `with` (bound_reads below).
+    # Returned as the client, a run read no identity from it and pyegeria fell back to the configured service
+    # account (U3 2026-11-17, ruling RULING-EA-U3-IDENTITY-SWITCH-bbc70228).
+    return client
+
+
+class WrongIdentity(RuntimeError):
+    """A user client that doesn't name the request's user, or carries no bearer token (refused)."""
+
+
+def assert_identity(client: Any, user_id: str) -> None:
+    """`client` is a client for `user_id` holding a bearer token: what pyegeria's runs read from it."""
+    if getattr(client, "user_id", None) != user_id or not getattr(client, "token", None):
+        raise WrongIdentity("An Egeria client built for a signed-in user doesn't carry that user's identity; refused.")
+
+
+def bound_reads(client: Any):
+    """`with bound_reads(client):` -- every report-spec read inside is for `client`'s user (pyegeria's
+    egeria_spec_cache.as_client, a context manager), so a multi-user process never reads as the fallback."""
     from pyegeria.view.egeria_spec_cache import as_client
-    return as_client(client)   # its report-spec reads are for its user (multi-user process)
+    return as_client(client)
 
 
 def close_client(client: Any) -> None:

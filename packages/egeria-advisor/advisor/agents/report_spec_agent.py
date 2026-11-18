@@ -274,13 +274,14 @@ class ReportSpecAgent:
         no service-account fallback (A1)."""
         from advisor import spec_authoring_v2 as v2
         from advisor.egeria_signin import SIGN_IN_TO_RUN_REPORTS
-        from advisor.egeria_user_client import build_user_client, close_client
+        from advisor.egeria_user_client import bound_reads, build_user_client, close_client
         client = build_user_client(egeria_credentials)
         if client is None:
             return self._error_result(doc_id, SIGN_IN_TO_RUN_REPORTS)
         try:
-            spec = v2.spec_from_document(content, base_doc_id)
-            ans = v2.answer(spec, client)
+            with bound_reads(client):
+                spec = v2.spec_from_document(content, base_doc_id)
+                ans = v2.answer(spec, client)
         finally:
             close_client(client)
         execution_output = ans.get("markdown") or ""
