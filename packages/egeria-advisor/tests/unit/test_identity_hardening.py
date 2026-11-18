@@ -27,7 +27,7 @@ def pinned_service_account(monkeypatch):
     """EA's service account is a fixed test id: a developer's shell may export EGERIA_USER (it is the
     account EA's own settings read), which would otherwise make that person's id a service account here."""
     from advisor.config import settings
-    monkeypatch.setattr(settings, "egeria_user", "ea-service")
+    monkeypatch.setattr(settings, "daemon_user_id", "ea-service")
     monkeypatch.delenv("TRELLIS_SERVICE_ACCOUNTS", raising=False)
     monkeypatch.delenv("RE_DAEMON_USER_ID", raising=False)
 
@@ -104,7 +104,7 @@ class TestAnonymous:
 class TestServiceAccount:
     def test_eas_own_service_account_is_refused(self, monkeypatch):
         from advisor.config import settings
-        monkeypatch.setattr(settings, "egeria_user", "peterprofile")
+        monkeypatch.setattr(settings, "daemon_user_id", "peterprofile")
         assert "peterprofile" in auth.service_account_ids()
         assert auth.is_service_account("PeterProfile")
         with pytest.raises(HTTPException) as e:
@@ -114,7 +114,7 @@ class TestServiceAccount:
     def test_password_login_refuses_it_before_egeria(self, monkeypatch):
         from advisor.config import settings
         from advisor.web.auth import LoginRequest, auth_login
-        monkeypatch.setattr(settings, "egeria_user", "peterprofile")
+        monkeypatch.setattr(settings, "daemon_user_id", "peterprofile")
         monkeypatch.setattr(auth, "_login_with_password", lambda *a: pytest.fail("Egeria was called"))
         with pytest.raises(HTTPException) as e:
             asyncio.run(auth_login(LoginRequest(username="peterprofile", password="x")))
@@ -123,7 +123,7 @@ class TestServiceAccount:
     def test_defaults_never_name_it(self, monkeypatch):
         from advisor.config import settings
         from advisor.web.auth import auth_defaults
-        monkeypatch.setattr(settings, "egeria_user", "peterprofile")
+        monkeypatch.setattr(settings, "daemon_user_id", "peterprofile")
         monkeypatch.setattr(settings, "advisor_login_default_user", "")
         assert asyncio.run(auth_defaults()) == {"username": ""}
         monkeypatch.setattr(settings, "advisor_login_default_user", "erinoverview")

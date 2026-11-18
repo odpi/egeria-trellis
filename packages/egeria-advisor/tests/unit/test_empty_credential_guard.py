@@ -31,8 +31,8 @@ def platform(monkeypatch):
         "view_server": "qs-view-server", "platform_url": "https://egeria.test:9443",
     })
     from advisor.config import settings
-    monkeypatch.setattr(settings, "egeria_user", "svc-user", raising=False)
-    monkeypatch.setattr(settings, "egeria_password", "svc-secret", raising=False)
+    monkeypatch.setattr(settings, "daemon_user_id", "svc-user", raising=False)
+    monkeypatch.setattr(settings, "daemon_user_password", "svc-secret", raising=False)
 
 
 class FakeClient:
@@ -41,6 +41,9 @@ class FakeClient:
 
     def __init__(self, *args, **kwargs):
         self.args, self.kwargs = args, kwargs
+        # as pyegeria's client: its own user and password are attributes (EA's apply_token reads them, TR-34)
+        self.user_id = kwargs.get("user_id", args[2] if len(args) > 2 else None)
+        self.user_pwd = kwargs.get("user_pwd", args[3] if len(args) > 3 else None)
         self.bearer, self.minted = [], []
         FakeClient.built.append(self)
 

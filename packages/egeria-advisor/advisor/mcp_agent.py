@@ -7,10 +7,12 @@ High-level agent for managing multiple MCP servers and coordinating tool executi
 import asyncio
 import json
 import shutil
+import contextlib
+import contextvars
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from advisor.mcp_client import (
     MCPClient,
@@ -40,6 +42,27 @@ def _resolve_dr_egeria_env(env: Dict[str, str]) -> Dict[str, str]:
         env = dict(env)
         env["EGERIA_ROOT_PATH"] = root
     return env
+
+
+#: The MCP children that sign in to Egeria themselves, by pyegeria's own variable names (their code reads only
+#: EGERIA_USER / EGERIA_USER_PASSWORD; neither takes a user's token per call). TR-34: they run as EA's own service
+#: account, passed explicitly; never a person's persona from the JSON or the parent environment.
+EGERIA_SIGN_IN_CHILDREN = ("pyegeria", "dr-egeria")
+_CHILD_IDENTITY_VARS = ("EGERIA_USER", "EGERIA_PASSWORD", "EGERIA_USER_PASSWORD")
+
+
+def _child_identity(name: str, env: Dict[str, str]) -> Tuple[Dict[str, str], bool]:
+    """(env, ok) for an Egeria sign-in child: any identity in its JSON env dropped, and EA's service account set
+    under the names the child reads. ok is False when EA has no service account: the child is then not started
+    (one of them falls back to a built-in persona of its own otherwise)."""
+    out = {k: v for k, v in env.items() if k not in _CHILD_IDENTITY_VARS}
+    if name not in EGERIA_SIGN_IN_CHILDREN:
+        return env, True
+    from advisor.config import settings
+    user, pwd = settings.daemon_user_id or "", settings.daemon_user_password or ""
+    # Always set, so the child never inherits a shell's persona (MCPServerConfig merges os.environ under these).
+    out["EGERIA_USER"], out["EGERIA_USER_PASSWORD"] = user, pwd
+    return out, bool(user and pwd)
 
 
 def _resolve_server_env(name: str, env: Dict[str, str]) -> Dict[str, str]:
@@ -161,10 +184,15 @@ def _build_servers(raw: Dict[str, Any]) -> Dict[str, "MCPServerConfig"]:
                 "EGERIA_WORKSPACES) or edit configdata/mcp_servers.json."
             )
             enabled = False
+        child_env, has_identity = _child_identity(name, _resolve_server_env(name, server_data.get("env", {})))
+        if enabled and not has_identity:
+            from advisor.config import NO_SERVICE_ACCOUNT
+            logger.warning(f"MCP server {name!r} disabled: it signs in to Egeria itself, and {NO_SERVICE_ACCOUNT}")
+            enabled = False
         servers[name] = MCPServerConfig(
             command=resolved_command,
             args=resolved_args,
-            env=_resolve_server_env(name, server_data.get("env", {})),
+            env=child_env,
             url=server_data.get("url"),
             transport=server_data.get("transport", "stdio"),
             headers=server_data.get("headers", {}),
@@ -297,6 +325,46 @@ class MCPConfig:
             name for name, config in self.servers.items()
             if config.enabled
         ]
+
+
+#: TR-34 R3: the MCP children sign in as EA's own service account (they can't take a user's token per call yet;
+#: TR-43). EA is multi-user, so a user's request never reaches them: it would run as the service account, the
+#: TR-33 shape. These are the words a user sees instead.
+MCP_NOT_AS_YOU = "That tool can't run as you yet, so I didn't use it."
+
+
+class MCPRunsAsServiceAccount(MCPError):
+    """A user request asked for an MCP child tool; refused before any call (MCP_NOT_AS_YOU)."""
+
+    def __init__(self, message: str = MCP_NOT_AS_YOU) -> None:
+        super().__init__(message)
+
+
+_SERVICE_MCP: "contextvars.ContextVar[bool]" = contextvars.ContextVar("ea_service_mcp", default=False)
+
+
+@contextlib.contextmanager
+def service_mcp():
+    """`with service_mcp():` -- explicit service-level work that may use the MCP children (as EA's service
+    account) even inside a request. Nothing a user asked for belongs in here."""
+    token = _SERVICE_MCP.set(True)
+    try:
+        yield
+    finally:
+        _SERVICE_MCP.reset(token)
+
+
+def user_request_in_flight() -> bool:
+    """A request (signed in or anonymous) or a CLI user context is running, and this isn't explicit service
+    work. request_context is set by the web middleware, and carried into the query threads (F1)."""
+    from advisor.request_context import current_user
+    return current_user() is not None and not _SERVICE_MCP.get()
+
+
+def refuse_for_user_request() -> None:
+    """Raise MCPRunsAsServiceAccount when a user request is in flight (TR-34 R3)."""
+    if user_request_in_flight():
+        raise MCPRunsAsServiceAccount()
 
 
 class MCPAgent:
@@ -443,6 +511,7 @@ class MCPAgent:
         Raises:
             MCPError: If tool execution fails
         """
+        refuse_for_user_request()   # TR-34 R3: first, before the cache (which may hold service-account results)
         if not self._initialized:
             raise MCPError("MCP agent not initialized")
         
@@ -502,6 +571,7 @@ class MCPAgent:
         Returns:
             List of results (or exceptions)
         """
+        refuse_for_user_request()   # TR-34 R3 (execute_tool refuses each one too)
         # Limit concurrent executions
         semaphore = asyncio.Semaphore(self.config.max_concurrent_tools)
         

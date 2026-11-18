@@ -282,9 +282,14 @@ class ConversationAgent:
             logger.warning(f"CLI Command Agent routing failed: {e}")
         
         # Check if query should use MCP tools
+        mcp_note = ""
         if self.enable_mcp and self.mcp_agent:
             query_type = self._detect_query_type(query)
-            if query_type in [QueryType.REPORT, QueryType.COMMAND]:
+            if query_type in [QueryType.REPORT, QueryType.COMMAND] and _user_request_in_flight():
+                # TR-34 R3: the MCP children run as EA's service account; a user's request makes no MCP call.
+                logger.info(f"Query type {query_type}: an MCP tool would fit, but not for a user request (TR-34 R3)")
+                mcp_note = _mcp_not_as_you()
+            elif query_type in [QueryType.REPORT, QueryType.COMMAND]:
                 logger.info(f"Query type {query_type} detected - attempting MCP tool invocation")
                 try:
                     mcp_result = self._invoke_mcp_tools(query, query_type)
@@ -387,11 +392,14 @@ Answer:"""
                 "agent_conversation_length": len(self.conversation_history)
             })
         
+        if mcp_note:
+            response_text = f"{mcp_note}\n\n{response_text}"
         return {
             "content": response_text,
             "sources": sources,
             "rag_used": use_rag and len(sources) > 0,
-            "cache_hit": False  # Will be True on subsequent calls due to LRU cache
+            "cache_hit": False,  # Will be True on subsequent calls due to LRU cache
+            **({"notes": [mcp_note]} if mcp_note else {}),
         }
     
     def _detect_query_type(self, query: str) -> QueryType:
@@ -440,6 +448,8 @@ Answer:"""
         dict or None
             Tool execution result or None if no tool was invoked
         """
+        if _user_request_in_flight():   # TR-34 R3: however this is reached, a user request makes no MCP call
+            return None
         if not self.mcp_agent:
             return None
         
@@ -540,3 +550,13 @@ def create_agent(**kwargs) -> ConversationAgent:
         Configured agent instance
     """
     return ConversationAgent(**kwargs)
+
+
+def _user_request_in_flight() -> bool:
+    from advisor.mcp_agent import user_request_in_flight
+    return user_request_in_flight()
+
+
+def _mcp_not_as_you() -> str:
+    from advisor.mcp_agent import MCP_NOT_AS_YOU
+    return MCP_NOT_AS_YOU

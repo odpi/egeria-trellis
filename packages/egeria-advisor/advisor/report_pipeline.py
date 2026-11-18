@@ -568,6 +568,12 @@ class ReportPipeline:
         except Exception as exc:
             logger.warning(f"Semantic search failed: {exc}")
 
+        # Strategies 2 and 3 use Egeria's own search through an MCP child, which runs as EA's service account:
+        # never for a user's request (TR-34 R3). Stop at the local copy, and say so.
+        from advisor.mcp_agent import user_request_in_flight
+        if user_request_in_flight():
+            return SpecHits([], note=LOCAL_ONLY_SEARCH)
+
         # Strategy 2: MCP question-based search with extracted keywords
         stop = {"show", "me", "the", "a", "an", "list", "all", "get", "run",
                 "report", "reports", "for", "of", "in", "on", "about", "what",
@@ -1064,8 +1070,11 @@ class ReportPipeline:
                 f"The {tool} listing needs the {server} MCP server, which is not connected"
                 + (f" (connected: {', '.join(connected)})." if connected else ".")
             )
+        from advisor.mcp_agent import MCPRunsAsServiceAccount
         try:
             raw = self._call_tool(tool, {})
+        except MCPRunsAsServiceAccount as exc:   # deliberately not run for a user request (TR-34 R3): not a failure
+            return None, f"The {tool} listing on the {server} MCP server was not used: {exc}"
         except Exception as exc:
             logger.info(f"_try_listing_tool({tool}) failed: {exc}")
             return None, f"The {tool} listing on the {server} MCP server failed: {exc}"
@@ -1266,7 +1275,7 @@ class ReportPipeline:
         except Exception:
             specs = []
         if not specs:
-            return {
+            return with_search_note({
                 "query": query,
                 "response": (
                     "I couldn't find any report specs matching that topic. "
@@ -1276,7 +1285,7 @@ class ReportPipeline:
                 "sources": [], "num_sources": 0,
                 "retrieval_time": 0.0, "generation_time": 0.0,
                 "avg_relevance_score": 0.0, "context_length": 0,
-            }
+            }, specs)
         ranked = self._rank_specs(specs)
         lines = ["Here are the report specs that match:\n"]
         for item in ranked[:10]:
@@ -1353,7 +1362,7 @@ class ReportPipeline:
 
         if not specs:
             logger.info("No matching report specs found for query")
-            return _no_report_found(query)
+            return with_search_note(_no_report_found(query), specs)
 
         ranked = self._rank_specs(specs)
         top = ranked[0]
@@ -1654,6 +1663,29 @@ def _detail_to_masters() -> Dict[str, List[str]]:
     except Exception:
         pass
     _detail_to_masters._cache = result  # type: ignore[attr-defined]
+    return result
+
+
+#: TR-34 R3 W1: the words when spec search stopped at EA's local copy because Egeria's own search (an MCP
+#: child, running as EA's service account) can't run as the user.
+LOCAL_ONLY_SEARCH = ("Searched EA's local copy only; Egeria's own spec search can't run as you yet, so results "
+                     "may be incomplete.")
+
+
+class SpecHits(list):
+    """find_specs' result: a list of spec dicts, plus `note` (words for the reader, or "")."""
+
+    def __init__(self, items=(), note: str = "") -> None:
+        super().__init__(items)
+        self.note = note
+
+
+def with_search_note(result: Dict[str, Any], specs: Any) -> Dict[str, Any]:
+    """`result` with the search's note (if any) under its response and in notes."""
+    note = getattr(specs, "note", "")
+    if note:
+        result = {**result, "response": f"{result.get('response', '')}\n\n*{note}*",
+                  "notes": list(result.get("notes") or []) + [note]}
     return result
 
 
