@@ -199,14 +199,15 @@ None of these are needed to run either app; all are off unless configured.
 | MLflow | `localhost:5025` | Experiment tracking | `mlflow server --port 5025` |
 | Phoenix | `localhost:6006` | LLM tracing | `python -m phoenix.server.main` |
 
-With Prefect enabled and no server running, steps still fall back to running in-process — just
-slower by one connection attempt per step. Prefect itself stays off by default (`PREFECT_ENABLED`
-defaults to `False`) because leaving it enabled with no server reachable used to leak an ephemeral
-subprocess server that nothing shut down (13 found orphaned on one machine, 2026-09-04) — RE now
-also forces `PREFECT_SERVER_EPHEMERAL_ENABLED=false` as a second guard regardless of this setting.
-Enable it only where a compose service actually provides Prefect (egeria-workspaces'
-`optional-associated-runtimes/prefect`), setting both `PREFECT_ENABLED=true` and `PREFECT_API_URL`
-explicitly.
+Prefect is **on by default** (`PREFECT_ENABLED=true`). With no Prefect server reachable, RE says so at startup
+and runs every step in-process; set `PREFECT_ENABLED=false` only if you will never use Prefect (the QuickStart
+demo compose does). To use it, point `PREFECT_API_URL` at a server, for example egeria-workspaces'
+`optional-associated-runtimes/prefect`, and run a worker on the default pool, `resource-explorer-pool`.
+[deploying-trellis-with-quickstart.md §5.1](docs/deploying-trellis-with-quickstart.md#51-prefect-step-dispatch-resource-explorer)
+covers which steps go to the worker (`PREFECT_DISPATCH_STEPS`) and the restart order. RE always forces
+`PREFECT_SERVER_EPHEMERAL_ENABLED=false`: an earlier version leaked an ephemeral subprocess server when Prefect was
+enabled with no server reachable (13 found orphaned on one machine, 2026-09-04), and this guard stops that
+whatever `PREFECT_ENABLED` says.
 
 ---
 

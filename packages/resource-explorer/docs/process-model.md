@@ -669,6 +669,7 @@ Step 2a, step 2b, the `a2a` role and RE-wide `trellis-auth` adoption are all don
 - **F4 — still open.** `packages/resource-explorer/CLAUDE.md`'s Setup section has since been
   updated to say Prefect is off by default, so the specific staleness F4 named is gone; the
   file's process description ("one process, threads at startup") is now the stale part.
+  (Changed since: on 2026-09-19 the owner made Prefect **on by default**; with no server RE says so and runs in-process. The ephemeral-server guard stays. Current wording: [deploying-trellis-with-quickstart.md §5.1](../../../docs/deploying-trellis-with-quickstart.md#51-prefect-step-dispatch-resource-explorer).)
 - **F5 — closed in 2b, and the fix is not where it was expected to be.** `log_survey()` now takes
   a `runner` parameter like `log_analysis_run()`, merged into `detail` rather than overwriting it.
   But the parameter is not what actually closes the gap for queued work, and reaching for it there
