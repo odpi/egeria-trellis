@@ -11,6 +11,7 @@ import pytest
 from resource_explorer import fs_review
 from resource_explorer import publish_table as pt
 from tests.fs_egeria_fake import FakeEgeria, install
+from tests.library_step_install import install_steps  # noqa: F401 - the fixture; CI syncs only RE, so the steps are installed per test
 from tests.test_files_walk_extensions import _probe_row, _register, _tree, api, registry  # noqa: F401 - fixtures reused
 
 ROW = {"analysis_id": "fs_permissions", "analysis": "File permissions", "measure": "fs_permissions",
@@ -189,8 +190,10 @@ def _row_from(manifest_module: str, measure_name: str, value):
 
 @pytest.mark.parametrize("module,measure", [("fs_activity", "fs_activity"), ("fs_activity", "fs_access_activity"),
                                             ("fs_permissions", "fs_permissions"), ("fs_layout_signals", None)])
-def test_a_resource_profile_row_is_writable_and_built_with_its_declared_properties(module, measure):
+def test_a_resource_profile_row_is_writable_and_built_with_its_declared_properties(module, measure, install_steps):
     import importlib
+
+    install_steps(module)
 
     from resource_explorer.surveyors.annotation_props import build_annotation_props
     from resource_explorer.surveyors.survey_report import ResourceProfileAnnotation
@@ -210,13 +213,15 @@ def test_a_resource_profile_row_is_writable_and_built_with_its_declared_properti
     assert "free text" not in " ".join(str(v) for v in props.values())
 
 
-def test_a_resource_profile_value_that_is_not_a_whole_number_travels_as_the_step_stated_it():
+def test_a_resource_profile_value_that_is_not_a_whole_number_travels_as_the_step_stated_it(install_steps):
+    install_steps("fs_activity")
     row = _row_from("fs_activity", "fs_activity", "about 40%")
     ann = pt.annotation_for(row)
     assert ann.value_count == {} and ann.additional_properties["fs_activity"] == "about 40%"
 
 
-def test_a_request_for_action_row_is_still_not_written_and_says_why():
+def test_a_request_for_action_row_is_still_not_written_and_says_why(install_steps):
+    install_steps("fs_permissions")
     row = _row_from("fs_permissions", "world_readable_sensitive", 3)
     assert row["writes_as"]["writable"] is False and row["writes_as"]["type"] == "RequestForActionAnnotation"
     assert row["writes_as"]["why"] == "Resource Explorer does not write RequestForActionAnnotation from a declaration yet"
