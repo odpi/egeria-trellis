@@ -47,6 +47,9 @@ TOO_LARGE = "too_large"
 NOT_A_PLAIN_FILE = "not_a_plain_file"
 SECRET_NAME = "secret_name"
 EMPTY = "empty"
+BINARY = "binary"
+#: A run builds its passages under STAGING and swaps them in; the replaced index waits under REPLACED until dropped.
+STAGING, REPLACED = "__new", "__old"
 
 _ATX = re.compile(r"^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$")
 _UNDERLINE = re.compile(r"^\s*([=\-~^\"'`*+#])\1{2,}\s*$")
@@ -62,6 +65,13 @@ class AlreadyRunning(RuntimeError):
 
 class NotReachable(RuntimeError):
     """The mount point cannot be reached from this machine."""
+
+
+class NotStored(RuntimeError):
+    """The passages could not be stored; the previous index is kept. `staging_left`: the staging collection could not
+    be dropped either (the next run drops it first)."""
+
+    staging_left = False
 
 
 def _now() -> str:
@@ -207,7 +217,8 @@ def default_store():
 
 def run_narrative_docs(fs_entity, registry, *, store_factory: Callable[[], object] | None = None) -> dict:
     """The press: read the newest walk's narrative files in full, chunk them by section and replace this file system's
-    collection with them. Raises NothingToRead (no walk has looked, or it found none), NotReachable, AlreadyRunning."""
+    collection with them. Raises NothingToRead (no walk has looked, or it found none), NotReachable, AlreadyRunning,
+    NotStored (the new passages could not be stored; the previous index is kept)."""
     from resource_explorer.surveyors.filesystem.file_profiles import machine
     from resource_explorer.surveyors.filesystem.walk_extensions import looks_secret, read_plain_file
 
@@ -228,7 +239,7 @@ def run_narrative_docs(fs_entity, registry, *, store_factory: Callable[[], objec
         raise AlreadyRunning(ALREADY_RUNNING_WORDS.format(slug=slug))
     try:
         limit = _max_bytes()
-        outcomes: dict[str, int] = {READ: 0, TOO_LARGE: 0, NOT_A_PLAIN_FILE: 0, SECRET_NAME: 0, EMPTY: 0}
+        outcomes: dict[str, int] = {READ: 0, TOO_LARGE: 0, NOT_A_PLAIN_FILE: 0, SECRET_NAME: 0, EMPTY: 0, BINARY: 0}
         per_file: list[dict] = []
         chunks: list[tuple[str, dict]] = []
         sections = 0
@@ -246,6 +257,9 @@ def run_narrative_docs(fs_entity, registry, *, store_factory: Callable[[], objec
                     except OSError:
                         big = False
                     outcome, n_chunks = (TOO_LARGE if big else NOT_A_PLAIN_FILE), 0
+                elif b"\x00" in raw:
+                    # NUL bytes: binary content, which Postgres cannot store as text; not decoded, not chunked
+                    outcome, n_chunks = BINARY, 0
                 else:
                     text = raw.decode("utf-8", errors="replace")
                     mine = chunks_for(text, rel_path=rel, modified_at=e.get("modified_at") or "", slug=slug, run=run)
@@ -256,10 +270,8 @@ def run_narrative_docs(fs_entity, registry, *, store_factory: Callable[[], objec
             per_file.append({"file_path": rel, "outcome": outcome, "chunks": n_chunks})
         store = (store_factory or default_store)()
         collection = collection_for(store, slug)
-        if store.collection_exists(collection):
-            store.drop_collection(collection)
-        stored = store.insert(collection, [t for t, _ in chunks], [m for _, m in chunks]) if chunks else 0
-        summary = {"walk_run": run, "ran_at": _now(), "collection": collection, "files": len(files),
+        stored, leftover = _replace(store, collection, chunks)
+        summary = {"walk_run": run, "ran_at": _now(), "collection": collection, "leftover": leftover, "files": len(files),
                    "outcomes": outcomes, "sections": sections, "chunks": len(chunks), "stored": int(stored or 0),
                    "files_detail": per_file[:200], "files_not_shown": max(0, len(per_file) - 200),
                    "max_file_bytes": limit, "machine": machine()}
@@ -268,6 +280,44 @@ def run_narrative_docs(fs_entity, registry, *, store_factory: Callable[[], objec
         return summary
     finally:
         registry.release_claim(claim_key, holder)
+
+
+def _replace(store, collection: str, chunks: list[tuple[str, dict]]) -> tuple[int, str]:
+    """Replace the collection whole, never dropping it before the new one is in: the passages are inserted under a
+    staging name (ids minted under the live name), then swapped in, in one transaction, and the replaced index dropped.
+    On any failure the staging collection is dropped, the previous index is left untouched, and NotStored is raised.
+    Returns (passages stored, the replaced collection's name if it could not be dropped, else ''); the next run drops
+    it first."""
+    if not chunks:
+        if store.collection_exists(collection):
+            store.drop_collection(collection)
+        return 0, ""
+    staging, replaced = collection + STAGING, collection + REPLACED
+    try:
+        for leftover in (staging, replaced):
+            if store.collection_exists(leftover):
+                store.drop_collection(leftover)
+        stored = store.insert(staging, [t for t, _ in chunks], [m for _, m in chunks], id_collection=collection)
+        renames = [(collection, replaced)] if store.collection_exists(collection) else []
+        store.swap_collections(renames + [(staging, collection)])
+    except Exception as exc:  # noqa: BLE001 -- any failure keeps the previous index; the type name only reaches the page
+        log.warning("narrative passages for %s could not be stored", collection, exc_info=True)
+        err = NotStored(f"the passages could not be stored ({type(exc).__name__}) · the previous index is kept")
+        try:
+            if store.collection_exists(staging):
+                store.drop_collection(staging)
+        except Exception:  # noqa: BLE001 -- the old index is still in place; the next run drops the staging one
+            err.staging_left = True
+            log.warning("could not drop %s", staging, exc_info=True)
+        raise err from exc
+    leftover = ""
+    try:
+        if store.collection_exists(replaced):
+            store.drop_collection(replaced)
+    except Exception:  # noqa: BLE001 -- the new index is in; the replaced one is named on the run row, dropped next run
+        leftover = replaced
+        log.warning("could not drop %s", replaced, exc_info=True)
+    return stored, leftover
 
 
 def _plural(n: int, one: str, many: str = "") -> str:
@@ -281,7 +331,8 @@ def run_words(m: dict) -> str:
              f"{_plural(m.get('stored', 0), 'passage')} in Resource Explorer's search index"]
     for key, words in ((TOO_LARGE, "grown past the size limit since the walk · not read"),
                        (NOT_A_PLAIN_FILE, "no longer a plain file · not read"),
-                       (SECRET_NAME, "with a secret-looking name · not opened"), (EMPTY, "with no text")):
+                       (SECRET_NAME, "with a secret-looking name · not opened"), (EMPTY, "with no text"),
+                       (BINARY, "binary content (NUL bytes) · not read")):
         if o.get(key):
             parts.append(f"{_plural(o[key], 'file')} {words}")
     return " · ".join(parts)
