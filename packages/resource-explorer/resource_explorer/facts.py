@@ -1273,6 +1273,13 @@ UNDECLARED_KINDS = {
 }
 
 
+#: A live-read analysis whose data is not "refreshed at ingestion": it reads rows a step or a probe already stored.
+_LIVE_READ_NOTES = {
+    "resource_reachability": "Read from the newest stored reach check",
+    "survey_price": "Read from the stored walk and runs; nothing is run to price it",
+}
+
+
 class FactLayer:
     """Reads what is known about a resource. Never writes, never runs anything."""
 
@@ -1428,6 +1435,7 @@ class FactLayer:
                     note=(f"Read back from Egeria's own survey report ({value['report_sentence']}), not from a run "
                           "of Resource Explorer's."
                           if self._provenance_for(value) == PROVENANCE_EGERIA and value.get("report_sentence") else
+                          _LIVE_READ_NOTES.get(analysis_id) or
                           "Read live from data refreshed at ingestion, not from a "
                           "recorded survey run — current regardless of when a survey "
                           "last ran."),

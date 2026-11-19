@@ -278,3 +278,48 @@ def test_a_reader_with_no_run_returns_nothing_so_has_data_is_never_true_for_a_st
 
     for aid in ("file_profiles", "narrative_docs", "file_data_class_match", "resource_reachability", "survey_price"):
         assert fsa.FILESYSTEM_ANALYSIS_RESULTS_MAP[aid][0](registry, SLUG) == {}, aid
+
+
+# ── the cards: no Run-disabled card for a step that has its own press (fix-up) ──
+
+def _pane_ids(registry):
+    from resource_explorer.workflows.stage_page import build_analyses_index
+
+    return {r["analysis_id"] for r in build_analyses_index(registry, SLUG, "filesystem")["analyses"]}
+
+
+def test_a_question_answers_from_a_profile_run_and_the_pane_lists_no_card_for_it(registry):
+    _profile(registry)
+    assert _env(registry, Q_PROFILES).answerable
+    ids = _pane_ids(registry)
+    assert "file_profiles" not in ids and "filesystem_inventory" in ids
+
+
+def test_no_pane_lists_a_card_for_the_other_read_only_analyses_yet_their_questions_answer(registry):
+    _walk(registry)
+    _narratives(registry)
+    _profile(registry)
+    _match(registry)
+    _probe(registry)
+    ids = _pane_ids(registry)
+    assert not ({"narrative_docs", "file_data_class_match", "survey_price"} & ids)
+    for qid in (Q_NARRATIVES, Q_CLASS, Q_PRICE, Q_REACH):
+        assert _env(registry, qid).answerable, qid
+
+
+def test_the_live_read_notes_say_what_they_read(registry):
+    _probe(registry)
+    _walk(registry)
+    layer = FactLayer(registry, "filesystem")
+    assert layer.fact(SLUG, "resource_reachability").note == "Read from the newest stored reach check"
+    assert layer.fact(SLUG, "survey_price").note == "Read from the stored walk and runs; nothing is run to price it"
+
+
+def test_the_stale_words_are_the_ones_the_survey_card_shows():
+    """The two STALE_WORDS constants are copies of strings in fs-survey.js; a copy that drifts says one thing in the answer
+    and another on the card."""
+    from pathlib import Path
+
+    js = (Path(nd.__file__).resolve().parents[2] / "web" / "static" / "next" / "fs-survey.js").read_text(encoding="utf-8")
+    assert nd.STALE_WORDS in js
+    assert fcm.STALE_WORDS in js

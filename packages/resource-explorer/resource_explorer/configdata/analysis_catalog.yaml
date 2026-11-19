@@ -38,7 +38,9 @@
 #                       Egeria survey/catalog action).
 #   run_time          - fast | minutes | async — UI speed badge.
 #   action            - "survey" (read-only analysis) or "publish" (writes
-#                       to the Egeria catalog of record).
+#                       to the Egeria catalog of record), or "read" (answers
+#                       questions from a step's stored run; the step has its own
+#                       press, so the Survey & analyses panes list no card for it).
 #   target_shape      - repo scope-narrowing funnel plan (docs/repo-scope-
 #                       narrowing-funnel.md), D5/D6 — what shape of target
 #                       this analysis can mechanically operate on if scope
@@ -3401,7 +3403,7 @@ filesystem_analyses:
     annotation_types: []
     source: local
     run_time: minutes
-    action: survey
+    action: read
     target_shape: whole_resource_only
     recommended: false
     egeria_registration:
@@ -3441,7 +3443,7 @@ filesystem_analyses:
     annotation_types: []
     source: local
     run_time: minutes
-    action: survey
+    action: read
     target_shape: whole_resource_only
     recommended: false
     egeria_registration:
@@ -3481,7 +3483,7 @@ filesystem_analyses:
     annotation_types: []
     source: local
     run_time: minutes
-    action: survey
+    action: read
     target_shape: whole_resource_only
     recommended: false
     egeria_registration:
@@ -3521,7 +3523,7 @@ filesystem_analyses:
     annotation_types: []
     source: local
     run_time: fast
-    action: survey
+    action: read
     target_shape: whole_resource_only
     recommended: false
     egeria_registration:

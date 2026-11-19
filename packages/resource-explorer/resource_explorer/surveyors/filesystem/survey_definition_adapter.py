@@ -618,7 +618,6 @@ def _is_priced(price: dict) -> bool:
 def _survey_price_parts(registry, slug: str) -> list[tuple[str, dict]]:
     """[(step label, its price line)] for the steps that price their press: the walk, the profiles, the narratives and the
     class match. Each from its own `price()`; read-only (a stored walk or run, never a probe)."""
-    from resource_explorer import file_reach
     from resource_explorer.surveyors.filesystem import file_class_match, file_profiles, narrative_docs, walk_derived
 
     leads = _egeria_leads(registry, slug)
