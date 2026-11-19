@@ -781,9 +781,13 @@ async def _await_flow_run(client: Any, run_id: Any, flow_run_id: str, *, timeout
 
         if clock() >= deadline:
             cancel_failure = await _cancel_flow_run_best_effort(client, run_id)
+            from resource_explorer.surveyors.step_heartbeat import last_heard_words
+
+            # TR-62a: one clause naming the step's last heartbeat, so a hang says where it hung.
             msg = (
                 f"timed out after {timeout_seconds:g} s waiting for Prefect flow run "
                 f"{flow_run_id} (state {getattr(state, 'name', None) or state.type})"
+                f"{await last_heard_words(client, run_id)}"
             )
             msg += (
                 f"; cancel attempt FAILED ({cancel_failure}) - the run may still be live"

@@ -82,7 +82,7 @@ def _inventory_runner(registry, root, run: FakeRun | None):
 def _run_flow_body(registry, runner, run: FakeRun):
     with patch.object(flows, "ProjectRegistry", lambda *a, **k: registry), \
          patch.object(flows, "run_surveyor_step_task", runner), \
-         patch.object(flows, "_cancel_check_for", lambda fr: run.is_cancelled):
+         patch.object(flows, "_cancel_check_for", lambda fr, hb=None: run.is_cancelled):
         return flows._run_step_as_flow_run(run.id, "repo", SLUG, "repo_file_inventory", {}, keep_result=True)
 
 

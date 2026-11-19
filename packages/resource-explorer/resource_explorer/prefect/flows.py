@@ -242,21 +242,33 @@ def _run_step_as_flow_run(flow_run_id: str, entity_type: str, slug: str, step_na
     has not been cancelled (surveyors/run_cancellation.py); a cancelled run raises RunCancelled and writes nothing."""
     from resource_explorer.surveyors import run_cancellation
 
-    with run_cancellation.watching(flow_run_id, _cancel_check_for(flow_run_id)):
+    # TR-62a: the step's heartbeat runs for exactly as long as the step (stopped and joined on the way out).
+    with _heartbeat_for(flow_run_id) as hb, \
+            run_cancellation.watching(flow_run_id, _cancel_check_for(flow_run_id, hb)):
         return _run_step_guarded(flow_run_id, entity_type, slug, step_name, runner_kwargs,
                                  credential_ref=credential_ref, keep_result=keep_result, placement=placement)
 
 
-def _cancel_check_for(flow_run_id: str):
+def _heartbeat_for(flow_run_id: str):
+    """TR-62a: a heartbeat for this flow run (surveyors/step_heartbeat.py). One seam so tests can substitute one."""
+    from resource_explorer.surveyors import step_heartbeat
+
+    return step_heartbeat.running(flow_run_id)
+
+
+def _cancel_check_for(flow_run_id: str, hb=None):
     """TR-62b: the check every write on this step's path makes first: is this flow run CANCELLING or CANCELLED?
-    Read through a sync client of its own; a failed read is logged once and answers no. No flow run id (no Prefect
+    The heartbeat's flag answers at once when a beat has already seen the cancel; otherwise the state is read
+    through a sync client of its own. A failed read is logged once and answers no. No flow run id (no Prefect
     context), no check. One seam so tests can substitute a fake run."""
     from resource_explorer.surveyors import run_cancellation
 
     if not flow_run_id:
         return lambda: False
     warned: list = []
-    return lambda: run_cancellation.prefect_run_is_cancelled(flow_run_id, _warned=warned)
+    flag = getattr(hb, "cancelled", None)
+    return lambda: (flag is not None and flag.is_set()) or run_cancellation.prefect_run_is_cancelled(
+        flow_run_id, _warned=warned)
 
 
 def _run_step_guarded(flow_run_id: str, entity_type: str, slug: str, step_name: str,

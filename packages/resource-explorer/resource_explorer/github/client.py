@@ -9,6 +9,7 @@ from github import Github, GithubException
 from github.Repository import Repository
 
 from resource_explorer.config import get_config
+from resource_explorer.github.bounded_retry import bounded_kwargs
 
 log = logging.getLogger(__name__)
 
@@ -25,7 +26,8 @@ class GitHubClient:
     def __init__(self, base_url: str | None = None) -> None:
         cfg = get_config().github
         self._base_url = base_url or cfg.base_url
-        self._gh = Github(cfg.token or None, base_url=self._base_url, per_page=100)
+        # TR-62a: an explicit per-request timeout and a retry that never sleeps past a bound (github/bounded_retry.py).
+        self._gh = Github(cfg.token or None, base_url=self._base_url, per_page=100, **bounded_kwargs(cfg.token))
 
     def search_repos(
         self, query: str, sort: str = "stars", order: str = "desc", limit: int = 100,
@@ -146,32 +148,56 @@ class GitHubClient:
         zip_path = Path(zip_path)
         zip_path.parent.mkdir(parents=True, exist_ok=True)
 
+        # TR-62a: a 10 s connect and a request_timeout_seconds read timeout per read, and ONE budget,
+        # clone_timeout_seconds, for the whole download: every attempt, every chunk and every back-off together. It
+        # used to be the per-read timeout alone (300 s, three attempts), which bounded no total.
+        from resource_explorer.surveyors import step_heartbeat
+
+        budget = float(cfg.clone_timeout_seconds)
+        started = time.monotonic()
+
+        def over_budget() -> bool:
+            return time.monotonic() - started > budget
+
+        def budget_error() -> RuntimeError:
+            return RuntimeError(f"GitHub zipball download for {repo.full_name} exceeded its {int(budget)} s budget "
+                                "(clone_timeout_seconds); stopped")
+
         last_exc: Exception | None = None
-        for attempt in range(3):
-            try:
-                resp = requests.get(
-                    url, headers=headers, stream=True,
-                    timeout=cfg.clone_timeout_seconds,
-                    verify=cfg.ssl_verify,
-                )
-                resp.raise_for_status()
-                with open(zip_path, "wb") as f:
-                    for chunk in resp.iter_content(chunk_size=1024 * 1024):
-                        f.write(chunk)
-                last_exc = None
-                break
-            except SSLError as exc:
-                raise RuntimeError(
-                    f"SSL error downloading repo — {exc}\n"
-                    "Fixes:\n"
-                    "  • pip install --upgrade certifi\n"
-                    "  • set REQUESTS_CA_BUNDLE=/path/to/your-ca-bundle.pem in .env\n"
-                    "  • set GITHUB__SSL_VERIFY=false in .env to skip verification (insecure)"
-                ) from exc
-            except (ConnectionError, Timeout) as exc:
-                last_exc = exc
-                if attempt < 2:
-                    time.sleep(2 ** attempt)
+        with step_heartbeat.phase("downloading"):
+            for attempt in range(3):
+                if over_budget():
+                    raise budget_error()
+                try:
+                    resp = requests.get(
+                        url, headers=headers, stream=True,
+                        timeout=(10, int(cfg.request_timeout_seconds)),
+                        verify=cfg.ssl_verify,
+                    )
+                    resp.raise_for_status()
+                    with open(zip_path, "wb") as f:
+                        for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                            f.write(chunk)
+                            if over_budget():
+                                resp.close()
+                                raise budget_error()
+                    last_exc = None
+                    break
+                except SSLError as exc:
+                    raise RuntimeError(
+                        f"SSL error downloading repo — {exc}\n"
+                        "Fixes:\n"
+                        "  • pip install --upgrade certifi\n"
+                        "  • set REQUESTS_CA_BUNDLE=/path/to/your-ca-bundle.pem in .env\n"
+                        "  • set GITHUB__SSL_VERIFY=false in .env to skip verification (insecure)"
+                    ) from exc
+                except (ConnectionError, Timeout) as exc:
+                    last_exc = exc
+                    if attempt < 2:
+                        pause = 2 ** attempt
+                        if time.monotonic() - started + pause > budget:
+                            raise budget_error() from exc
+                        time.sleep(pause)
 
         if last_exc:
             raise RuntimeError(
@@ -514,7 +540,8 @@ class GitHubClient:
     @cached_property
     def _gh_once(self) -> Github:
         cfg = get_config().github
-        return Github(cfg.token or None, base_url=self._base_url, per_page=100, retry=None)
+        return Github(cfg.token or None, base_url=self._base_url, per_page=100, retry=None,
+                      timeout=int(cfg.request_timeout_seconds))
 
     def check_rate_limit(self) -> dict:
         rate = self._gh.get_rate_limit()
