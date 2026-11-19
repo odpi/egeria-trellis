@@ -48,6 +48,39 @@ class TestHardCeiling:
             pack(s, {"opt": cand("opt")}, 1000)
 
 
+class TestRequiredFirst:
+    """Required sections are admitted before optional ones, so only a required
+    section that cannot fit on its own may fail the compile."""
+
+    def test_an_optional_section_never_starves_a_required_one(self):
+        """An optional section declared first used to spend the budget a later
+        required one needed, and the compile failed although the required
+        section fitted on its own. The optional one is what must go."""
+        s = spec(Section("evidence"), Section("instructions", required=True))
+        out = pack(s, {"evidence": cand("evidence", 80),
+                       "instructions": cand("instructions", 50)}, 100)
+        assert [p.key for p in out.sections] == ["instructions"]
+        assert [d["key"] for d in out.manifest.dropped] == ["evidence"]
+
+    def test_a_required_group_is_admitted_before_an_earlier_optional_section(self):
+        """A group with a required member packs with the required tier: its
+        members are admitted together, so the whole group goes first."""
+        s = spec(Section("evidence"),
+                 Section("a", group="cmp", required=True), Section("b", group="cmp"))
+        out = pack(s, {"evidence": cand("evidence", 60),
+                       "a": cand("a", 40), "b": cand("b", 40)}, 100)
+        assert [p.key for p in out.sections] == ["a", "b"]
+        assert [d["key"] for d in out.manifest.dropped] == ["evidence"]
+
+    def test_required_first_admission_keeps_spec_order_in_the_output(self):
+        """Admission order changes; the order the context reads in does not."""
+        s = spec(Section("evidence"), Section("instructions", required=True))
+        out = pack(s, {"evidence": cand("evidence", 40),
+                       "instructions": cand("instructions", 50)}, 100)
+        assert [p.key for p in out.sections] == ["evidence", "instructions"]
+        assert [e["key"] for e in out.manifest.packed] == ["evidence", "instructions"]
+
+
 class TestMonotonicity:
     def test_more_budget_never_removes_content(self):
         """Catches a large class of allocator bugs cheaply: any reshuffle that
