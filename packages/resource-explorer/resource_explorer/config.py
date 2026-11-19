@@ -255,7 +255,14 @@ class GitHubConfig(BaseSettings):
     token: str = Field(default="", alias="GITHUB_TOKEN")
     webhook_secret: str = Field(default="", alias="GITHUB_WEBHOOK_SECRET")
     requests_per_hour: int = 5000
+    # The WHOLE zipball download, every attempt and back-off together (TR-62a). Also the clone's subprocess bound.
     clone_timeout_seconds: int = 300
+    # TR-62a: every GitHub request waits at most this long for a connection read (PyGitHub's `timeout`, the
+    # zipball's read timeout). The connect timeout is 10 s.
+    request_timeout_seconds: int = 30
+    # TR-62a: the longest a rate-limit or back-off wait may be. Longer fails the step NOW and names the reset time;
+    # PyGitHub's default slept until the reset (up to an hour, hedwig 2026-11-18).
+    rate_limit_max_wait_seconds: int = 60
     ssl_verify: bool = True  # set GITHUB__SSL_VERIFY=false in .env to bypass (insecure)
     # The single source for the GitHub API base URL (e.g. a GitHub Enterprise
     # install). There is no runtime override: discovery, surveys and ingestion

@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import types
+
 import httpx
 import pytest
 from fastapi.testclient import TestClient
@@ -156,7 +158,10 @@ class TestCancel:
             r = client.post("/api/prefect/flow-runs/11111111-1111-1111-1111-111111111111/cancel")
         assert r.status_code == 502
 
-    def test_calls_set_flow_run_state_with_cancelled(self):
+    def test_calls_set_flow_run_state_with_cancelling_unforced(self):
+        """TR-62b: was `force=True` with a forced CANCELLED, which a worker never acts on (it stops a process only
+        on CANCELLING), so the run went on and wrote (hedwig fbfab6f3). Now CANCELLING, unforced, like Prefect's
+        own CLI."""
         mock_client = AsyncMock()
         mock_client.set_flow_run_state = AsyncMock(return_value=None)
         mock_client.__aenter__.return_value = mock_client
@@ -168,4 +173,17 @@ class TestCancel:
         assert r.json()["status"] == "cancelling"
         mock_client.set_flow_run_state.assert_called_once()
         _, kwargs = mock_client.set_flow_run_state.call_args
-        assert kwargs["force"] is True
+        assert "force" not in kwargs
+        assert kwargs["state"].type.value == "CANCELLING"
+
+    def test_a_refused_cancel_is_a_502_with_the_servers_reason(self):
+        mock_client = AsyncMock()
+        mock_client.set_flow_run_state = AsyncMock(return_value=types.SimpleNamespace(
+            status=types.SimpleNamespace(value="ABORT"),
+            details=types.SimpleNamespace(reason="run is already COMPLETED")))
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        with patch("resource_explorer.web.routes.prefect_status.re_prefect_client", return_value=mock_client):
+            r = client.post("/api/prefect/flow-runs/11111111-1111-1111-1111-111111111111/cancel")
+        assert r.status_code == 502
+        assert "run is already COMPLETED" in r.json()["detail"]

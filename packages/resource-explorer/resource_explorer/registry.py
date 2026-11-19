@@ -3160,6 +3160,11 @@ class ProjectRegistry:
             inv_cols = self._get_table_columns(conn, "project_file_inventory")
             if "vendored" not in inv_cols:
                 conn.execute("ALTER TABLE project_file_inventory ADD COLUMN vendored INTEGER DEFAULT 0")
+            # TR-62b provenance (Architect ruling 2026-11-19): the Prefect flow run that wrote these rows, so "which
+            # run replaced the inventory" is read, not inferred from timestamps (hedwig, run 0065c765). NULL for a
+            # write from no flow run (in-process, CLI) and for every row written before this column; no backfill.
+            if "flow_run_id" not in inv_cols:
+                conn.execute("ALTER TABLE project_file_inventory ADD COLUMN flow_run_id TEXT DEFAULT NULL")
             existing_findings_cols = self._get_table_columns(conn, "project_analysis_findings")
             if "scope_locator" not in existing_findings_cols:
                 conn.execute(
@@ -8455,20 +8460,25 @@ class ProjectRegistry:
         every row gets file_mode='' (Assessment sub-resource cataloging
         plan, D9 Tier 1)."""
         from resource_explorer.ingestion.vendored import provenance
+        from resource_explorer.surveyors import run_cancellation, step_cost_observer
 
         slug = self._normalize_slug(slug)
         indexed_at = datetime.utcnow().isoformat()
         modes_by_path = modes_by_path or {}
+        # TR-62b: this replace runs mid-step, so the check before the step started cannot cover it. Checked
+        # immediately before the DELETE: a cancelled run leaves the previous inventory exactly as it was.
+        run_cancellation.raise_if_cancelled("replacing project_file_inventory")
+        written_by = step_cost_observer.current_flow_run() or None
         with self._conn() as conn:
             conn.execute(
                 "DELETE FROM project_file_inventory WHERE project_slug = ?", (slug,)
             )
             conn.executemany(
                 "INSERT INTO project_file_inventory "
-                "(project_slug, file_path, file_size_bytes, indexed_at, file_mode, vendored) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
+                "(project_slug, file_path, file_size_bytes, indexed_at, file_mode, vendored, flow_run_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 [
-                    (slug, path, size, indexed_at, modes_by_path.get(path, ""), provenance(path))
+                    (slug, path, size, indexed_at, modes_by_path.get(path, ""), provenance(path), written_by)
                     for path, size in paths_with_sizes
                 ],
             )

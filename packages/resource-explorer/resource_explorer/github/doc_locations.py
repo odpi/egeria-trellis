@@ -262,7 +262,10 @@ def _make_client() -> Github:
     token as an Authorization header internally, so it is never in argv,
     a URL, or anything this module logs."""
     cfg = get_config().github
-    return Github(cfg.token or None, base_url=cfg.base_url, per_page=100)
+    from resource_explorer.github.bounded_retry import bounded_kwargs
+
+    # TR-62a: an explicit timeout and a retry that never sleeps past a bound (github/bounded_retry.py).
+    return Github(cfg.token or None, base_url=cfg.base_url, per_page=100, **bounded_kwargs(cfg.token))
 
 
 def _degraded(notes: list[str], exc: Exception, what: str) -> None:

@@ -39,7 +39,7 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, NamedTuple
 from prefect.client.orchestration import PrefectClient
 from resource_explorer.config import DEFAULT_PREFECT_STEP_TIMEOUT_SECONDS, get_config
 from resource_explorer.credential_handoff import assert_no_credentials
@@ -88,6 +88,15 @@ def re_prefect_client() -> PrefectClient:
     """
     config = get_config()
     return PrefectClient(config.prefect.api_url)
+
+
+def re_prefect_sync_client():
+    """`re_prefect_client`'s synchronous twin, for code that runs off any event loop: TR-62's step heartbeat thread
+    and its write-time cancel checks. Same rule, same reason: RE's own configured URL handed to the constructor,
+    never `get_client()`'s ambient settings."""
+    from prefect.client.orchestration import SyncPrefectClient
+
+    return SyncPrefectClient(get_config().prefect.api_url)
 
 
 async def _check_prefect_reachable_async() -> tuple[bool, str]:
@@ -542,16 +551,66 @@ async def _choose_deployment(client: Any, pool: str) -> Any:
     return choice.deployment
 
 
+class CancelOutcome(NamedTuple):
+    """What a cancel request came to.
+
+    - `refused`: "" unless Prefect refused it.
+    - `cancelled`: the run is already CANCELLED. False means CANCELLING: the worker is still stopping it.
+    - `before_start`: CANCELLED, and the run never started (no start_time), so there was no process to stop. Only
+      then may anything say "before it started" (TR-62c R1)."""
+    refused: str = ""
+    cancelled: bool = False
+    before_start: bool = False
+
+
+async def request_cancel(client: Any, flow_run_id: Any) -> CancelOutcome:
+    """Ask Prefect to cancel `flow_run_id` the way its own CLI does (prefect 3.8.1 cli/flow_run.py:345): propose
+    CANCELLING, unforced. Raises on a transport failure.
+
+    TR-62b: RE used to force CANCELLED. A worker stops a run's process only when it sees CANCELLING (prefect 3.8.1
+    `FlowRunCancellingObserver`, _internal/observers.py:310, wired by runner/runner.py:1654), and then sets CANCELLED
+    itself; a forced jump to CANCELLED skips that, so the process ran on (hedwig, fbfab6f3: COMPLETED 68 s after
+    the cancel).
+
+    TR-62c (laz, flow run 90cf24d0, 2026-11-19): a run with no infrastructure yet (SCHEDULED, PENDING) is not moved
+    to CANCELLING. The server REJECTs the proposal ("Scheduled flow run has no infrastructure to terminate.") and
+    sets CANCELLED itself (BypassCancellingFlowRunsWithNoInfra). So an ABORT or REJECT is not by itself a refusal:
+    the run is read again. CANCELLING there is a cancel already under way (e.g. a second Admin Cancel); CANCELLED is
+    a cancel that worked, and "before it started" only when the run has no start_time (R1: an earlier cancel of a
+    run that HAD started is cancelled, not cancelled before it started). Any other state, or a failed read, keeps
+    the refusal."""
+    from prefect.states import Cancelling
+
+    result = await client.set_flow_run_state(flow_run_id=flow_run_id, state=Cancelling())
+    status = str(getattr(getattr(result, "status", None), "value", getattr(result, "status", "")) or "").upper()
+    if status not in ("ABORT", "REJECT"):
+        return CancelOutcome()
+    unread = ""
+    try:
+        run = await client.read_flow_run(flow_run_id)
+        kind = _state_type(getattr(run, "state", None))
+        if kind == "CANCELLING":
+            return CancelOutcome()
+        if kind == "CANCELLED":
+            return CancelOutcome(cancelled=True, before_start=getattr(run, "start_time", None) is None)
+    except Exception as exc:  # an unreadable state proves nothing: the refusal stands, and says it could not check
+        unread = f"; its state could not be read afterwards ({type(exc).__name__})"
+    reason = getattr(getattr(result, "details", None), "reason", "") or "no reason given"
+    return CancelOutcome(refused=f"Prefect refused the cancel ({status.lower()}: {reason}){unread}")
+
+
+async def _cancel_best_effort(client: Any, flow_run_id: Any) -> CancelOutcome:
+    """`request_cancel`, never raising: a transport failure comes back as the refusal words."""
+    try:
+        return await request_cancel(client, flow_run_id)
+    except Exception as exc:
+        return CancelOutcome(refused=f"{type(exc).__name__}: {exc}")
+
+
 async def _cancel_flow_run_best_effort(client: Any, flow_run_id: Any) -> str:
     """Try to cancel `flow_run_id`; return "" on success or a short failure
     description. Never raises."""
-    try:
-        from prefect.states import Cancelled
-
-        await client.set_flow_run_state(flow_run_id=flow_run_id, state=Cancelled(), force=True)
-        return ""
-    except Exception as exc:
-        return f"{type(exc).__name__}: {exc}"
+    return (await _cancel_best_effort(client, flow_run_id)).refused
 
 
 async def _run_prefect_step_api(
@@ -757,19 +816,27 @@ async def _await_flow_run(client: Any, run_id: Any, flow_run_id: str, *, timeout
             kind = "FAILED" if state.is_failed() else "CRASHED"
             raise PrefectFlowRunFailed(
                 f"Prefect flow run '{flow_run_id}' {kind.lower()}: {state.message}", flow_run_id, state=kind)
-        elif state.is_cancelled():
+        elif state.is_cancelled() or _state_type(state) == "CANCELLING":
+            # TR-62b: a cancel is now a CANCELLING request the worker completes; RE disowns the run at the request.
             raise PrefectFlowRunCancelled(f"Prefect flow run '{flow_run_id}' was cancelled.", flow_run_id,
                                           state="CANCELLED")
 
         if clock() >= deadline:
-            cancel_failure = await _cancel_flow_run_best_effort(client, run_id)
+            cancelled = await _cancel_best_effort(client, run_id)
+            cancel_failure = cancelled.refused
+            from resource_explorer.surveyors.step_heartbeat import last_heard_words
+
+            # TR-62a: one clause naming the step's last heartbeat, so a hang says where it hung.
             msg = (
                 f"timed out after {timeout_seconds:g} s waiting for Prefect flow run "
                 f"{flow_run_id} (state {getattr(state, 'name', None) or state.type})"
+                f"{await last_heard_words(client, run_id)}"
             )
             msg += (
                 f"; cancel attempt FAILED ({cancel_failure}) - the run may still be live"
-                if cancel_failure else "; the run was cancelled"
+                if cancel_failure
+                else "; the run was cancelled before it started" if cancelled.before_start
+                else "; the run was cancelled"
             )
             raise PrefectFlowRunTimeout(msg, flow_run_id=flow_run_id, state=str(getattr(state, "name", "") or ""))
 
@@ -825,6 +892,10 @@ def _run_step_in_process_flow(
     except PrefectRunOutcome:
         raise
     except Exception as e:  # the in-process flow ran: an outcome, never a second local run
+        if type(e).__name__ == "CancelledRun":  # prefect.exceptions.CancelledRun: the flow ended Cancelled (TR-62b)
+            raise PrefectFlowRunCancelled(
+                f"the in-process Prefect flow for {step_name} was cancelled ({e}); the step was NOT run locally "
+                "again", "", state="CANCELLED") from e
         raise PrefectFlowRunFailed(
             f"the in-process Prefect flow for {step_name} failed ({type(e).__name__}: {e}); the step was NOT run "
             "locally again", "", state="FAILED") from e
