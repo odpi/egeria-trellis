@@ -3505,7 +3505,8 @@ filesystem_questions:
     plus an RFA recording that Egeria could not reach it.
   catalog_history: '2026-10-22: names resource_reachability, which now has a catalogue entry, so the answer
     reads PARTIAL for want of a probe for databases and repositories rather than GAP for want of a row
-    (review §2); this row is F4.'
+    (review §2); this row is F4. | 2026-11-19: C1: answered from the stored resource_reachability probe
+    row; still PARTIAL (the cost comparison is unread).'
   retired: false
 - id: Q-0055
   question: Where is this resource physically located, under which jurisdiction, and are there residency
@@ -3754,14 +3755,12 @@ filesystem_questions:
   levels:
   - field
   answering:
-    kind: gap
-    analysis_ids: []
+    kind: analysis
+    analysis_ids:
+    - file_data_class_match
     checks: []
-    note: 'GAP: data_class_match (Phase 1 slice 10, design §5.4/§5.8 — matches column name, type and bounded
-      value sampling against every Egeria DataClass the platform holds, producing a DataClassAnnotation
-      per column; an unmatched-but-patterned column is proposed as a new DataClass with contentStatus:
-      DRAFT, linked to its evidence via AssociatedAnnotation) -- data_class_match is not a real analysis
-      for filesystem resources (absent from analysis_catalog.yaml''s filesystem_analyses section).'
+    note: file_data_class_match (the columns of the newest profile run against the data classes Egeria
+      holds, proposals only)
   answering_mechanism: Value Profiling + Egeria Queries
   rationale: 'Generalises the existing PII matching: column name, type and sampled value patterns matched
     against every Egeria DataClass, producing a DataClassAnnotation per column with a stated confidence.
@@ -3769,7 +3768,7 @@ filesystem_questions:
     the observed pattern. Per design §5.8 the confidence is always stated against the sample, never as
     an unqualified "conforms".'
   catalog_history: '2026-10-22: `dataset` withdrawn from Resource Types until a dataset surveyor exists
-    (review §1.1).'
+    (review §1.1). | 2026-11-19: C1: answered from the file_data_class_match run; was GAP.'
   retired: false
 - id: Q-0081
   question: Which low-cardinality columns conform to a known reference-data set, and which should become
@@ -3873,10 +3872,11 @@ filesystem_questions:
     kind: mixed
     analysis_ids:
     - filesystem_inventory
+    - file_profiles
     checks: []
     note: 'MIXED: filesystem_inventory (profiles the tabular data-file schemas it recognizes during the
-      walk, today); GAP: file_profiles (Files brief §3, slice 2) is the same profile promoted to its own
-      step (F3, Q-0101)'
+      walk, today); file_profiles (Files build step 5) is the same profile promoted to its own step (F3,
+      Q-0101)'
   answering_mechanism: Code Analysis
   rationale: filesystem_inventory profiles tabular data file schemas (CSV, Excel, Parquet) it recognizes
     during the same walk — this reuses that profiling rather than a separate pass.
@@ -3957,17 +3957,18 @@ filesystem_questions:
   levels:
   - member
   answering:
-    kind: gap
-    analysis_ids: []
+    kind: analysis
+    analysis_ids:
+    - file_profiles
     checks: []
-    note: 'GAP: file_profiles (Files brief §3, slice 2)'
+    note: file_profiles
   answering_mechanism: Code Analysis
   rationale: 'file_profiles is today''s tabular data-file profiling promoted to its own step so it can
     be run alone and priced: Egeria''s CSV Survey Service per CSV file and RE''s profile for the formats
     Egeria has none for, stored as column rows per run with their source named.'
   catalog_history: '2026-10-22: added: F3 of the Files brief (§2), owner pick 2026-10-20 (review §4).
     Overlaps Q-0095, which filesystem_inventory answers today in the same walk; F3 is the same profile
-    as its own step.'
+    as its own step. | 2026-11-19: C1: answered from the file_profiles run; was GAP.'
   retired: false
 - id: Q-0102
   question: 'What has changed since the last walk: new, modified, removed files, and growth?'
@@ -4009,19 +4010,22 @@ filesystem_questions:
   - field
   answering:
     kind: partial
-    analysis_ids: []
+    analysis_ids:
+    - file_data_class_match
     checks: []
-    note: 'PARTIAL: data_class_match over the file profiles is built (Files build step 8, the folder survey
-      card''s press): the columns of the newest profile run against Egeria''s data classes, with values
-      from the head of each file Resource Explorer profiled, plus filename rules, proposals only; files
-      Egeria''s CSV Survey Service profiled are not sampled yet, and it is not a catalogued file-system
-      analysis'
+    note: 'PARTIAL: file_data_class_match over the file profiles is built (Files build step 8, the folder
+      survey card''s press): the columns of the newest profile run against Egeria''s data classes, with
+      values from the head of each file Resource Explorer profiled, plus filename rules, proposals only;
+      files Egeria''s CSV Survey Service profiled are not sampled yet, and a class match is not a sensitivity
+      review'
   answering_mechanism: Value Profiling
   rationale: data_class_match reuses the database analysis over the columns file_profiles stores, plus
     filename rules, and proposes new data classes only as drafts for a person to accept.
   catalog_history: '2026-10-22: added: F7 of the Files brief (§2), owner pick 2026-10-20 (review §4).
     | 2026-10-28: data_class_match over the file profiles built (Files build step 8); still PARTIAL until
-    Egeria-profiled files are sampled and the analysis is catalogued for file systems.'
+    Egeria-profiled files are sampled and the analysis is catalogued for file systems. | 2026-11-19: C1:
+    answered from the file_data_class_match run (a class match, not a sensitivity review, so it stays
+    PARTIAL).'
   retired: false
 - id: Q-0104
   question: 'Does this file system contain a recognisable structure: a project, a dataset layout, an archive,
@@ -4065,15 +4069,18 @@ filesystem_questions:
   levels:
   - container
   answering:
-    kind: gap
-    analysis_ids: []
+    kind: analysis
+    analysis_ids:
+    - narrative_docs
     checks: []
-    note: 'GAP: folder_narratives (Files brief §3, slice 1)'
+    note: 'narrative_docs (the narrative files the walk found, read in full: files, sections and passages;
+      each passage a proposal stated by its file)'
   answering_mechanism: Agent-Based Analysis + Human-Supplied
   rationale: folder_narratives is sought proactively, read as evidence, and proposes — a document says
     what the data is, a person confirms. For a repository the README is already read by architecture_doc_lens.
   catalog_history: '2026-10-22: added: F11 of the Files brief (§2), owner pick 2026-10-20 (review §4);
-    kinds filesystem and repo (the open-data kind has no adapter yet).'
+    kinds filesystem and repo (the open-data kind has no adapter yet). | 2026-11-19: C1: answered from
+    the narrative_docs run; was GAP.'
   retired: false
 - id: Q-0106
   question: Which files are duplicates of each other, or of files in another registered file system?
@@ -4161,17 +4168,20 @@ filesystem_questions:
   levels:
   - resource
   answering:
-    kind: direct
-    analysis_ids: []
+    kind: analysis
+    analysis_ids:
+    - survey_price
     checks: []
-    note: N/A — the folder survey's price line before the Survey press (Files brief F12, the price-before-you-run
-      rule X-06), not an analysis
+    note: 'survey_price (the price lines the survey steps show before their presses: the walk''s, the
+      data-file profiles'', the narratives'' and the class match''s; a step with no price is named as
+      not priced)'
   answering_mechanism: Code Analysis
   rationale: 'The folder survey''s price line, shown before the Survey press: the newest walk''s files,
     bytes and wall time on this machine, whether it was capped, the directories not walked, and the heaviest
     folders'' share of the bytes.'
   catalog_history: '2026-10-28: added: F12 of the Files brief (§2), the second slice the owner named on
-    2026-10-20 ("follow"); built as Files build step 6.'
+    2026-10-20 ("follow"); built as Files build step 6. | 2026-11-19: C1: answered from the survey_price
+    lines; was N/A, a direct field.'
   retired: false
 open_data_questions:
 - id: Q-0113

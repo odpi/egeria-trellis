@@ -37,6 +37,9 @@ from pathlib import Path, PurePosixPath
 log = logging.getLogger(__name__)
 
 STEP_KEY = "narrative_docs"
+#: The stale warning, in the words the survey card shows beside the run (fs-survey.js `narrativeStale`); the question's
+#: answer says it too when the stored run read an older walk than the newest one.
+STALE_WORDS = "a newer walk found these files · read them again to bring the index up to date"
 #: The collection type: one collection per file system, `fs_<slug>_narratives`.
 COLLECTION_TYPE = "narratives"
 CLAIM_STALE_SECONDS = 900

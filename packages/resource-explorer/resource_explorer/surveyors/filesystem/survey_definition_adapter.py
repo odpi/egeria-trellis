@@ -363,6 +363,14 @@ register_adapter(_ADAPTER)
 #: entry — flagged, not fixed, since nothing here is broken today.
 FILESYSTEM_ANALYSIS_STEP_MAP: dict[str, list[str]] = {
     "filesystem_inventory": ["filesystem_inventory"],
+    # C1 (2026-11-19): the three built steps that have their own presses and routes. Each names its own step_runs key, so
+    # a run credits the question it answers ("answered from the <step> run") instead of leaving it "Not yet run".
+    # `filesystem_library_step_key` still reads only attached Analytic Library steps, so none of these gains a Run route.
+    # A completed Egeria Folder Survey (`egeria-native:*`) credits filesystem_inventory in
+    # `registry._step_run_times`, not here: it is a row property (a report read back), not a step key.
+    "file_profiles": ["file_profiles"],
+    "narrative_docs": ["narrative_docs"],
+    "file_data_class_match": ["file_data_class_match"],
 }
 
 
@@ -490,13 +498,173 @@ def _filesystem_inventory_headline(registry, slug: str) -> dict | None:
     return {"label": " · ".join(bits), "status": "measured"}
 
 
+# ── C1 (2026-11-19): the questions answer from the runs that answer them ─────────────────────────────────────────────
+# Four more readers over rows the steps already stored. Each answer is the step's own run words (no new prose) and a
+# step that never ran stays "Not yet run" through the facts layer's run gate: a reader returns {} only when the step has
+# no stored run to read, and the gate (a step_runs row) decides never-run. A run row with nothing readable behind it is
+# "not established", never "ran and found nothing".
+def _not_established(**extra) -> dict:
+    from resource_explorer.surveyors.result_status import NOT_ESTABLISHED
+
+    return {"_status": {"state": NOT_ESTABLISHED}, **extra}
+
+
+def _date(stamp) -> str:
+    return str(stamp or "")[:10]
+
+
+def _file_profiles_results(registry, slug: str) -> dict:
+    from resource_explorer.surveyors.filesystem.file_profiles import profiles_view
+
+    run = (profiles_view(registry, slug) or {}).get("run")
+    if not run:
+        return _not_established()
+    c = run["counts"]
+    return {"run_at": run["run_id"], "words": run["words"], "files": c["files"], "profiled": c["profiled"],
+            "by_egeria": c["by_egeria"], "by_re": c["by_re"], "sampled": c["sampled"], "not_read": c["not_read"],
+            "not_read_formats": c["not_read_formats"], "not_permitted": c["not_permitted"]}
+
+
+def _file_profiles_headline(registry, slug: str) -> dict | None:
+    value = _file_profiles_results(registry, slug)
+    return {"label": value["words"], "status": "measured"} if value.get("words") else None
+
+
+def _narrative_docs_results(registry, slug: str) -> dict:
+    from resource_explorer.surveyors.filesystem import narrative_docs
+
+    run = (narrative_docs.view(registry, slug) or {}).get("run")
+    if not run:
+        return _not_established()
+    o = run.get("outcomes") or {}
+    return {"run_at": run.get("ran_at", ""), "words": run["words"], "stated": run["stated"],
+            "stale": bool(run.get("stale")), "files_read": o.get(narrative_docs.READ, 0),
+            "sections": run.get("sections", 0), "passages": run.get("stored", 0)}
+
+
+def _narrative_docs_headline(registry, slug: str) -> dict | None:
+    value = _narrative_docs_results(registry, slug)
+    if not value.get("words"):
+        return None
+    from resource_explorer.surveyors.filesystem import narrative_docs
+
+    label = f"{value['words']} · {value['stated']}"
+    if value["stale"]:
+        label += f" · {narrative_docs.STALE_WORDS}"
+    return {"label": label, "status": "measured"}
+
+
+def _file_data_class_match_results(registry, slug: str) -> dict:
+    from resource_explorer.surveyors.filesystem import file_class_match
+
+    run = (file_class_match.view(registry, slug) or {}).get("run")
+    if not run:
+        return _not_established()
+    return {"run_at": run.get("ran_at", ""), "words": run["words"], "stale": bool(run.get("stale")),
+            "columns": run.get("columns", 0), "files": run.get("files", 0), "established": run.get("established", 0),
+            "privacy_relevant": run.get("privacy_relevant", 0), "proposals": run.get("proposals", 0),
+            "data_classes": (run.get("catalog") or {}).get("data_class_count", 0)}
+
+
+def _file_data_class_match_headline(registry, slug: str) -> dict | None:
+    value = _file_data_class_match_results(registry, slug)
+    if not value.get("words"):
+        return None
+    from resource_explorer.surveyors.filesystem import file_class_match
+
+    label = value["words"]
+    if value["stale"]:
+        label += f" · {file_class_match.STALE_WORDS}"
+    return {"label": label, "status": "measured"}
+
+
+def _reach_fork(registry, slug: str):
+    """The fork state the newest stored probe row proves (never a probe), or None when nothing was ever probed."""
+    from resource_explorer import file_reach
+
+    get = getattr(registry, "get_filesystem", None)
+    fs = get(slug) if get else None
+    row = registry.get_latest_reachability(slug) if fs is not None else None
+    return file_reach.fork_from_row(fs, row) if row else None
+
+
+def _resource_reachability_results(registry, slug: str) -> dict:
+    fork = _reach_fork(registry, slug)
+    if fork is None:
+        return {}
+    return {"state": fork.state, "sentence": fork.sentence or fork.why, "checked_at": fork.checked_at,
+            "surveyor": fork.surveyor}
+
+
+def _resource_reachability_headline(registry, slug: str) -> dict | None:
+    value = _resource_reachability_results(registry, slug)
+    return {"label": value["sentence"], "status": "measured"} if value.get("sentence") else None
+
+
+def _has_reach_row(registry, slug: str) -> bool:
+    """A stored probe row is the whole run record of reach, so with one it reads live and without one it is "Not yet run"."""
+    return _reach_fork(registry, slug) is not None
+
+
+def _is_priced(price: dict) -> bool:
+    return bool(price.get("priced") if "priced" in price else price.get("walk"))
+
+
+def _survey_price_parts(registry, slug: str) -> list[tuple[str, dict]]:
+    """[(step label, its price line)] for the steps that price their press: the walk, the profiles, the narratives and the
+    class match. Each from its own `price()`; read-only (a stored walk or run, never a probe)."""
+    from resource_explorer import file_reach
+    from resource_explorer.surveyors.filesystem import file_class_match, file_profiles, narrative_docs, walk_derived
+
+    leads = _egeria_leads(registry, slug)
+    return [("walk", walk_derived.price(registry, slug, egeria_leads=leads)),
+            ("data-file profiles", file_profiles.price(registry, slug)),
+            ("narratives", narrative_docs.price(registry, slug)),
+            ("class match", file_class_match.price(registry, slug))]
+
+
+def _survey_price_results(registry, slug: str) -> dict:
+    parts = _survey_price_parts(registry, slug)
+    priced = [(n, p["words"]) for n, p in parts if _is_priced(p) and p.get("words")]
+    if not priced:
+        return {}
+    return {"priced_steps": [n for n, _ in priced], "not_priced_steps": [n for n, p in parts if not _is_priced(p)],
+            "lines": {n: w for n, w in priced}}
+
+
+def _survey_price_headline(registry, slug: str) -> dict | None:
+    value = _survey_price_results(registry, slug)
+    if not value:
+        return None
+    label = "; ".join(f"{n}: {w}" for n, w in value["lines"].items())
+    if value["not_priced_steps"]:
+        label += f"; not priced: {', '.join(value['not_priced_steps'])}"
+    return {"label": label, "status": "measured"}
+
+
+def _has_survey_price(registry, slug: str) -> bool:
+    return bool(_survey_price_results(registry, slug))
+
+
 FILESYSTEM_ANALYSIS_RESULTS_MAP: dict[str, tuple] = {
     "filesystem_inventory": (_filesystem_inventory_results, None),
+    "file_profiles": (_file_profiles_results, None),
+    "narrative_docs": (_narrative_docs_results, None),
+    "file_data_class_match": (_file_data_class_match_results, None),
+    "resource_reachability": (_resource_reachability_results, None),
+    "survey_price": (_survey_price_results, None),
 }
 
 #: See DATABASE_ANALYSIS_HEADLINE_MAP's docstring — same "not built yet,
 #: doesn't block the map" gap, kept explicit rather than silently absent.
-FILESYSTEM_ANALYSIS_HEADLINE_MAP: dict = {"filesystem_inventory": _filesystem_inventory_headline}
+FILESYSTEM_ANALYSIS_HEADLINE_MAP: dict = {
+    "filesystem_inventory": _filesystem_inventory_headline,
+    "file_profiles": _file_profiles_headline,
+    "narrative_docs": _narrative_docs_headline,
+    "file_data_class_match": _file_data_class_match_headline,
+    "resource_reachability": _resource_reachability_headline,
+    "survey_price": _survey_price_headline,
+}
 
 
 # ── user steps (extensibility brief 2c; Files build step 6) ─────────────────
@@ -516,6 +684,21 @@ FILESYSTEM_ANALYSIS_KINDS: dict[str, AnalysisKind] = {
     "filesystem_inventory": AnalysisKind("filesystem_inventory", ["filesystem_inventory"], results=AnalysisKindResults(
         _filesystem_inventory_results, None, render="metrics", headline_reader=_filesystem_inventory_headline,
         live_read=_egeria_leads)),
+    # C1: each answers from its step's stored run; the run gate (a step_runs row) keeps "Not yet run" for a step that never
+    # ran. resource_reachability and survey_price have no run row to gate on, so they read live once their stored row
+    # (a probe) or priced line exists, and say "Not yet run" before.
+    "file_profiles": AnalysisKind("file_profiles", ["file_profiles"], results=AnalysisKindResults(
+        _file_profiles_results, None, render="metrics", headline_reader=_file_profiles_headline)),
+    "narrative_docs": AnalysisKind("narrative_docs", ["narrative_docs"], results=AnalysisKindResults(
+        _narrative_docs_results, None, render="metrics", headline_reader=_narrative_docs_headline)),
+    "file_data_class_match": AnalysisKind("file_data_class_match", ["file_data_class_match"], results=AnalysisKindResults(
+        _file_data_class_match_results, None, render="metrics", headline_reader=_file_data_class_match_headline)),
+    "resource_reachability": AnalysisKind("resource_reachability", [], results=AnalysisKindResults(
+        _resource_reachability_results, None, render="metrics", headline_reader=_resource_reachability_headline,
+        live_read=_has_reach_row)),
+    "survey_price": AnalysisKind("survey_price", [], results=AnalysisKindResults(
+        _survey_price_results, None, render="metrics", headline_reader=_survey_price_headline,
+        live_read=_has_survey_price)),
 }
 
 from resource_explorer.surveyors import survey_step_host as _survey_step_host  # noqa: E402
