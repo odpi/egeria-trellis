@@ -45,9 +45,18 @@ class FakeStore:
     def drop_collection(self, c):
         self.collections.pop(c, None)
 
-    def insert(self, c, texts, metas):
+    def insert(self, c, texts, metas, *, id_collection=None):
+        # TR-69 inserts under a staging name (ids minted under the live name) and swaps it in; before it, straight in.
         self.collections.setdefault(c, []).extend(zip(texts, metas))
         return len(texts)
+
+    def swap_collections(self, renames, **kw):
+        after = dict(self.collections)
+        for old, new in renames:
+            if old not in after or new in after:
+                raise ValueError(f"cannot rename {old!r} to {new!r}")
+            after[new] = after.pop(old)
+        self.collections = after
 
 
 @pytest.fixture
