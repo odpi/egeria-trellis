@@ -503,6 +503,7 @@ def _fake_surveyor(monkeypatch, *, landed):
         def __init__(self, **kw):
             super().__init__()
             self.connect = lambda: None
+            self._find_element_guid = lambda *a, **k: ""          # no report of this walk is in Egeria yet (C3: looked up first)
             self._asset_maker = maker
 
         def _create_annotations(self, anns, report_guid, slug, at):
@@ -891,18 +892,23 @@ def test_an_extensions_only_publish_carries_no_path_or_name_even_if_the_blob_hel
 
 
 @pytest.mark.usefixtures("signed_in_caller")
-def test_publishing_a_run_twice_is_refused_the_second_time_in_a_plain_sentence(api, registry, tmp_path, monkeypatch):
+def test_publishing_a_run_twice_is_answered_nothing_new_not_refused(api, registry, tmp_path, monkeypatch):
+    """C3: the second press is 200 "already published · nothing new to send" (it was a 409), and creates nothing."""
+    from tests.fs_egeria_fake import FakeEgeria, install
+
     client, headers = api
     _register(registry, _tree(tmp_path))
     _probe_row(registry, "egeria_verified")
-    _fake_surveyor(monkeypatch, landed=None)
+    egeria = install(monkeypatch, FakeEgeria())
     first = client.post("/api/filesystems/walkme/walk-extensions", json={"publish": False}, headers=headers)
     assert first.status_code == 200
     ok = client.post("/api/filesystems/walkme/walk-extensions/publish", headers=headers)
     assert ok.status_code == 200 and ok.json()["published"] is True
+    made = len(egeria.annotation_creates)
     again = client.post("/api/filesystems/walkme/walk-extensions/publish", headers=headers)
-    assert again.status_code == 409 and "already published" in again.json()["detail"]
-    # a newer run is publishable again
+    assert again.status_code == 200 and again.json()["words"] == "already published · nothing new to send"
+    assert len(egeria.annotation_creates) == made and len(egeria.report_creates) == 1
+    # a newer run is a new report
     client.post("/api/filesystems/walkme/walk-extensions", json={"publish": False}, headers=headers)
     assert client.post("/api/filesystems/walkme/walk-extensions/publish", headers=headers).status_code in (200,)
 

@@ -21,11 +21,13 @@ from resource_explorer.surveyors.filesystem import narrative_docs as nd
 
 
 class FakeStore:
-    """The four calls the step makes, in memory."""
+    """The calls the step makes, in memory. Like Postgres, an insert whose text holds a NUL byte is refused, and the
+    swap renames in order, all or nothing. `fail_insert` makes every insert raise."""
 
     def __init__(self):
         self.collections: dict[str, list[tuple[str, dict]]] = {}
         self.dropped: list[str] = []
+        self.fail_insert: Exception | None = None
 
     def collection_name(self, slug, ctype):
         return f"{slug}_{ctype}"
@@ -37,9 +39,24 @@ class FakeStore:
         self.dropped.append(c)
         self.collections.pop(c, None)
 
-    def insert(self, c, texts, metas):
+    def insert(self, c, texts, metas, *, id_collection=None):
+        if self.fail_insert is not None:
+            raise self.fail_insert
+        if any("\x00" in t for t in texts):
+            raise ValueError("A string literal cannot contain NUL (0x00) characters.")
         self.collections.setdefault(c, []).extend(zip(texts, metas))
         return len(texts)
+
+    def rename_collection(self, old, new):
+        self.swap_collections([(old, new)])
+
+    def swap_collections(self, renames, **kw):
+        after = dict(self.collections)
+        for old, new in renames:
+            if old not in after or new in after:
+                raise ValueError(f"cannot rename {old!r} to {new!r}")
+            after[new] = after.pop(old)
+        self.collections = after
 
 
 @pytest.fixture
@@ -187,7 +204,8 @@ def test_a_file_swapped_for_a_link_or_grown_past_the_limit_is_not_read(registry,
     _stored(registry, "2026-10-28T09:00:00", [{"file": "README.md"}, {"file": "NOTES.md"}])
     monkeypatch.setattr(nd, "_max_bytes", lambda: 100)
     out = nd.run_narrative_docs(fs, registry, store_factory=lambda: store)
-    assert out["outcomes"] == {"read": 0, "too_large": 1, "not_a_plain_file": 1, "secret_name": 0, "empty": 0}
+    assert out["outcomes"] == {"read": 0, "too_large": 1, "not_a_plain_file": 1, "secret_name": 0, "empty": 0,
+                               "binary": 0}
     assert out["stored"] == 0
     words = nd.run_words(out)
     assert "0 files read in full" in words and "grown past the size limit since the walk" in words
@@ -201,10 +219,48 @@ def test_the_collection_is_replaced_whole_on_each_run(registry, tmp_path, store)
     first = len(store.collections["fs_tree_narratives"])
     (Path(fs.local_mount_point) / "codebook.txt").unlink()
     _walk(registry, fs)
-    nd.run_narrative_docs(fs, registry, store_factory=lambda: store)
-    assert store.dropped == ["fs_tree_narratives"]
+    out = nd.run_narrative_docs(fs, registry, store_factory=lambda: store)
+    # the new passages are swapped in; the replaced index is dropped only after (TR-69)
+    assert store.dropped == ["fs_tree_narratives__old"] and out["leftover"] == ""
     rows = store.collections["fs_tree_narratives"]
     assert len(rows) < first and {m["file_path"] for _, m in rows} == {"survey/README.md"}
+
+
+def _three_with_one_binary(tmp_path) -> Path:
+    root = tmp_path / "nul"
+    root.mkdir()
+    (root / "README.md").write_text("# Readme\n\nGood words.\n")
+    (root / "GUIDE.md").write_text("# Guide\n\nMore good words.\n")
+    (root / "BLOB.md").write_bytes(b"intro\x00\x01binary")
+    return root
+
+
+def test_a_file_with_nul_bytes_is_not_read_and_the_others_are(registry, tmp_path, store):
+    fs = _register(registry, _three_with_one_binary(tmp_path))
+    _stored(registry, "2026-11-19T02:00:00", [{"file": "README.md"}, {"file": "GUIDE.md"}, {"file": "BLOB.md"}])
+    out = nd.run_narrative_docs(fs, registry, store_factory=lambda: store)
+    assert out["outcomes"]["read"] == 2 and out["outcomes"]["binary"] == 1
+    assert {"file_path": "BLOB.md", "outcome": "binary", "chunks": 0} in out["files_detail"]
+    assert {m["file_path"] for _, m in store.collections["fs_tree_narratives"]} == {"README.md", "GUIDE.md"}
+    assert "1 file binary content (NUL bytes) · not read" in nd.run_words(out)
+
+
+def test_a_failed_insert_keeps_the_previous_index(registry, tmp_path, store):
+    fs = _register(registry, _tree(tmp_path))
+    _walk(registry, fs)
+    nd.run_narrative_docs(fs, registry, store_factory=lambda: store)
+    before = list(store.collections["fs_tree_narratives"])
+    runs = len(registry.query_step_runs(slug="tree", step_key=nd.STEP_KEY))
+    store.fail_insert = RuntimeError("connection lost to /secret/path")
+    with pytest.raises(nd.NotStored) as err:
+        nd.run_narrative_docs(fs, registry, store_factory=lambda: store)
+    assert "RuntimeError" in str(err.value) and "previous index is kept" in str(err.value)
+    assert "secret" not in str(err.value)
+    assert store.collections == {"fs_tree_narratives": before}
+    assert len(registry.query_step_runs(slug="tree", step_key=nd.STEP_KEY)) == runs
+    # and the claim was released: the next run is not refused as already running
+    store.fail_insert = None
+    assert nd.run_narrative_docs(fs, registry, store_factory=lambda: store)["outcomes"]["read"] == 2
 
 
 def test_the_run_row_reads_back_in_words_and_goes_stale_after_a_newer_walk(registry, tmp_path, store):
@@ -273,6 +329,20 @@ def test_the_routes_price_refuse_and_run(api, registry, tmp_path, monkeypatch, s
     from resource_explorer.folder_survey_view import folder_survey_view
 
     assert folder_survey_view(registry, "tree")["narrative_docs"]["run"]["collection"] == "fs_tree_narratives"
+
+
+@pytest.mark.usefixtures("signed_in_caller")
+def test_a_failed_store_is_a_409_sentence_with_no_exception_text(api, registry, tmp_path, monkeypatch, store):
+    client, headers = api
+    fs = _register(registry, _tree(tmp_path))
+    _walk(registry, fs)
+    store.fail_insert = ValueError("A string literal cannot contain NUL (0x00) characters.")
+    monkeypatch.setattr(nd, "default_store", lambda: store)
+    r = client.post("/api/filesystems/tree/narrative-docs", headers=headers)
+    assert r.status_code == 409, r.text
+    detail = r.json()["detail"]
+    assert detail == "the passages could not be stored (ValueError) · the previous index is kept"
+    assert "NUL" not in detail and "Traceback" not in detail
 
 
 def test_stated_by_is_the_path_under_the_root_and_the_section_never_the_bare_name():

@@ -757,3 +757,29 @@ def test_real_pyegeria_returns_an_error_body_as_a_token_and_login_refuses_it(mon
     assert raw == _ERROR_BODY, "pyegeria returns the error body as if it were a token"
 
     assert login_with_password("peterprofile", "wrong", config) is None
+
+
+# ---------------------------------------------------------------------------
+# ttl and extra_claims (TR-10: Studio's short-lived JWTs carry sid/auth_time)
+# ---------------------------------------------------------------------------
+
+def test_ttl_overrides_the_configured_hours_and_is_still_capped_by_egeria():
+    cfg = AuthConfig(jwt_secret="s" * 32, jwt_ttl_hours=8)
+    c = decode_token(create_access_token("u", make_egeria_token(ttl_seconds=3600), cfg,
+                                         ttl=timedelta(minutes=15)), cfg)
+    assert c["exp"] - c["iat"] == 15 * 60
+    c = decode_token(create_access_token("u", make_egeria_token(ttl_seconds=300), cfg,
+                                         ttl=timedelta(minutes=15)), cfg)
+    assert c["exp"] - c["iat"] <= 300
+    with pytest.raises(ValueError):
+        create_access_token("u", make_egeria_token(), cfg, ttl=timedelta(0))
+
+
+def test_extra_claims_are_added_but_never_replace_the_contract():
+    cfg = AuthConfig(jwt_secret="s" * 32)
+    c = decode_token(create_access_token("u", make_egeria_token(), cfg,
+                                         extra_claims={"sid": "abc", "auth_time": 12}), cfg)
+    assert c["sid"] == "abc" and c["auth_time"] == 12 and c["sub"] == "u"
+    for clash in ("sub", "exp", "egeria_token"):
+        with pytest.raises(ValueError):
+            create_access_token("u", make_egeria_token(), cfg, extra_claims={clash: "x"})

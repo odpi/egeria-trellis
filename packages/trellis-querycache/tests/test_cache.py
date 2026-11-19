@@ -6,7 +6,9 @@ which is exactly the bug the audit found.
 """
 from __future__ import annotations
 
+import sys
 import time
+import types
 
 import pytest
 
@@ -196,6 +198,153 @@ class TestStats:
         assert cache.get_stats()["size"] == 0
         assert cache.get_stats()["hits"] == 0
         assert cache.get("q") is None
+
+
+class _FakeRedisError(Exception):
+    """Stands in for `redis.exceptions.RedisError`."""
+
+
+class _FakeRedis:
+    """The handful of Redis commands the backend uses, in memory, with an
+    `up` switch that makes every command fail the way a lost server does."""
+
+    def __init__(self) -> None:
+        self.up = True
+        self.data: dict[str, str] = {}
+        self.sets: dict[str, set[str]] = {}
+
+    def _check(self) -> None:
+        if not self.up:
+            raise _FakeRedisError("Error 111 connecting to localhost:6379. Connection refused.")
+
+    def get(self, key):
+        self._check()
+        return self.data.get(key)
+
+    def set(self, key, value):
+        self._check()
+        self.data[key] = value
+
+    def setex(self, key, ttl, value):
+        self._check()
+        self.data[key] = value
+
+    def sadd(self, key, member):
+        self._check()
+        self.sets.setdefault(key, set()).add(member)
+
+    def expire(self, key, ttl):
+        self._check()
+
+    def smembers(self, key):
+        self._check()
+        return set(self.sets.get(key, set()))
+
+    def delete(self, *keys):
+        self._check()
+        gone = 0
+        for k in keys:
+            gone += (self.data.pop(k, None) is not None) + (self.sets.pop(k, None) is not None)
+        return gone
+
+    def scan_iter(self, match, count):
+        self._check()
+        prefix = match.rstrip("*")
+        return [k for k in list(self.data) if k.startswith(prefix)]
+
+
+@pytest.fixture
+def fake_redis(monkeypatch):
+    """Install a fake `redis` module so the backend runs without a server or
+    the optional `redis` extra."""
+    server = _FakeRedis()
+    module = types.ModuleType("redis")
+    module.from_url = lambda url, decode_responses: server
+    module.exceptions = types.SimpleNamespace(RedisError=_FakeRedisError)
+    monkeypatch.setitem(sys.modules, "redis", module)
+    return server
+
+
+@pytest.fixture
+def redis_cache(fake_redis):
+    return QueryCache(QueryCacheConfig(ttl_seconds=60, backend="redis",
+                                       redis_url="redis://localhost:6379/0"))
+
+
+class TestRedisBackend:
+    def test_set_and_get(self, redis_cache):
+        redis_cache.set("q", {"answer": 42}, scope="r", intent="general")
+        assert redis_cache.get("q", scope="r", intent="general") == {"answer": 42}
+
+    def test_invalidate_scope_removes_only_that_scope(self, redis_cache):
+        redis_cache.set("q", "a", scope="r1")
+        redis_cache.set("q", "b", scope="r2")
+        assert redis_cache.invalidate_scope("r1") == 1
+        assert redis_cache.get("q", scope="r1") is None
+        assert redis_cache.get("q", scope="r2") == "b"
+
+    def test_a_non_json_value_is_left_uncached(self, redis_cache, fake_redis):
+        redis_cache.set("q", object())
+        assert fake_redis.data == {}
+
+
+class TestRedisUnavailable:
+    """A cache that cannot reach its store must not break the operation it was
+    speeding up: reads are misses, writes are skipped, nothing raises."""
+
+    def test_a_read_is_a_miss_not_an_error(self, redis_cache, fake_redis):
+        redis_cache.set("q", "a")
+        fake_redis.up = False
+        assert redis_cache.get("q") is None
+        assert redis_cache.get_stats()["misses"] == 1
+
+    def test_a_write_is_skipped_not_an_error(self, redis_cache, fake_redis):
+        fake_redis.up = False
+        redis_cache.set("q", "a", scope="r")
+        fake_redis.up = True
+        assert redis_cache.get("q", scope="r") is None
+
+    def test_a_write_that_fails_part_way_leaves_no_untracked_entry(self, redis_cache, fake_redis):
+        """Redis dropping between the scope-set and value commands must not
+        leave an entry invalidate_scope cannot find."""
+        def lost(*args):
+            raise _FakeRedisError("Connection reset by peer")
+
+        fake_redis.sadd = lost
+        redis_cache.set("q", "a", scope="r")
+        del fake_redis.sadd
+        assert redis_cache.get("q", scope="r") is None
+
+    def test_the_cache_works_again_once_redis_is_back(self, redis_cache, fake_redis):
+        fake_redis.up = False
+        assert redis_cache.get("q") is None
+        fake_redis.up = True
+        redis_cache.set("q", "a")
+        assert redis_cache.get("q") == "a"
+
+    def test_the_failure_is_logged(self, redis_cache, fake_redis, caplog):
+        fake_redis.up = False
+        with caplog.at_level("WARNING", logger="trellis_querycache.cache"):
+            redis_cache.get("q")
+            redis_cache.set("q", "a")
+        assert "read failed" in caplog.text
+        assert "write failed" in caplog.text
+
+    def test_invalidation_still_raises(self, redis_cache, fake_redis):
+        """Reporting an invalidation that never reached Redis as done would
+        leave stale answers to be served once it is back."""
+        fake_redis.up = False
+        with pytest.raises(_FakeRedisError):
+            redis_cache.invalidate_scope("r")
+
+    def test_errors_other_than_redis_errors_still_raise(self, redis_cache, fake_redis):
+        """Only an unavailable store is absorbed; a bug in the cache is not."""
+        def broken(key):
+            raise AttributeError("not a Redis failure")
+
+        fake_redis.get = broken
+        with pytest.raises(AttributeError):
+            redis_cache.get("q")
 
 
 class TestCacheEntry:

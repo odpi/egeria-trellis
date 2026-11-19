@@ -128,9 +128,12 @@ class FileInventorySurveyor(BaseSurveyor):
             # store connection on every survey run. _store_file_inventory touches
             # only `self.registry` and `self.console`, so those are all it gets.
             shim = SimpleNamespace(registry=self.registry, console=Console(quiet=True))
-            file_count = IngestionPipeline._store_file_inventory(
-                shim, self.project.slug, local_root
-            )
+            from resource_explorer.surveyors import step_heartbeat
+
+            with step_heartbeat.phase("inventorying"):  # TR-62a: the step's heartbeat says what it is doing
+                file_count = IngestionPipeline._store_file_inventory(
+                    shim, self.project.slug, local_root
+                )
 
             # The line census rides the same walk, for the same reason and via
             # the same shim (design doc D1).

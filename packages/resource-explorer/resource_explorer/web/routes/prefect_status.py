@@ -102,16 +102,19 @@ def list_flow_runs(limit: int = 50) -> dict:
     return {"reachable": True, "error": "", "flow_runs": runs}
 
 
-async def _cancel(flow_run_id: str) -> None:
+async def _cancel(flow_run_id: str) -> str:
+    """The run's status after the request: "cancelling" (the worker will stop it) or "cancelled" (it is already
+    CANCELLED, e.g. a run that never started, which Prefect cancels at once: TR-62c). Raises when Prefect refused."""
     from uuid import UUID
 
-    from prefect.client.schemas.objects import StateType
-    from prefect.states import Cancelled
+    from resource_explorer.surveyors.prefect_adapter import request_cancel
 
+    # TR-62b: CANCELLING, unforced, so the worker stops the process (see request_cancel).
     async with re_prefect_client() as client:
-        await client.set_flow_run_state(
-            flow_run_id=UUID(flow_run_id), state=Cancelled(), force=True,
-        )
+        outcome = await request_cancel(client, UUID(flow_run_id))
+    if outcome.refused:
+        raise RuntimeError(outcome.refused)
+    return "cancelled" if outcome.cancelled else "cancelling"
 
 
 @router.post("/flow-runs/{flow_run_id}/cancel")
@@ -121,10 +124,10 @@ def cancel_flow_run(flow_run_id: str) -> dict:
     actual answer to "how do I stop a thrashing survey" for whichever steps
     are Prefect-routed."""
     try:
-        asyncio.run(_cancel(flow_run_id))
+        status = asyncio.run(_cancel(flow_run_id))
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Could not cancel flow run: {exc}")
-    return {"status": "cancelling", "id": flow_run_id}
+    return {"status": status, "id": flow_run_id}
 
 
 def _dispatch_policy_words(prefect_cfg) -> str:

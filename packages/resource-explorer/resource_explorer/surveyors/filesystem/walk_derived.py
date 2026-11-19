@@ -90,10 +90,15 @@ def published_derived(registry, slug: str) -> dict:
 
 
 def _fmt_bytes(n: int) -> str:
+    """Decimal (1000), labelled B/KB/MB/GB: the file-system card's one size format (D12; macOS Finder's). A value that
+    rounds up to 1000 of its unit moves to the next ("999,950 B" is "1.0 MB", never "1,000.0 KB")."""
     v = float(n)
     for unit in ("B", "KB", "MB", "GB"):
-        if v < 1000 or unit == "GB":
-            return f"{v:,.0f} {unit}" if unit == "B" else f"{v:,.1f} {unit}"
+        if unit == "B":
+            if v < 1000:
+                return f"{v:,.0f} B"
+        elif round(v, 1) < 1000 or unit == "GB":
+            return f"{v:,.1f} {unit}"
         v /= 1000
     return f"{v:,.1f} GB"
 
@@ -176,6 +181,16 @@ def price(registry, slug: str, *, egeria_leads: bool = False) -> dict:
             "seconds": seconds, "machine_matches": here, "not_walked_directories": skipped,
             "heaviest_folders": [{"path": f["path"], "bytes": f["bytes"]} for f in heaviest],
             "words": " · ".join(parts)}
+
+
+def measure_price(registry, slug: str) -> dict:
+    """The consent line before "Measure beside" (D13): what that press costs, in the same words as the Survey press's price.
+    "Measure beside" walks the tree again for the per-file rows and hashes, so its cost is the last walk's files, bytes and
+    time on this machine; "not priced" until a walk has measured the tree. Reads stored rows only."""
+    out = price(registry, slug, egeria_leads=False)
+    if not out.get("priced") and _newest_walk(registry, slug) is None:
+        out["words"] = "not priced · Resource Explorer has not walked this folder yet"
+    return out
 
 
 # ── Files build step 7: the derived steps' results in RE's own file-system survey report ─────────────────────────────

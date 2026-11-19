@@ -12,7 +12,7 @@ from resource_explorer.activity_logger import log_survey
 from resource_explorer.registry import ProjectRegistry
 from resource_explorer.observability import openlineage
 from resource_explorer.surveyors import credential_capability, prerequisite_resolver, step_cost_observer
-from resource_explorer.surveyors import result_status, step_preconditions
+from resource_explorer.surveyors import result_status, run_cancellation, step_preconditions
 from resource_explorer.surveyors.survey_report import summarise_annotations, ClassificationAnnotation, SurveyResult
 from resource_explorer.survey_time import as_utc_iso
 
@@ -140,6 +140,7 @@ class SurveyOrchestrator:
             commit = result.survey_commit_sha if step_cost_observer.completed(annotations, raised) else None
             if commit:
                 result.commit_by_step[producer] = commit
+            run_cancellation.raise_if_cancelled(f"recording the work row of {producer}")
             step_cost_observer.record(
                 self._registry, project.slug, observed[0], surveyed_at, survey_commit_sha=commit)
         result.add(ClassificationAnnotation(
@@ -401,6 +402,8 @@ class SurveyOrchestrator:
             capability_probe_resolved = False
 
             for step_key, surveyor in selected:
+                # TR-62b: between steps, a run cancelled under us stops here (a no-op outside a Prefect flow run).
+                run_cancellation.raise_if_cancelled(f"starting step {step_key}")
                 # Preconditions on stored data, before dispatch. A step whose
                 # input another step produces is absent cannot say anything, and
                 # running it anyway costs a slot in every downstream picture —
@@ -543,6 +546,7 @@ class SurveyOrchestrator:
                                if step_cost_observer.completed(annotations, _raised) else None)
                     if _commit:
                         result.commit_by_step[step_key] = _commit
+                    run_cancellation.raise_if_cancelled(f"recording the work row of {step_key}")
                     recorded = step_cost_observer.record(
                         self._registry, project.slug, _observed[0], surveyed_at,
                         survey_commit_sha=_commit)
@@ -589,6 +593,8 @@ class SurveyOrchestrator:
         # (a sub-resource's own analysis) is not the repository's survey and is never kept as one.
         if not scope_locator and result.step_annotations:
             from resource_explorer.surveyors import survey_snapshot
+            # TR-62b: the kept "latest per slug and step" snapshot is never replaced by a cancelled run.
+            run_cancellation.raise_if_cancelled("keeping the survey snapshot")
             for step_key, kept in result.step_annotations.items():
                 if step_key in result.step_errors:
                     continue          # a step that raised keeps its previous result, never a half one

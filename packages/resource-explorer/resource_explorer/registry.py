@@ -3160,6 +3160,11 @@ class ProjectRegistry:
             inv_cols = self._get_table_columns(conn, "project_file_inventory")
             if "vendored" not in inv_cols:
                 conn.execute("ALTER TABLE project_file_inventory ADD COLUMN vendored INTEGER DEFAULT 0")
+            # TR-62b provenance (Architect ruling 2026-11-19): the Prefect flow run that wrote these rows, so "which
+            # run replaced the inventory" is read, not inferred from timestamps (hedwig, run 0065c765). NULL for a
+            # write from no flow run (in-process, CLI) and for every row written before this column; no backfill.
+            if "flow_run_id" not in inv_cols:
+                conn.execute("ALTER TABLE project_file_inventory ADD COLUMN flow_run_id TEXT DEFAULT NULL")
             existing_findings_cols = self._get_table_columns(conn, "project_analysis_findings")
             if "scope_locator" not in existing_findings_cols:
                 conn.execute(
@@ -8455,20 +8460,25 @@ class ProjectRegistry:
         every row gets file_mode='' (Assessment sub-resource cataloging
         plan, D9 Tier 1)."""
         from resource_explorer.ingestion.vendored import provenance
+        from resource_explorer.surveyors import run_cancellation, step_cost_observer
 
         slug = self._normalize_slug(slug)
         indexed_at = datetime.utcnow().isoformat()
         modes_by_path = modes_by_path or {}
+        # TR-62b: this replace runs mid-step, so the check before the step started cannot cover it. Checked
+        # immediately before the DELETE: a cancelled run leaves the previous inventory exactly as it was.
+        run_cancellation.raise_if_cancelled("replacing project_file_inventory")
+        written_by = step_cost_observer.current_flow_run() or None
         with self._conn() as conn:
             conn.execute(
                 "DELETE FROM project_file_inventory WHERE project_slug = ?", (slug,)
             )
             conn.executemany(
                 "INSERT INTO project_file_inventory "
-                "(project_slug, file_path, file_size_bytes, indexed_at, file_mode, vendored) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
+                "(project_slug, file_path, file_size_bytes, indexed_at, file_mode, vendored, flow_run_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 [
-                    (slug, path, size, indexed_at, modes_by_path.get(path, ""), provenance(path))
+                    (slug, path, size, indexed_at, modes_by_path.get(path, ""), provenance(path), written_by)
                     for path, size in paths_with_sizes
                 ],
             )
@@ -16357,7 +16367,41 @@ class ProjectRegistry:
                 ).fetchall()
         except Exception:
             return []
-        return [(r["step_key"], str(r["surveyed_at"])) for r in rows if r["surveyed_at"]]
+        found = [(r["step_key"], str(r["surveyed_at"])) for r in rows if r["surveyed_at"]]
+        if entity_type == "filesystem":
+            # C1: a completed Egeria Folder Survey (report read back) is a run of filesystem_inventory, where Egeria leads.
+            found = sorted(found + [("filesystem_inventory", ts) for ts in self._completed_native_survey_times(slug)],
+                           key=lambda kv: kv[1], reverse=True)
+        return found
+
+    def _completed_native_survey_times(self, slug: str) -> list[str]:
+        """`surveyed_at` of the `egeria-native:*` rows of this file system whose engine action succeeded AND whose
+        survey report was read back (a GUID, a read time and a stored count). A submitted, running, failed or
+        report-less row proves nothing and credits nothing. Empty when Egeria is not what leads the file system: its
+        inventory then reads RE's own walk rows, and a native run would credit a reader that has nothing of it."""
+        from resource_explorer.native_survey_run import SUCCESS_STATUSES
+
+        statuses = sorted(SUCCESS_STATUSES)
+        try:
+            with self._conn() as conn:
+                rows = conn.execute(
+                    "SELECT surveyed_at FROM step_runs WHERE entity_type = 'filesystem' AND slug = ? "
+                    "AND step_key LIKE ? AND engine_action_guid <> '' "
+                    f"AND engine_action_status IN ({', '.join('?' for _ in statuses)}) "
+                    "AND COALESCE(survey_report_guid, '') <> '' AND COALESCE(report_read_at, '') <> '' "
+                    "AND report_annotation_count IS NOT NULL ORDER BY surveyed_at DESC",
+                    (slug, NATIVE_SURVEY_STEP_PREFIX + "%", *statuses),
+                ).fetchall()
+            if not rows:
+                return []
+            from resource_explorer import file_reach
+
+            fs = self.get_filesystem(slug)
+            if fs is None or file_reach.fork_for(self, fs).surveyor != file_reach.SURVEYOR_EGERIA:
+                return []
+        except Exception:
+            return []
+        return [str(r["surveyed_at"]) for r in rows if r["surveyed_at"]]
 
     @staticmethod
     def _covered_by_step_runs(survey_ts: str, step_runs: list[tuple[str, str]],
@@ -17105,7 +17149,11 @@ class ProjectRegistry:
     #: Kinds that are NOT scope, sharing the same signed append-only record, each with its own choices.
     #: `measure`: Curate's publish table, Publish | Keep in RE per declared measure (publish_table.py).
     #: `current_resource_scope` reads SCOPE_KINDS only, so these never count as scope.
-    OTHER_CHOICE_KINDS: ClassVar[dict[str, tuple[str, ...]]] = {"measure": ("publish", "keep")}
+    #: `fs_folder_description` / `fs_data_class`: a person's verdict on a file system's proposals (fs_review.py).
+    OTHER_CHOICE_KINDS: ClassVar[dict[str, tuple[str, ...]]] = {
+        "measure": ("publish", "keep"),
+        "fs_folder_description": ("confirm", "reject"),
+        "fs_data_class": ("confirm", "reject")}
 
     def append_resource_scope_event(self, resource_type: str, slug: str, *, locator: str, kind: str,
                                     choice: str = "", action: str = "set", source: str = "person",

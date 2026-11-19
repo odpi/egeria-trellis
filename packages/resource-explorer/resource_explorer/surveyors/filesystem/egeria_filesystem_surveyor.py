@@ -617,15 +617,35 @@ class EgeriaFileSystemSurveyor:
                 },
             },
         }
-        report_guid = self._asset_maker.create_asset(body=body)
-        log.info(f"Published SurveyReport in Egeria: {report_guid}")
-        made = self._create_annotations(annotations, report_guid, fs_entity.slug, surveyed_at)
+        # Resumable (C3), the pattern of `publish_file_profiles`: this walk's report is read FIRST by its qualifiedName
+        # and reused when it is there, created only when it is absent. Each annotation has a stable name of its own
+        # (`annotation_qualified_name`), so the report's annotations are read once and only those it does not hold are
+        # created; a press with nothing new creates nothing. A report that cannot be read is not "empty": every
+        # annotation is then looked up by name (`publish_annotations`) and none is created blind.
+        report_guid = self._find_element_guid(qualified_name, type_name="SurveyReport", qualified_name=True)
+        reused = bool(report_guid)
+        if not reused:
+            report_guid = self._asset_maker.create_asset(body=body)
+            log.info(f"Published SurveyReport in Egeria: {report_guid}")
+        else:
+            log.info(f"Reusing the SurveyReport already in Egeria for this walk: {report_guid}")
+        held = self._held_annotation_names(report_guid) if reused else None
+        names = self._annotation_names(annotations, fs_entity.slug, surveyed_at)
+        pending = len(annotations) if held is None else sum(1 for n in names if n not in held)
+        nothing_new = reused and held is not None and pending == 0
+        if nothing_new:
+            made = [held[n] for n in names]
+        else:
+            made = self._create_annotations(annotations, report_guid, fs_entity.slug, surveyed_at)
         landed = _published_count(made)
         # "Published" is what landed, read back: the SurveyReport must read back from Egeria by its GUID, and the count is
         # the GUIDs Egeria returned (`annotations_in_egeria`), not the number RE built.
         read_back = self._read_back_by_guid(report_guid, expect_type="SurveyReport")
         guids = self._read_back_guids(report_guid, annotations, fs_entity.slug, surveyed_at)
-        proof = {"report_guid": report_guid, "annotation_count": len(annotations), "annotations_in_egeria": landed,
+        proof = {"report_guid": report_guid, "report_reused": reused, "nothing_new": nothing_new,
+                 # what this press asked Egeria to add: all of it for a new report; None when a reused report could not be read
+                 "added": len(annotations) if not reused else (0 if nothing_new else (None if held is None else pending)),
+                 "annotation_count": len(annotations), "annotations_in_egeria": landed,
                  "report_read_back": bool(read_back.get("matched")),
                  "read_back_why": read_back.get("why", ""), "at": datetime.utcnow().isoformat(),
                  "read_back_guids": guids,
@@ -643,7 +663,8 @@ class EgeriaFileSystemSurveyor:
                                                                 declared.get("annotations") or [],
                                                                 declared_start, guids, fs_entity.slug, surveyed_at)}}
 
-        if registry:
+        if registry and not nothing_new:
+            # A press that sent nothing leaves the stored proof of the press that did: it is still the truth.
             registry.add_filesystem_survey(
                 fs_slug=fs_entity.slug,
                 surveyed_at=surveyed_at,
@@ -653,6 +674,21 @@ class EgeriaFileSystemSurveyor:
             )
 
         return {"filesystem_guid": fs_guid, **proof}
+
+    def _annotation_names(self, annotations: list, fs_slug: str, surveyed_at: str) -> list[str]:
+        """The published name of each annotation, in order: the names `_create_annotations` gives them."""
+        from resource_explorer.surveyors.survey_report import annotation_qualified_name
+
+        prefix = f"Annotation::FileSystem::{fs_slug}::{egeria_name_time(surveyed_at)}"
+        return [annotation_qualified_name(prefix, i, a) for i, a in enumerate(annotations)]
+
+    def _held_annotation_names(self, report_guid: str) -> dict[str, str] | None:
+        """{qualifiedName: GUID} of every annotation the report holds, or None when it could not be read to its end
+        (unknown, never "holds none")."""
+        every = self._report_annotations(report_guid)
+        if every is None:
+            return None
+        return {a.get("qualified_name"): a.get("guid") or "" for a in every}
 
     def _report_annotations(self, report_guid: str) -> list[dict] | None:
         """Every annotation under the report (`egeria_survey_reader.reported_annotations`), paged to its end, or None
@@ -754,6 +790,76 @@ class EgeriaFileSystemSurveyor:
                      "at": datetime.utcnow().isoformat()}
         if registry:
             registry.record_step_run(fs_entity.slug, fp.PUBLISH_STEP_KEY, run_id, entity_type="filesystem",
+                                     source="egeria-published", executor="local", metrics=proof)
+        return proof
+
+    def publish_confirmed_data_classes(self, fs_entity: FileSystemEntity, run_id: str, confirmed: list[dict],
+                                       registry: ProjectRegistry | None = None) -> dict:
+        """C3 item 5, PROPOSED SHAPE (the Architect rules on it before any live use): each data-class match a person
+        confirmed on Curate is one `DataClassAnnotation` (`DataClassAnnotationProperties.candidateDataClassGUIDs`, the
+        same type and builder shape `database/column_profile_step._data_class_annotation` writes for a database column,
+        created with pyegeria's `DataDiscovery.create_annotation`) under RE's own SurveyReport for the match run,
+        `SurveyReport::FileSystem::<slug>::class_match::<run>`, "surveyed by Resource Explorer". It is NOT a
+        classification or a DataClassDefinition link: a file's column is no element of Egeria's, so there is nothing to
+        link the class to.
+
+        Resumable exactly as the walk publish is: the report is read by its qualifiedName first and reused; each
+        annotation has a stable name (`data_class_match` + the column), the report's annotations are read once, and only
+        those it does not hold are created. A rejected, unreviewed or no-longer-proposed match is never in `confirmed`;
+        a confirmed match with no data-class GUID is said in `not_sent`, never sent blind."""
+        from resource_explorer.egeria_linkage import guard_linkage
+        from resource_explorer.private_publish import refuse_unsupported_private
+        from resource_explorer.surveyors.survey_report import DataClassAnnotation
+
+        refuse_unsupported_private(registry, "filesystem", fs_entity.slug, name=fs_entity.display_name or fs_entity.slug)
+        with guard_linkage(registry, "filesystem", fs_entity.slug, fs_entity.display_name or fs_entity.slug,
+                           fs_entity.egeria_asset_guid or ""):
+            self.connect()
+            fs_name = fs_entity.display_name or fs_entity.slug
+            fs_guid = fs_entity.egeria_asset_guid
+            if not fs_guid:
+                raise EgeriaFileSystemSurveyorError(
+                    f"FileSystem '{fs_name}' is not yet published to Egeria — there is no asset to attach the report to.")
+            sendable = [c for c in confirmed if c.get("data_class_guid")]
+            not_sent = [{"key": c["key"], "why": "no data class GUID was recorded for this match"}
+                        for c in confirmed if not c.get("data_class_guid")]
+            annotations = []
+            for c in sendable:
+                v = c.get("verdict") or {}
+                annotations.append(DataClassAnnotation(
+                    summary=f"{c['file']} › {c['column']} matches the data class {c['data_class']}",
+                    analysis_step="data_class_match", annotation_type_name="DataClassMatch",
+                    confidence=int(c.get("confidence") or 0), check_name="data_class_match",
+                    item_key=f"{c['file']} › {c['column']}", label="confirmed",
+                    candidate_data_class_names=[c["data_class_guid"]],
+                    explanation=f"Confirmed by {v.get('by', '')} on {v.get('at', '')} from Resource Explorer's match run {run_id}.",
+                    json_properties={"file": c["file"], "column": c["column"], "dataClass": c["data_class"],
+                                     "confirmedBy": v.get("by", ""), "confirmedAt": v.get("at", ""), "matchRun": run_id}))
+            qualified_name = f"SurveyReport::FileSystem::{fs_entity.slug}::class_match::{run_id}"
+            report_guid = self._find_element_guid(qualified_name, type_name="SurveyReport", qualified_name=True)
+            reused = bool(report_guid)
+            if annotations and not reused:
+                report_guid = self._asset_maker.create_asset(body={
+                    "class": "NewElementRequestBody", "parentGUID": fs_guid, "parentRelationshipTypeName": "ReportSubject",
+                    "properties": {
+                        "class": "AssetProperties", "typeName": "SurveyReport", "qualifiedName": qualified_name,
+                        "displayName": f"Data-class matches: {fs_name}",
+                        "description": f"Data-class matches a person confirmed for {fs_name}, match run {run_id} · surveyed by Resource Explorer",
+                        "additionalProperties": {"annotation_count": str(len(annotations)), "step": "file_data_class_match",
+                                                 "surveyor": "Resource Explorer"}}})
+            held = self._held_annotation_names(report_guid) if (annotations and reused) else {}
+            names = self._annotation_names(annotations, fs_entity.slug, f"class_match::{run_id}")
+            todo = [i for i, n in enumerate(names) if held is None or n not in held]
+            made = (self._create_annotations(annotations, report_guid, fs_entity.slug, f"class_match::{run_id}")
+                    if todo else [(held or {}).get(n) for n in names])
+            per = [{"key": sendable[i]["key"], "guid": (made[i] or "") if isinstance(made, list) and i < len(made) else ""}
+                   for i in range(len(sendable))]
+            proof = {"report_guid": report_guid, "report_reused": reused, "confirmed": len(confirmed),
+                     "sent": len(sendable), "added": len(todo), "nothing_new": bool(sendable) and not todo,
+                     "annotations_in_egeria": _published_count(made) if annotations else 0, "annotations": per,
+                     "not_sent": not_sent, "at": datetime.utcnow().isoformat()}
+        if registry:
+            registry.record_step_run(fs_entity.slug, "file_data_class_match_publish", run_id, entity_type="filesystem",
                                      source="egeria-published", executor="local", metrics=proof)
         return proof
 

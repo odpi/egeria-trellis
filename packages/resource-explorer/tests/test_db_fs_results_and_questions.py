@@ -225,15 +225,18 @@ class TestDatabaseResultsReadersReadStoredRows:
 
 
 class TestFilesystemResultsMap:
-    def test_covers_its_one_analysis(self):
-        """One built-in analysis; everything else in the map is an Analytic Library step attached beside it (Files
-        build step 6), each read by the generic reader for its annotation type."""
+    def test_covers_its_built_in_analyses(self):
+        """The inventory and the five C1 readers over steps' stored runs (file_profiles, narrative_docs,
+        file_data_class_match, the reach probe, the price lines); everything else in the map is an Analytic Library step
+        attached beside them (Files build step 6), each read by the generic reader for its annotation type."""
         from resource_explorer.surveyors import survey_step_host
         from resource_explorer.surveyors.filesystem.survey_definition_adapter import (
             FILESYSTEM_ANALYSIS_RESULTS_MAP,
         )
         library = survey_step_host.attached_user_steps("filesystem")
-        assert set(FILESYSTEM_ANALYSIS_RESULTS_MAP) - library == {"filesystem_inventory"}
+        assert set(FILESYSTEM_ANALYSIS_RESULTS_MAP) - library == {
+            "filesystem_inventory", "file_profiles", "narrative_docs", "file_data_class_match",
+            "resource_reachability", "survey_price"}
 
     def test_empty_when_never_surveyed(self, fs_reg, slug):
         from resource_explorer.surveyors.filesystem.survey_definition_adapter import (

@@ -7,6 +7,9 @@ Names are the box-wide ones, so a deploy sets each value once for every trellis 
                         per box.
   TRELLIS_SERVICE_ACCOUNTS, RE_DAEMON_USER_ID  ids no person may sign in to Studio as (EA refuses the same ones)
   TRELLIS_PORTAL_SECRET verifies the Portal's short-lived SSO token (the Portal's EGERIA_ADVISOR_SSO_SECRET)
+  STUDIO_JWT_TTL_MINUTES  how long one session JWT lives (default 15); the page refreshes it while you're active
+                        (TR-10), and every refresh re-checks your sign-in with Egeria
+  STUDIO_SESSION_MAX_HOURS  no refresh past this long after sign-in (default 8); then you sign in again
   EGERIA_ADVISOR_URL    where the embedded EA panel loads from (default, as the Portal's: http://localhost:8880/)
   STUDIO_PUBLIC_URL     Studio's own public origin (for EA's frame-ancestors / embed origins)
   STUDIO_PORTAL_ORIGINS comma-separated origins allowed to hand a Portal token over by postMessage
@@ -47,7 +50,10 @@ class StudioSettings(BaseSettings):
     jwt_secret: str = Field(default="", validation_alias="TRELLIS_JWT_SECRET")
     portal_secret: str = Field(default="", validation_alias=AliasChoices("STUDIO_PORTAL_SECRET",
                                                                         "TRELLIS_PORTAL_SECRET"))
-    jwt_ttl_hours: int = Field(default=8, validation_alias="STUDIO_JWT_TTL_HOURS")
+    # TR-10 (owner: "shorter TTL + refresh"). 15 min, not an hour: Egeria's own token lasts about an hour and caps
+    # the JWT, so a 1-hour JWT could never be refreshed and Egeria would be re-checked only at sign-in.
+    jwt_ttl_minutes: int = Field(default=15, gt=0, validation_alias="STUDIO_JWT_TTL_MINUTES")
+    session_max_hours: int = Field(default=8, gt=0, validation_alias="STUDIO_SESSION_MAX_HOURS")
     advisor_url: str = Field(default="http://localhost:8880/", validation_alias="EGERIA_ADVISOR_URL")
     public_url: str = Field(default=f"http://localhost:{DEFAULT_PORT}", validation_alias="STUDIO_PUBLIC_URL")
     portal_origins_raw: str = Field(default="", validation_alias="STUDIO_PORTAL_ORIGINS")

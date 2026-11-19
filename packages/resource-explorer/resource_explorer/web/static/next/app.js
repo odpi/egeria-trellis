@@ -138,7 +138,7 @@ import { openFindDbServersDialog } from '/static/next/db-server-discovery.js';
 import { openRegisterFileSystemDialog } from '/static/next/fs-register.js';
 import { openDataRowsHtml, renderOpenDataPane, fetchOpenData, openFindOpenDataDialog } from '/static/next/open-data-kind.js';
 import { openFindByPassagesDialog } from '/static/next/fs-passage-finder.js';
-import { mountFolderSurvey } from '/static/next/fs-survey.js';
+import { mountFolderSurvey, reloadWhenFolderSurveySettles } from '/static/next/fs-survey.js';
 // Chat (PLAN-FINISH-REPOS.md item 9) — chrome-level, like worklist.js/rfa.js:
 // the "Ask" rail and the pane it promotes an answer into, beside whichever
 // stage is active rather than one of the eight itself. See next/chat.js's
@@ -5707,6 +5707,19 @@ function nativeSurveysPaneHtml(res) {
   return res.rows && res.rows.length ? nativeSurveysSectionHtml(res.rows) : '';
 }
 
+/** Read the file-system list again (the stage header's "surveyed" date and "published" word are drawn from it) and redraw
+ *  the header and the sidebar in place. Best effort: a failed read leaves the header as it was. */
+export async function refreshFilesystemSummary(slug) {
+  try {
+    clearCache();
+    state.filesystems = (await listFilesystems()) || [];
+  } catch (_) { return; }
+  if (state.selectedSlug !== slug) return;
+  const host = $('resource-header');
+  if (host) { host.innerHTML = resourceHeaderHtml(slug); bindResourceHeader(); }
+  if ($('sidebar')) renderSidebar();
+}
+
 /** Wire a rendered section (rows or the unreadable line). `reload` re-runs the pane. */
 function bindNativeSurveysPane(root, slug, res, reload) {
   root.querySelector('[data-native-recheck]')?.addEventListener('click', () => reload());
@@ -5721,12 +5734,20 @@ function bindNativeSurveysPane(root, slug, res, reload) {
       if (section && section.parentElement && section.parentElement !== root) section.parentElement.before(host);
       else root.append(host);
     }
-    mountFolderSurvey(host, slug, { onChange: (act, { failed } = {}) => { if (act === 'survey' && !failed) reload(); } });
+    mountFolderSurvey(host, slug, { onChange: (act, { failed } = {}) => { if (act === 'survey' && !failed) refreshFilesystemSummary(slug).finally(() => reload()); } });
   }
   if (res.rows && res.rows.length) {
     // The definition cards follow the same rows: while one's run is in flight its run line is repainted in place from
     // each read, and when it ends the pane reloads once so the card, its controls and its history agree.
     let wasLive = res.rows.some((r) => r.kind === 're_definition' && r.in_flight);
+    // TR-70: on a file system the Folder Survey row is the run the card shows. When no file-system row is live any more
+    // (Egeria's survey settled and was read back), the pane is read again: the card, the header and the questions then
+    // show the new survey with no manual reload. The follow is native-surveys.js's own (2 s, then 10 s, 10 min give-up).
+    const folderSurveySettled = reloadWhenFolderSurveySettles(res.rows, state.resourceType, async () => {
+      if (slug !== state.selectedSlug) return;
+      await refreshFilesystemSummary(slug);          // the stage header's "surveyed" date and "published" word come from the list row
+      if (slug === state.selectedSlug) reload();
+    });
     bindNativeSurveys(root, slug, res.rows, {
       onRows: (rows, { stopped }) => {
         for (const r of rows.filter((x) => x.kind === 're_definition')) {
@@ -5739,6 +5760,7 @@ function bindNativeSurveysPane(root, slug, res, reload) {
         const live = rows.some((r) => r.kind === 're_definition' && r.in_flight);
         if (wasLive && !live) { wasLive = false; if (slug === state.selectedSlug) loadSurveyPane(); }
         wasLive = wasLive || live;
+        folderSurveySettled(rows);
       },
     });
   }

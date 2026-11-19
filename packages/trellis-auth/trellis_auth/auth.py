@@ -175,6 +175,9 @@ def create_access_token(
     config: AuthConfig,
     role: str = "user",
     display_name: Optional[str] = None,
+    *,
+    ttl: Optional[timedelta] = None,
+    extra_claims: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Create the app's signed session JWT, carrying the user's Egeria bearer token.
 
@@ -189,8 +192,12 @@ def create_access_token(
 
     **No password field, ever.** See the module docstring.
 
-    `exp` is `min(now + config.jwt_ttl_hours, the Egeria token's own exp)`. An
-    app session must not outlive the Egeria token it carries.
+    `exp` is `min(now + ttl, the Egeria token's own exp)`, where `ttl` defaults
+    to `config.jwt_ttl_hours`. An app session must not outlive the Egeria token
+    it carries.
+
+    `extra_claims` adds app-specific claims (Studio's `sid` and `auth_time`,
+    TR-10). They never replace the claims above: a clash is a ValueError.
     """
     if not egeria_token:
         raise ValueError(
@@ -199,7 +206,9 @@ def create_access_token(
             "app JWT no longer carries a password (2026-09-04)."
         )
     now = datetime.now(timezone.utc)
-    app_exp = now + timedelta(hours=config.jwt_ttl_hours)
+    if ttl is not None and ttl <= timedelta(0):
+        raise ValueError(f"ttl must be positive, got {ttl}")
+    app_exp = now + (ttl if ttl is not None else timedelta(hours=config.jwt_ttl_hours))
 
     egeria_exp = egeria_token_expiry(egeria_token)
     if egeria_exp is not None:
@@ -220,6 +229,11 @@ def create_access_token(
         "iat": now,
         "exp": app_exp,
     }
+    if extra_claims:
+        clash = set(extra_claims) & set(payload)
+        if clash:
+            raise ValueError(f"extra_claims may not replace {sorted(clash)}")
+        payload.update(extra_claims)
     return jwt.encode(payload, config.jwt_secret, algorithm=config.jwt_algorithm)
 
 

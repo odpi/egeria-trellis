@@ -294,9 +294,13 @@ VALUE_PATTERNS: tuple[ValuePattern, ...] = (
         "an ISO-8601 timestamp held as text",
     ),
     ValuePattern(
-        "e164_phone", r"\+?\d[\d\s().-]{6,20}\d",
-        "a phone-number-shaped string: 8–22 digits with optional +, spaces, "
-        "brackets, dots or hyphens",
+        # international: a required +, then 8–15 digits; or national: 10–15 digits in phone grouping, never an
+        # ISO date, a dotted-quad IP or a plain decimal (TR-75: the optional + matched dates, IPs and codes)
+        "e164_phone",
+        r"(?:\+[1-9](?:[\s.\-()]{0,2}\d){7,14})"
+        r"|(?:(?!\d{4}-\d{2}-\d{2})(?!(?:\d{1,3}\.){3}\d{1,3}$)(?!\d+\.\d+$)"
+        r"(?=(?:\D*\d){10,15}\D*$)(?=.*[\s.\-()])\(?\d[\d\s.\-()]*\d)",
+        "a phone number: + and 8–15 digits, or 10–15 digits grouped like a phone (not a date, IP or decimal)",
         privacy_relevant=True,
     ),
     ValuePattern(
