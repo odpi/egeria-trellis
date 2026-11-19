@@ -27,8 +27,8 @@
  * from which button was pressed. A number the survey did not carry is "–", never 0.
  */
 import { esc, state } from '/static/next/app.js';
-import { getFolderSurvey, attachFilesystemRoot, runFolderSurvey, publishFolderSurvey, checkFilesystemReach, runWalkExtensions, publishWalkExtensions,
-  runFileProfiles, readFileProfilesFromEgeria, publishFileProfiles, runFilesystemAnalysis, runNarrativeDocs, runClassMatch,
+import { getFolderSurvey, attachFilesystemRoot, runFolderSurvey, checkFilesystemReach, runWalkExtensions,
+  runFileProfiles, readFileProfilesFromEgeria, publishFileProfiles, publishChosenMeasures, runFilesystemAnalysis, runNarrativeDocs, runClassMatch,
   pollActivity, activityFailure, failureText } from '/static/re-api.js';
 import { enhanceTable } from '/static/trellis-ui/colresize.js';
 import { fmtBytesDecimal as fmtBytes } from '/static/next/stages/native-report.js';
@@ -76,6 +76,8 @@ export const FOLDER_SURVEY_WORDS = {
   measureBesideHelp: "Walks the folder again for what Egeria's survey does not keep (per-file rows, owners, hashes). Stores them here; publishes nothing.",
   measuringBeside: 'Measuring…',
   publishMeasures: 'Publish these measures to Egeria',
+  // C3: chosen on Curate, not on the report yet: said on the published line, never as a list (the table has the rows).
+  measuresPending: (n) => `${n} chosen measure${n === 1 ? '' : 's'} not on the report yet`,
   publishMeasuresHelp: 'Sends the stored walk measures to Egeria as a survey report. Reads nothing new.',
   measuresHeading: 'Walk measures',
   measuresBy: (date, led) => `measured by Resource Explorer${date ? ` · ${date}` : ''}${led === 'egeria' ? " · beside Egeria's Folder Survey" : ''}`,
@@ -248,13 +250,16 @@ function preResetHtml(claim) {
 
 /** Published means what landed, read back: "published · N of M annotations in Egeria", else "not published · why". An
  *  Egeria-led survey is Egeria's own report. Returns HTML (escaped here). */
-function publishWords(v) {
+function publishWords(v, note = '') {
   const W = FOLDER_SURVEY_WORDS;
   const pre = v.pre_reset || (v.publish && v.publish.pre_reset);
   if (pre) return preResetHtml(pre);
   if (v.surveyor === "Egeria's Folder Survey") return esc(W.published(v.report_guid, ''));
-  return esc(publishWordsRe(v));
+  return esc(pendingWords(note || publishWordsRe(v), v.measures_pending));
 }
+
+/** The published line, and what Curate chose that the report does not hold yet (one tail, C3). */
+const pendingWords = (line, n) => (Number(n) > 0 ? `${line} · ${FOLDER_SURVEY_WORDS.measuresPending(Number(n))}` : line);
 
 function publishWordsRe(v) {
   const W = FOLDER_SURVEY_WORDS;
@@ -289,7 +294,7 @@ export function typesKnownOtherwise(v, c) {
 
 /** The results, one shape for both leads. With `fold` ({open}) the measured results are the Files section, collapsed or
  *  open; without it (Understanding) they draw as before. */
-export function folderResultsHtml(view, fold = null) {
+export function folderResultsHtml(view, fold = null, note = '') {
   const v = view || {};
   if (v.state !== 'measured') {
     return `<div data-fs-results data-fs-state="none" class="mt-s2 text-caveat text-ink-muted">${esc(FOLDER_SURVEY_WORDS.noSurvey)}</div>`;
@@ -301,7 +306,7 @@ export function folderResultsHtml(view, fold = null) {
   const otherwise = typesKnownOtherwise(v, c);
   const body = `<div data-fs-surveyed-by class="text-caveat text-ink">${esc(FOLDER_SURVEY_WORDS.surveyedBy(v.surveyor, day(v.surveyed_at)))}${
   tailHtml(FOLDER_SURVEY_WORDS.surveyedBy(v.surveyor, day(v.surveyed_at)), v.report_sentence)}</div>
-    <div class="text-provenance text-ink-muted" data-fs-published>${publishWords(v)}</div>
+    <div class="text-provenance text-ink-muted" data-fs-published>${publishWords(v, note)}</div>
     ${(v.detail_lines || []).map((l) => `<div class="text-provenance text-ink-muted" data-fs-detail>${esc(l)}</div>`).join('')}
     ${limitsHtml(v.limits)}
     ${(v.broken_symlinks || []).length ? `<div class="text-provenance text-ink-muted" data-fs-broken-list>${
@@ -357,7 +362,7 @@ export function measureTableHtml(id, title, headers, rows) {
 
 /** The walk's extensions (Files build step 1): bulk and depth per folder, owner and mode, hashes, noise directories, and each
  *  folder's own narrative as a proposal. What it says about the rows and about publishing comes from the view's stored proof. */
-export function walkMeasuresHtml(ext, fold = null) {
+export function walkMeasuresHtml(ext, fold = null, note = '') {
   const W = FOLDER_SURVEY_WORDS;
   if (!ext) return `<div data-fs-measures data-fs-measures-state="none" class="mt-s3 text-caveat text-ink-muted">${esc(W.measuresHeading)} · ${esc(W.noMeasures)}</div>`;
   const f = ext.folders || {};
@@ -369,9 +374,9 @@ export function walkMeasuresHtml(ext, fold = null) {
     : `<div data-fs-measures-not-capped class="text-provenance text-ink-muted">${esc(W.complete)}</div>`;
   const pub = ext.publish && ext.publish.pre_reset
     ? preResetHtml(ext.publish.pre_reset)
-    : esc(ext.publish
+    : esc(pendingWords(note || (ext.publish
       ? (ext.publish.published ? W.published(ext.report_guid, ext.publish.landed_words) : W.notPublishedWhy(ext.publish.not_published_why || 'unknown'))
-      : W.notPublished);
+      : W.notPublished), ext.published ? ext.measures_pending : 0));
   const notWalked = Object.entries(ext.not_walked_by_name || {}).map(([n, c]) => `${n} ×${num(c)}`).join(', ');
   const modes = Object.entries(ext.modes || {}).slice(0, 8).map(([m, c]) => `${m} ×${num(c)}`).join(', ');
   const notHashed = W.notHashed(h.over_limit_files, h.secret_named_files, h.symlink_files, h.unreadable_files);
@@ -619,7 +624,7 @@ export const PRESS_FILLS = { survey: 'files', measure: 'measures', profile: 'pro
 
 /** The whole card. `busy` is 'survey' | 'check' | 'publish' | 'measure' | 'publish-measures' | 'profile' | 'read-egeria' |
  *  'publish-profiles' | 'derive' | 'read-narratives' | 'match-classes' | ''. */
-export function folderSurveyCardHtml(view, { busy = '', error = '', open = null, keptNote = '', read = null } = {}) {
+export function folderSurveyCardHtml(view, { busy = '', error = '', open = null, keptNote = '', read = null, publishNote = '' } = {}) {
   const W = FOLDER_SURVEY_WORDS;
   const reach = (view && view.reach) || {};
   const canSurvey = !!reach.surveyor;     // a state that names who leads (Egeria expected or verified; RE-led)
@@ -632,12 +637,15 @@ export function folderSurveyCardHtml(view, { busy = '', error = '', open = null,
   // D11: why the primary press is off, on one line (only while it is off for a reason a person can act on).
   const surveyWhy = busy || inFlight || surveyOn ? '' : needsAsset ? W.pressNoAssetWhy : W.pressNoLeadWhy;
   const surveyLabel = busy === 'survey' ? W.pressing : inFlight ? W.pressingEgeria(clock(view.egeria_run_since)) : W.press;
-  const needsPublish = view && view.state === 'measured' && view.surveyor && !view.published
+  // C3: the Publish also comes back while a chosen measure is not on the walk's report yet.
+  const pendingRe = !!(view && view.published && Number(view.measures_pending) > 0);
+  const needsPublish = view && view.state === 'measured' && view.surveyor && (!view.published || pendingRe)
     && view.surveyor !== "Egeria's Folder Survey" && reach.surveyor === 'Resource Explorer';
   // Egeria's Folder Survey leads: Resource Explorer's own walk measures what that survey does not keep, beside it.
   const besideEgeria = reach.surveyor === "Egeria's Folder Survey";
   const ext = view && view.extensions;
-  const needsPublishMeasures = !!(ext && ext.led_by === 'egeria' && !ext.published && ext.rows && ext.rows.kept);
+  const needsPublishMeasures = !!(ext && ext.led_by === 'egeria' && (!ext.published || Number(ext.measures_pending) > 0)
+    && ext.rows && ext.rows.kept);
   const fp = view && view.file_profiles;
   const fpRun = fp && fp.run;
   // `open` says which sections start open; without it each starts by its own rows (more than 8, or a table: collapsed).
@@ -652,7 +660,7 @@ export function folderSurveyCardHtml(view, { busy = '', error = '', open = null,
       ${btn('check', busy === 'check' ? W.checking : W.check, !busy, W.checkHelp)}
       ${needsAsset ? btn('attach', busy === 'attach' ? W.attaching : W.attach, !busy, W.attachHelp) : ''}
       ${btn('survey', surveyLabel, surveyOn, surveyHelp)}
-      ${needsPublish ? btn('publish', busy === 'publish' ? W.publishing : W.publish, !busy, W.publishHelp) : ''}
+      ${needsPublish ? btn('publish', busy === 'publish' ? W.publishing : pendingRe ? W.publishMeasures : W.publish, !busy, W.publishHelp) : ''}
       ${besideEgeria ? btn('measure', busy === 'measure' ? W.measuringBeside : W.measureBeside, !busy, W.measureBesideHelp) : ''}
       ${needsPublishMeasures ? btn('publish-measures', busy === 'publish-measures' ? W.publishing : W.publishMeasures, !busy, W.publishMeasuresHelp) : ''}
       ${fp && fp.price && fp.price.walk ? btn('profile', busy === 'profile' ? W.profiling : W.profilePress, !busy, W.profilePressHelp) : ''}
@@ -666,8 +674,8 @@ export function folderSurveyCardHtml(view, { busy = '', error = '', open = null,
     ${priceLineHtml(view && view.price)}
     ${besideEgeria && view && view.measure_price ? `<div data-fs-measure-price class="mt-[2px] text-caveat text-ink-muted">${esc(view.measure_price.words || W.notPriced)}</div>` : ''}
     ${error ? `<div data-fs-error class="mt-[2px] text-provenance text-state-warn">${esc(error)}</div>` : ''}
-    ${folderResultsHtml(view, fold('files'))}
-    ${walkMeasuresHtml(view && view.extensions, fold('measures'))}
+    ${folderResultsHtml(view, fold('files'), publishNote)}
+    ${walkMeasuresHtml(view && view.extensions, fold('measures'), publishNote)}
     ${narrativeDocsHtml(view && view.narrative_docs)}
     ${fileProfilesHtml(view && view.file_profiles, fold('profiles'), read)}
     ${classMatchHtml(view && view.class_match, fold('classes'))}
@@ -694,6 +702,7 @@ export async function mountFolderSurvey(host, slug, { onChange = () => {} } = {}
   let filled = '';                                 // the section the last press filled: open for one paint
   let keptNote = '';                               // D10: "Check again" left a settled survey standing; said until the next press
   let readNote = null;                             // the last read-back of Egeria's CSV reports ({ waiting, failed })
+  let publishNote = '';                            // C3: "already published · nothing new to send", until the next press
   const me = whoAmI();
   // Which sections start open: the press that just filled one, else the person's choice for this resource, else rows.
   const openMap = () => {
@@ -708,7 +717,7 @@ export async function mountFolderSurvey(host, slug, { onChange = () => {} } = {}
   });
   const paint = (busy = '') => {
     const open = openMap();
-    host.innerHTML = folderSurveyCardHtml(view, { busy, error, open, keptNote, read: readNote });
+    host.innerHTML = folderSurveyCardHtml(view, { busy, error, open, keptNote, read: readNote, publishNote });
     host.querySelectorAll('[data-fs-act]').forEach((b) => b.addEventListener('click', () => press(b.dataset.fsAct)));
     enhanceOpen();
     host.querySelectorAll('details[data-fs-section]').forEach((d) => {
@@ -730,6 +739,7 @@ export async function mountFolderSurvey(host, slug, { onChange = () => {} } = {}
     error = '';
     filled = '';
     keptNote = '';
+    publishNote = '';
     paint(act);
     try {
       if (act === 'check') {
@@ -738,9 +748,12 @@ export async function mountFolderSurvey(host, slug, { onChange = () => {} } = {}
       }
       else if (act === 'attach') await attachFilesystemRoot(slug);
       else if (act === 'survey') await runFolderSurvey(slug, { publish: false });
-      else if (act === 'publish') await publishFolderSurvey(slug);
+      else if (act === 'publish' || act === 'publish-measures') {
+        // ONE function sends the chosen measures: the same call Curate's "Publish chosen measures" makes.
+        const out = await publishChosenMeasures(slug, view && view.reach && view.reach.surveyor);
+        publishNote = out && out.nothing_new ? (out.words || '') : '';
+      }
       else if (act === 'measure') await runWalkExtensions(slug, { publish: false });
-      else if (act === 'publish-measures') await publishWalkExtensions(slug);
       else if (act === 'profile') await runFileProfiles(slug);
       else if (act === 'read-egeria') {
         const out = await readFileProfilesFromEgeria(slug);

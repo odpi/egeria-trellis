@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import Any
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from resource_explorer.web.routes._annotation_items import build_annotation_items
@@ -156,12 +156,19 @@ def _logged_press(what: str, *, publish: bool = False, outcome=None):
     return deco
 
 
+#: A publish press that finds its report already holds everything chosen: answered 200, creating nothing (C3).
+NOTHING_NEW_WORDS = "already published · nothing new to send"
+
+
 def _published_words(r: dict) -> tuple[str, str]:
     """A publish press's outcome from the answer: what landed, or why nothing was sent."""
     if r.get("publish_refused") or r.get("publish_error"):
         return "error", f"not published · {r.get('publish_refused') or r.get('publish_error')}"[:200]
+    if r.get("published") and r.get("nothing_new"):
+        return "ok", f"{NOTHING_NEW_WORDS} · report {str(r.get('report_guid') or '')[:8]}"
     if r.get("published"):
-        return "ok", f"published · {r.get('landed_words') or 'report ' + str(r.get('report_guid') or '')[:8]}"
+        added = f" · added {r['added']}" if r.get("report_reused") and r.get("added") else ""
+        return "ok", f"published · {r.get('landed_words') or 'report ' + str(r.get('report_guid') or '')[:8]}{added}"
     return "error", f"not published · {r.get('not_published_why') or 'nothing landed in Egeria'}"[:200]
 
 
@@ -955,7 +962,10 @@ def _publish_walk(registry, fs, sd: dict, slug: str, *, check_reach: bool = True
 
         out.update(report_guid=published.get("report_guid", ""), annotation_count=published.get("annotation_count"),
                    annotations_in_egeria=published.get("annotations_in_egeria"), derived=published.get("derived"),
-                   **_publish_words(published))
+                   report_reused=bool(published.get("report_reused")), nothing_new=bool(published.get("nothing_new")),
+                   added=published.get("added"), **_publish_words(published))
+        if out["nothing_new"]:
+            out["words"] = NOTHING_NEW_WORDS
     except NothingToPublish as exc:
         out["publish_refused"] = str(exc)
     except PermissionError:
@@ -1066,11 +1076,8 @@ def publish_filesystem_walk_extensions(slug: str) -> dict:
     if fork.state not in (file_reach.EGERIA, file_reach.EXPECTED) and fork.surveyor == file_reach.SURVEYOR_RE:
         raise HTTPException(status_code=409, detail="Resource Explorer now leads this file system's folder survey, "
                             "so these beside-Egeria measures are out of date. Run the survey and publish that.")
-    # One publish per run: a stored publish row for the same run means it is already in Egeria.
-    if any(r.get("source") == "egeria-published" and r.get("egeria_report_guid")
-           and r.get("surveyed_at") == newest.get("surveyed_at") for r in surveys):
-        raise HTTPException(status_code=409, detail="This extensions run is already published to Egeria. "
-                            "Run it again to publish newer measures.")
+    # No 409 for a run already published (C3): the publish is resumable. It reads this run's report by name, adds only
+    # what is chosen and not on it yet, and says "already published · nothing new to send" when there is none.
     return _publish_walk(registry, fs, newest["survey_data"], slug, check_reach=False)
 
 
@@ -1087,6 +1094,88 @@ def publish_filesystem_folder_survey(slug: str) -> dict:
         raise HTTPException(status_code=409, detail="No Resource Explorer walk to publish. Run the survey first.")
     newest = max(walks, key=lambda r: (r["survey_data"].get("surveyed_at") or r.get("surveyed_at") or ""))
     return _publish_walk(registry, fs, newest["survey_data"], slug)
+
+
+# ── Curate's review of a file system's proposals (C3): verdicts on folder descriptions and data-class matches ────────
+
+class ReviewVerdictBody(BaseModel):
+    kind: str
+    key: str
+    verdict: str
+
+
+@router.get("/{slug}/review")
+def get_filesystem_review(slug: str) -> dict:
+    """The proposals Curate reviews, each with its signed verdict (`fs_review.build_review`). RE's own rows: no Egeria call."""
+    from resource_explorer import fs_review
+
+    registry = ProjectRegistry()
+    if not registry.filesystem_exists(slug):
+        raise HTTPException(status_code=404, detail=f"FileSystem '{slug}' not found.")
+    return fs_review.build_review(registry, slug)
+
+
+@router.put("/{slug}/review/verdict")
+def put_filesystem_review_verdict(slug: str, body: ReviewVerdictBody, request: Request) -> dict:
+    """One signed confirm or reject on one proposal. Nothing leaves Resource Explorer."""
+    from resource_explorer import fs_review
+    from resource_explorer.web.routes.catalogue_scope import _require_author
+    from resource_explorer.web.routes.curate import require_resource_write
+
+    author = _require_author(request, "confirm or reject a proposal")
+    registry = ProjectRegistry()
+    if not registry.filesystem_exists(slug):
+        raise HTTPException(status_code=404, detail=f"FileSystem '{slug}' not found.")
+    require_resource_write(registry, "filesystem", slug, "decision")
+    try:
+        return fs_review.save_verdict(registry, slug, kind=body.kind, key=body.key, verdict=body.verdict, author=author)
+    except fs_review.ReviewRefused as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+#: Switches the confirmed-data-class write on. Off until the Architect rules on its shape (C3 item 5).
+DATA_CLASS_PUBLISH_ENV = "RE_FS_DATA_CLASS_PUBLISH"
+
+
+@router.post("/{slug}/review/publish-data-classes")
+@_logged_press("Publish data classes", publish=True,
+               outcome=lambda r: (NOTHING_NEW_WORDS if r.get("nothing_new") else f"published {r.get('sent')} confirmed data-class matches"))
+def publish_filesystem_data_classes(slug: str) -> dict:
+    """Publish the data-class matches a person confirmed, one DataClassAnnotation each (`publish_confirmed_data_classes`).
+    PROPOSED SHAPE: refused (409) until `RE_FS_DATA_CLASS_PUBLISH=1`, which is set only after the Architect rules on it."""
+    import os
+
+    from resource_explorer import fs_review
+    from resource_explorer.web.routes.curate import require_resource_write
+
+    registry = ProjectRegistry()
+    fs = registry.get_filesystem(slug)
+    if not fs:
+        raise HTTPException(status_code=404, detail=f"FileSystem '{slug}' not found.")
+    if os.environ.get(DATA_CLASS_PUBLISH_ENV) != "1":
+        raise HTTPException(status_code=409, detail="Confirmed data classes are not sent to Egeria yet: the shape of the "
+                            "write waits for the Architect's ruling.")
+    require_resource_write(registry, "filesystem", slug, "publish")
+    run, confirmed = fs_review.confirmed_classes(registry, slug)
+    if not confirmed:
+        raise HTTPException(status_code=409, detail="No data-class match is confirmed on the newest run. Confirm one on Curate first.")
+    from resource_explorer.egeria_clients import Caller
+    from resource_explorer.egeria_clients import refusal as egeria_refusal
+    from resource_explorer.surveyors.filesystem.egeria_filesystem_surveyor import EgeriaFileSystemSurveyor
+
+    surveyor = EgeriaFileSystemSurveyor(platform_url=fs.egeria_url or None, view_server=fs.egeria_server or None,
+                                        identity=Caller())
+    try:
+        proof = surveyor.publish_confirmed_data_classes(fs, run, confirmed, registry)
+    except PermissionError:
+        raise
+    except Exception as exc:  # noqa: BLE001 -- the verdicts stand; the publish failure is said
+        refused = egeria_refusal(exc)
+        if refused is not None:
+            raise refused from exc
+        log.exception("Publishing the confirmed data classes failed for %s", slug)
+        raise HTTPException(status_code=502, detail=f"not published · {exc}")
+    return proof
 
 
 # ── Files build step 6: the derived steps (Analytic Library steps over the walk's kept per-file rows) ───────────────

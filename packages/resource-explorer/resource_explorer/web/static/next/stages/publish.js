@@ -607,7 +607,10 @@ export const FS_PUBLISH_WORDS = {
   attached: 'root folder attached',
   held: 'root folder: GUID held · not read back yet',
   notConfirmed: 'root folder not confirmed',
-  button: 'Publish',
+  // C3: one name per action. This button attaches the root folder and does nothing else; the measures go with
+  // "Publish chosen measures" (the table above, and the Survey card).
+  button: 'Attach root folder',
+  buttonAttached: 'Root folder attached · confirm',
   idle: 'attaches the root folder only',
   signIn: 'sign in to publish — it needs an author',
   confirmed: 'root folder confirmed',
@@ -660,6 +663,7 @@ export async function renderPublishFilesystem(el, slug) {
   let reportsMounted = false;
 
   const draw = (v) => {
+    go.textContent = v && v.state === 'attached' ? FS_PUBLISH_WORDS.buttonAttached : FS_PUBLISH_WORDS.button;
     host.innerHTML = fsRootStateHtml(v);
     bindCopy(host);
     // A failure stays on screen until a press succeeds (a pop-up disappears).

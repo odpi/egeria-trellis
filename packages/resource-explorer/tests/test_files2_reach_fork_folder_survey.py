@@ -556,6 +556,7 @@ def test_the_published_report_names_resource_explorer_and_says_when_capped(regis
     s = EgeriaFileSystemSurveyor()
     s.connect = lambda: None
     s._asset_maker = maker
+    s._find_element_guid = lambda *a, **k: ""          # no report of this walk is in Egeria yet
     made = []
     s._create_annotations = lambda anns, guid, slug, at: made.extend(anns) or [g.annotation_type for g in anns]
     out = s.publish_step_annotations(fs, sd, registry)
