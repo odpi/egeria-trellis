@@ -578,14 +578,15 @@ async def request_cancel(client: Any, flow_run_id: Any) -> CancelOutcome:
     status = str(getattr(getattr(result, "status", None), "value", getattr(result, "status", "")) or "").upper()
     if status not in ("ABORT", "REJECT"):
         return CancelOutcome()
+    unread = ""
     try:
         run = await client.read_flow_run(flow_run_id)
         if _state_type(getattr(run, "state", None)) in ("CANCELLED", "CANCELLING"):
             return CancelOutcome(before_start=True)
-    except Exception:  # noqa: BLE001 - an unreadable state proves nothing; the refusal stands
-        pass
+    except Exception as exc:  # an unreadable state proves nothing: the refusal stands, and says it could not check
+        unread = f"; its state could not be read afterwards ({type(exc).__name__})"
     reason = getattr(getattr(result, "details", None), "reason", "") or "no reason given"
-    return CancelOutcome(refused=f"Prefect refused the cancel ({status.lower()}: {reason})")
+    return CancelOutcome(refused=f"Prefect refused the cancel ({status.lower()}: {reason}){unread}")
 
 
 async def _cancel_best_effort(client: Any, flow_run_id: Any) -> CancelOutcome:

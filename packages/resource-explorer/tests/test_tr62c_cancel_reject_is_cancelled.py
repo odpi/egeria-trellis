@@ -77,6 +77,7 @@ class TestRequestCancel:
         c.read_flow_run = boom
         out = asyncio.run(adapter.request_cancel(c, RUN_ID))
         assert out.refused.startswith("Prefect refused the cancel (reject: ") and not out.before_start
+        assert out.refused.endswith("; its state could not be read afterwards (ConnectionError)")
 
     def test_an_accepted_cancelling_is_not_re_read(self):
         c = _client("ACCEPT", "CANCELLING", before="RUNNING")
