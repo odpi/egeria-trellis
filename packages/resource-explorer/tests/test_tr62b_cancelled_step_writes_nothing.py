@@ -148,15 +148,65 @@ class TestCancelMidStep:
 
 
 class TestOrchestratorChecks:
-    def test_a_cancelled_run_stops_between_steps_and_keeps_no_snapshot(self, tmp_path):
-        """The repo orchestrator checks once per step and before its own work rows and kept snapshot."""
-        from resource_explorer.surveyors import survey_orchestrator as so
+    """The repo orchestrator: a cancel during one step stops it before that step's work row, before the next step,
+    and before the kept "latest per slug and step" snapshot. A real SurveyOrchestrator; its surveyors are mocks."""
 
-        src = open(so.__file__).read()
-        assert src.count("run_cancellation.raise_if_cancelled(") == 4
-        for where in ("starting step", "recording the work row of {producer}",
-                      "recording the work row of {step_key}", "keeping the survey snapshot"):
-            assert where in src
+    def _run(self, registry, run, cancel_in_first):
+        from contextlib import contextmanager
+
+        from resource_explorer.surveyors import survey_snapshot
+        from resource_explorer.surveyors.repo_survey_definition_adapter import STEP_REGISTRY
+        from resource_explorer.surveyors.survey_orchestrator import SurveyOrchestrator
+
+        @contextmanager
+        def fake_root(*a, **k):
+            yield "/fake/root"
+
+        ran: list[str] = []
+        self.ran = ran
+
+        def surveyor(key):
+            cls = MagicMock()
+
+            def run_step():
+                ran.append(key)
+                if cancel_in_first and key == "repo_health":
+                    run.cancel()
+                return []
+
+            cls.return_value.run.side_effect = run_step
+            return cls
+
+        patchers = [patch.object(STEP_REGISTRY[k], "surveyor_cls", surveyor(k)) for k in ("repo_health",
+                                                                                          "repo_language")]
+        patchers += [patch("resource_explorer.surveyors.repo_survey_definition_adapter._acquire_zipball_root",
+                           fake_root),
+                     patch("resource_explorer.surveyors.survey_orchestrator.log_survey")]
+        for p in patchers:
+            p.start()
+        try:
+            with run_cancellation.watching(run.id, run.is_cancelled):
+                SurveyOrchestrator(registry).run(SLUG, steps=["repo_health", "repo_language"])
+        finally:
+            for p in patchers:
+                p.stop()
+        return ran, survey_snapshot._read_index(registry, SLUG)
+
+    def test_a_cancel_during_a_step_stops_before_its_work_row_the_next_step_and_the_snapshot(self, registry):
+        run = FakeRun("fr-orch")
+        with pytest.raises(run_cancellation.RunCancelled) as ei:
+            self._run(registry, run, cancel_in_first=True)
+        assert ei.value.where == "recording the work row of repo_health"
+        assert self.ran == ["repo_health"]                                    # the next step never started
+        from resource_explorer.surveyors import survey_snapshot
+
+        assert survey_snapshot._read_index(registry, SLUG) == {}             # no kept snapshot
+        assert registry.query_step_runs(slug=SLUG) == []                       # no work row
+
+    def test_without_a_cancel_both_steps_run_and_are_kept(self, registry):
+        ran, index = self._run(registry, FakeRun("fr-ok"), cancel_in_first=False)
+        assert ran == ["repo_health", "repo_language"]
+        assert set(index) == {"repo_health", "repo_language"}
 
 
 class TestCancelRequest:
