@@ -292,6 +292,17 @@ export const runWalkExtensions = (slug, body = {}) =>
 /** Publish the newest stored beside-Egeria extensions run (nothing is walked again). */
 export const publishWalkExtensions = (slug) =>
   post(`/api/filesystems/${encodeURIComponent(slug)}/walk-extensions/publish`);
+/** C3: THE publish of a file system's chosen measures. The Survey card's Publish and Curate's "Publish chosen measures"
+ *  both call this and nothing else, so neither has logic of its own. Who leads decides which stored run is sent: Egeria's
+ *  Folder Survey leads, so the measures beside it; Resource Explorer leads, so its own walk. The answer is the publish's
+ *  own (`published`, `report_guid`, `nothing_new`, `words`). */
+export const publishChosenMeasures = (slug, leader) =>
+  (leader === "Egeria's Folder Survey" ? publishWalkExtensions(slug) : publishFolderSurvey(slug));
+/** Curate's review of a file system's proposals (folder descriptions, data-class matches) with each signed verdict. */
+export const getFilesystemReview = (slug) => get(`/api/filesystems/${encodeURIComponent(slug)}/review`);
+/** One signed verdict (`confirm` | `reject`) on one proposal; answers the section it is in. */
+export const putFilesystemReviewVerdict = (slug, kind, key, verdict) =>
+  put(`/api/filesystems/${encodeURIComponent(slug)}/review/verdict`, { kind, key, verdict });
 /** Files build step 5: the data-file profiles (column rows per run), priced before the run. */
 export const runFileProfiles = (slug) => post(`/api/filesystems/${encodeURIComponent(slug)}/file-profiles`);
 export const readFileProfilesFromEgeria = (slug) =>

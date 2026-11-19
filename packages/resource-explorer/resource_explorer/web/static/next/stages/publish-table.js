@@ -15,7 +15,7 @@
  * across surveys, and its line says so (`r.choice.standing`).
  */
 import { stateEntry } from '/static/next/glyphs.js';
-import { getPublishTable, setPublishChoice } from '/static/re-api.js';
+import { getPublishTable, setPublishChoice, getFilesystemReach, publishChosenMeasures } from '/static/re-api.js';
 import { state, esc, openCurate } from '/static/next/app.js';
 import { fmtBytes } from '/static/next/stages/native-report.js';
 
@@ -24,6 +24,23 @@ export const TABLE_HEAD = 'Publish · declared measures';
 export const NO_ROWS_WORDS = 'no analysis declares a measure for this resource yet';
 export const NOT_READ_WORDS = 'the declared measures could not be read';
 export const SIGN_IN_WORDS = 'sign in to choose — a choice needs an author';
+/** C3: a file system's one publish of its chosen measures (the same call the Survey card's Publish makes). */
+export const PUBLISH_CHOSEN = 'Publish chosen measures';
+export const PUBLISH_CHOSEN_NONE = 'choose a measure to Publish first';
+const lastPress = new Map();                                   // slug -> the words the last press ended with, kept across redraws
+
+/** What a publish press ended with, from its own answer (never from the click): one line. */
+export function publishOutcomeWords(out) {
+  if (!out) return 'not published · no answer';
+  if (out.publish_refused) return `not published · ${out.publish_refused}`;
+  if (out.publish_error) return `not published · ${out.publish_error}`;
+  if (out.nothing_new) return out.words || 'already published · nothing new to send';
+  if (out.published) {
+    const dm = out.declared_measures && out.declared_measures.words;
+    return `published${out.landed_words ? ` · ${out.landed_words}` : ''}${dm ? ` · ${dm}` : ''}`;
+  }
+  return `not published · ${out.not_published_why || 'nothing landed in Egeria'}`;
+}
 
 const whoAmI = () => (state.me && (state.me.user_id || state.me.username || state.me.egeria_user)) || '';
 
@@ -50,7 +67,7 @@ function selectorHtml(r, signedIn, entityType = 'database') {
     class="${chosen === choice
     ? 'cursor-pointer rounded-sm border border-accent bg-transparent px-2 py-[2px] text-caveat text-accent-ink disabled:cursor-default disabled:opacity-60'
     : 'cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent disabled:cursor-default disabled:opacity-60'}"${disabled ? ' disabled' : ''}>${label}</button>`;
-  const press = entityType === 'filesystem' ? "the folder survey's Publish" : 'the commit on Contents';
+  const press = entityType === 'filesystem' ? 'Publish chosen measures' : 'the commit on Contents';
   const pubTitle = r.publishable ? `Publish ${r.measure} with ${press}` : r.why_not;
   return `<span class="inline-flex gap-s1" role="group" aria-label="Publish or keep ${esc(r.measure)}">
     ${half('publish', 'Publish', !signedIn || !r.publishable, signedIn ? pubTitle : SIGN_IN_WORDS)}
@@ -120,7 +137,7 @@ export function rowHtml(r, signedIn, entityType = 'database') {
 }
 
 /** The whole table. `table` is the server's answer; null = not read. */
-export function publishTableHtml(table, signedIn, entityType = 'database') {
+export function publishTableHtml(table, signedIn, entityType = 'database', slugWords = '') {
   const head = `<div class="mb-s1 text-caps uppercase tracking-caps text-ink">${TABLE_HEAD}</div>`;
   if (!table || !Array.isArray(table.rows)) {
     return `${head}<div class="text-caveat" data-publish-table-state="not_read">${cue('unknown', NOT_READ_WORDS)}</div>`;
@@ -148,7 +165,17 @@ export function publishTableHtml(table, signedIn, entityType = 'database') {
           <th class="py-[4px] text-left">State</th>
         </tr></thead>
         <tbody>${table.rows.map((r) => rowHtml(r, signedIn, entityType)).join('')}</tbody>
-      </table></div>`;
+      </table></div>${entityType === 'filesystem' ? publishChosenHtml(n, signedIn, slugWords) : ''}`;
+}
+
+/** The ONE press under a file system's table: Publish chosen measures, and what the last press ended with. */
+function publishChosenHtml(chosen, signedIn, said) {
+  const off = !signedIn || chosen < 1;
+  const why = !signedIn ? SIGN_IN_WORDS : chosen < 1 ? PUBLISH_CHOSEN_NONE : 'Sends the chosen measures to Egeria in the walk\'s survey report, the same press as the Survey card\'s.';
+  return `<div class="mt-s2 flex flex-wrap items-baseline gap-s3">
+    <button type="button" data-publish-chosen title="${esc(why)}"${off ? ' disabled' : ''}
+      class="cursor-pointer rounded-sm border border-accent bg-transparent px-2 py-[2px] text-caveat text-accent-ink disabled:cursor-default disabled:opacity-60">${esc(PUBLISH_CHOSEN)}</button>
+    <span data-publish-chosen-state class="text-provenance text-ink-muted">${esc(said || '')}</span></div>`;
 }
 
 /** Draw the table into `el` and bind its selectors. A choice is saved at once; the row redraws from the server's
@@ -159,10 +186,35 @@ export async function renderPublishTable(el, slug, entityType = 'database') {
   let table = null;
   try { table = await getPublishTable(entityType, slug); } catch (_) { table = null; }
   if (!el.isConnected || slug !== state.selectedSlug) return;
-  el.innerHTML = publishTableHtml(table, signedIn, entityType);
+  el.innerHTML = publishTableHtml(table, signedIn, entityType, lastPress.get(slug) || '');
+  bindPublishChosen(el, slug);
   const go = el.querySelector('[data-publish-table-goto]');
   if (go) go.onclick = () => openCurate({ tab: go.dataset.publishTableGoto });
   el.querySelectorAll('[data-publish-row]').forEach((tr) => bindRow(el, tr, slug, entityType, table, signedIn));
+}
+
+/** Publish chosen measures: who leads is read from the stored reach row (RE's own, no Egeria call), then ONE call, the
+ *  one the Survey card makes. The words are the publish's own answer; the table then re-reads its proofs. */
+function bindPublishChosen(el, slug) {
+  const b = el.querySelector('[data-publish-chosen]');
+  if (!b) return;
+  b.addEventListener('click', async () => {
+    if (b.disabled || b.dataset.pending) return;                 // a second press is ignored
+    b.dataset.pending = '1';
+    b.disabled = true;
+    const said = el.querySelector('[data-publish-chosen-state]');
+    said.textContent = 'Publishing…';
+    let words;
+    try {
+      const reach = await getFilesystemReach(slug);
+      words = publishOutcomeWords(await publishChosenMeasures(slug, reach && reach.surveyor));
+    } catch (err) {
+      words = `not published · ${err.message || 'the publish was refused'}`;
+    }
+    lastPress.set(slug, words);
+    if (!el.isConnected) return;
+    if (el.isConnected) renderPublishTable(el, slug, 'filesystem').catch(() => {});   // the table says what the proofs now hold
+  });
 }
 
 function bindRow(el, tr, slug, entityType, table, signedIn) {

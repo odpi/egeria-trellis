@@ -274,6 +274,20 @@ test('TR-71: the collapsed loading_bay card is no longer than before (only D13\'
   assert.ok(visibleLines(host).length <= BEFORE, 'without the measure price the card is not one line longer');
 });
 
+test('TR-71 (C3): chosen measures not on the report yet add no line to the collapsed card (the published line carries them)', async () => {
+  const { host, fs } = await setUp();
+  const COLLAPSED = { open: { files: false, measures: false, profiles: false, classes: false, derived: false } };
+  const plain = LOADING_BAY({ measure_price: { priced: true, words: 'last walk: 151 files, 57.4 MB · about 1 s' } });
+  host.innerHTML = fs.folderSurveyCardHtml(plain, COLLAPSED);
+  const before = visibleLines(host);
+  const pending = LOADING_BAY({ measure_price: plain.measure_price,
+    extensions: { ...plain.extensions, published: true, report_guid: 'r-1', publish: { published: true, landed_words: '12 of 12 annotations in Egeria' }, measures_pending: 3 } });
+  host.innerHTML = fs.folderSurveyCardHtml(pending, COLLAPSED);
+  const after = visibleLines(host);
+  assert.equal(after.length, before.length, `${after.length} lines, was ${before.length}`);
+  assert.equal(before.length, 16, 'the C2 count stands');
+});
+
 test('item 5: when a survey settles the stage header is redrawn from the list read again (today, published), no reload', async () => {
   const { document } = makeDomEnvironment();
   const stale = { slug: 'loading_bay', display_name: 'Loading bay', last_surveyed_at: '2026-10-25T10:00:00+00:00', is_published: false, status: 'active' };

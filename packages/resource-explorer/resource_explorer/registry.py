@@ -17105,7 +17105,11 @@ class ProjectRegistry:
     #: Kinds that are NOT scope, sharing the same signed append-only record, each with its own choices.
     #: `measure`: Curate's publish table, Publish | Keep in RE per declared measure (publish_table.py).
     #: `current_resource_scope` reads SCOPE_KINDS only, so these never count as scope.
-    OTHER_CHOICE_KINDS: ClassVar[dict[str, tuple[str, ...]]] = {"measure": ("publish", "keep")}
+    #: `fs_folder_description` / `fs_data_class`: a person's verdict on a file system's proposals (fs_review.py).
+    OTHER_CHOICE_KINDS: ClassVar[dict[str, tuple[str, ...]]] = {
+        "measure": ("publish", "keep"),
+        "fs_folder_description": ("confirm", "reject"),
+        "fs_data_class": ("confirm", "reject")}
 
     def append_resource_scope_event(self, resource_type: str, slug: str, *, locator: str, kind: str,
                                     choice: str = "", action: str = "set", source: str = "person",

@@ -137,6 +137,7 @@ def test_run_filesystem_inventory_and_publish_roundtrip():
 
         captured_annotations = []
         with patch.object(EgeriaFileSystemSurveyor, "connect", lambda self: None), \
+             patch.object(EgeriaFileSystemSurveyor, "_find_element_guid", lambda self, name, type_name=None, **kw: ""), \
              patch.object(EgeriaFileSystemSurveyor, "_create_annotations",
                            lambda self, annotations, guid, slug, ts: captured_annotations.extend(annotations)):
             e = EgeriaFileSystemSurveyor()

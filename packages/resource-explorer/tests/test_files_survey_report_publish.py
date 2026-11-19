@@ -100,6 +100,7 @@ def _fake(monkeypatch, *, readable=True, missing=()):
         def __init__(self, **kw):
             super().__init__()
             self.connect = lambda: None
+            self._find_element_guid = lambda *a, **k: ""          # no report of this walk is in Egeria yet (C3: looked up first)
             self._asset_maker = maker
 
         def _create_annotations(self, anns, report_guid, slug, at):

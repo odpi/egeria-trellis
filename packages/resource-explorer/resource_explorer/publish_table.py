@@ -21,8 +21,8 @@ those rows only, never from the press.
 **The two routes** (the walking skeleton's interim, now "the declared generic measure route, labelled", §8):
 - generic: a ResourceMeasureAnnotation whose `resourceProperties` hold the value under the measure's name and whose
   `additionalProperties` say `declaredRoute: generic` beside the unit, the as-of and the confidence basis;
-- native: the declared type, with the declared property map. ResourceMeasureAnnotation and SchemaAnalysisAnnotation
-  are written natively (`annotation_for`); any other declared type is shown as what it writes as and offers Keep in
+- native: the declared type, with the declared property map. ResourceMeasureAnnotation, SchemaAnalysisAnnotation and
+  ResourceProfileAnnotation (C3) are written natively (`annotation_for`); any other declared type is shown as what it writes as and offers Keep in
   RE only, saying why.
 
 **The owner's answers, 2026-10-28** (`DECLARED-EXTENSIBILITY-SLICE1-PR2-PUBLISH-TABLE.md` §4a):
@@ -55,7 +55,7 @@ GENERIC_TYPE = "ResourceMeasureAnnotation"
 #: Declared types this publisher can write from a declaration alone (the owner's answer 2, 2026-10-28:
 #: SchemaAnalysisAnnotation first, ResourcePhysicalStatusAnnotation in a later slice). Every other type needs its own
 #: construction (a profile's value counts, a classification's name), which no declaration's property map carries yet.
-NATIVE_WRITABLE = ("ResourceMeasureAnnotation", "SchemaAnalysisAnnotation")
+NATIVE_WRITABLE = ("ResourceMeasureAnnotation", "SchemaAnalysisAnnotation", "ResourceProfileAnnotation")
 
 #: The selection record's kind and choices (`registry.append_resource_scope_events`).
 CHOICE_KIND = "measure"
@@ -75,8 +75,8 @@ PRESS_WORDS = "chosen measures go with the page's one Publish: the commit on Con
 #: Where a file system's chosen measures go: Resource Explorer's own file-system survey report (the owner's answer 3),
 #: sent by the folder-survey and walk-extensions Publish (`web/routes/filesystems._publish_walk`), not the root-folder
 #: Publish, which attaches the root folder only.
-FS_PRESS_WORDS = ("chosen measures go inside Resource Explorer's own file-system survey report: the folder survey's "
-                  "Publish sends them, each read back by name")
+FS_PRESS_WORDS = ("chosen measures go inside Resource Explorer's own file-system survey report: Publish chosen "
+                  "measures sends them, each read back by name")
 #: Any other kind has no survey report to carry measures.
 NOT_FOR_KIND_WORDS = "this kind of resource has no survey report of Resource Explorer's own to carry measures"
 #: A measure the step ran for and could not establish: said as such, never as a zero.
@@ -84,6 +84,14 @@ NOT_MEASURED_WORDS = "not measured this run"
 PRESS_KINDS = ("database", "filesystem")
 #: A choice of Publish lasts across surveys (the owner's answer 4): every commit sends the measure until Keep in RE is chosen.
 STANDING_WORDS = "sent by every commit until Keep in RE"
+#: A file system has no commit (C3): a chosen row is sent by "Publish chosen measures", the one publish the Survey card's
+#: button and Curate's button both call.
+FS_STANDING_WORDS = "sent by Publish chosen measures until Keep in RE"
+
+
+def standing_words(entity_type: str) -> str:
+    """Where a chosen row goes, per kind: the database's commit, a file system's Publish chosen measures."""
+    return FS_STANDING_WORDS if entity_type == "filesystem" else STANDING_WORDS
 
 #: Measures RE's own survey report already writes under annotations of its own (the owner's answer 1): the survey's database
 #: counts (`DatabaseSurveyor._create_schema_annotations`: schemas, tables, columns), its database size
@@ -336,6 +344,26 @@ def published_states(registry, slug: str, entity_type: str = "database") -> dict
     return out
 
 
+def pending_for_report(registry, slug: str, report_guid: str) -> list[str]:
+    """The locators of a file system's chosen measures that the walk's report (`report_guid`) does not yet hold: chosen
+    Publish, publishable now, and without a read-back proof against THAT report. "" for no report: nothing is pending
+    on a walk that was never published (its own Publish says so). The cheap read (the choices and the proofs) comes
+    first; the table is built only when something might be pending."""
+    if not report_guid:
+        return []
+    chosen = [loc for loc, ev in current_choices(registry, "filesystem", slug).items() if ev.get("choice") == PUBLISH]
+    if not chosen:
+        return []
+    proofs = published_states(registry, slug, "filesystem")
+    maybe = [loc for loc in chosen
+             if not (proofs.get(loc) and proofs[loc].get("proof") == P_MEASURE_READ_BACK
+                     and proofs[loc].get("target_guid") == report_guid)]
+    if not maybe:
+        return []
+    live = {r["locator"] for r in chosen_rows(registry, "filesystem", slug)}
+    return [loc for loc in maybe if loc in live]
+
+
 def _published_word(proof: dict | None, value, as_of) -> dict:
     if proof is None:
         return {"state": "local", "words": "local · not published"}
@@ -558,7 +586,7 @@ def build_rows(registry, entity_type: str, slug: str, *, layer=None, entries: li
                 row["choice"] = ({"choice": ch["choice"], "by": ch["author"], "at": ch["changed_at"]}
                                  if ch and ch.get("choice") else None)
                 if row["choice"] and row["choice"]["choice"] == PUBLISH:
-                    row["choice"]["standing"] = STANDING_WORDS
+                    row["choice"]["standing"] = standing_words(entity_type)
                 row["published"] = _published_word(proofs.get(loc), row.get("value"), as_of)
                 if (row["published"]["state"] == "changed" and row["publishable"]
                         and (row["choice"] or {}).get("choice") == PUBLISH):
@@ -614,6 +642,7 @@ def annotation_for(row: dict):
     """
     from resource_explorer.surveyors.survey_report import (
         ResourceMeasureAnnotation,
+        ResourceProfileAnnotation,
         SchemaAnalysisAnnotation,
     )
 
@@ -644,6 +673,13 @@ def annotation_for(row: dict):
         return SchemaAnalysisAnnotation(
             **common, schema_name=typed.get("schemaName", ""), schema_type=typed.get("schemaType", ""),
             json_properties={prop: str(row["value"]), **extra})
+    if w["type"] == "ResourceProfileAnnotation":
+        # The step's own summary value: a whole number rides in Egeria's `valueCount` (a map of integers), anything
+        # else in `additionalProperties` as the step stated it. No words of RE's own beyond the step's run words.
+        value = row["value"]
+        if isinstance(value, int) and not isinstance(value, bool):
+            return ResourceProfileAnnotation(**common, value_count={prop: value}, additional_properties=extra)
+        return ResourceProfileAnnotation(**common, additional_properties={**extra, prop: str(value)})
     return ResourceMeasureAnnotation(
         **common, resource_properties={prop: str(row["value"]), "unit": row["unit"]}, additional_properties=extra)
 
