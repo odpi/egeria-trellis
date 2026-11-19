@@ -542,14 +542,31 @@ async def _choose_deployment(client: Any, pool: str) -> Any:
     return choice.deployment
 
 
+async def request_cancel(client: Any, flow_run_id: Any) -> str:
+    """Ask Prefect to cancel `flow_run_id` the way its own CLI does (prefect 3.8.1 cli/flow_run.py:345): propose
+    CANCELLING, unforced. Return "" when the server accepted it, or the server's reason when it did not. Raises on a
+    transport failure.
+
+    TR-62b: RE used to force CANCELLED. A worker stops a run's process only when it sees CANCELLING (prefect 3.8.1
+    `FlowRunCancellingObserver`, _internal/observers.py:310, wired by runner/runner.py:1654), and then sets CANCELLED
+    itself; a forced jump to CANCELLED skips that, so the process ran on (hedwig, fbfab6f3: COMPLETED 68 s after
+    the cancel). A run with no infrastructure yet is moved straight to CANCELLED by the server
+    (BypassCancellingFlowRunsWithNoInfra)."""
+    from prefect.states import Cancelling
+
+    result = await client.set_flow_run_state(flow_run_id=flow_run_id, state=Cancelling())
+    status = str(getattr(getattr(result, "status", None), "value", getattr(result, "status", "")) or "").upper()
+    if status in ("ABORT", "REJECT"):
+        reason = getattr(getattr(result, "details", None), "reason", "") or "no reason given"
+        return f"Prefect refused the cancel ({status.lower()}: {reason})"
+    return ""
+
+
 async def _cancel_flow_run_best_effort(client: Any, flow_run_id: Any) -> str:
     """Try to cancel `flow_run_id`; return "" on success or a short failure
     description. Never raises."""
     try:
-        from prefect.states import Cancelled
-
-        await client.set_flow_run_state(flow_run_id=flow_run_id, state=Cancelled(), force=True)
-        return ""
+        return await request_cancel(client, flow_run_id)
     except Exception as exc:
         return f"{type(exc).__name__}: {exc}"
 
@@ -757,7 +774,8 @@ async def _await_flow_run(client: Any, run_id: Any, flow_run_id: str, *, timeout
             kind = "FAILED" if state.is_failed() else "CRASHED"
             raise PrefectFlowRunFailed(
                 f"Prefect flow run '{flow_run_id}' {kind.lower()}: {state.message}", flow_run_id, state=kind)
-        elif state.is_cancelled():
+        elif state.is_cancelled() or _state_type(state) == "CANCELLING":
+            # TR-62b: a cancel is now a CANCELLING request the worker completes; RE disowns the run at the request.
             raise PrefectFlowRunCancelled(f"Prefect flow run '{flow_run_id}' was cancelled.", flow_run_id,
                                           state="CANCELLED")
 
@@ -825,6 +843,10 @@ def _run_step_in_process_flow(
     except PrefectRunOutcome:
         raise
     except Exception as e:  # the in-process flow ran: an outcome, never a second local run
+        if type(e).__name__ == "CancelledRun":  # prefect.exceptions.CancelledRun: the flow ended Cancelled (TR-62b)
+            raise PrefectFlowRunCancelled(
+                f"the in-process Prefect flow for {step_name} was cancelled ({e}); the step was NOT run locally "
+                "again", "", state="CANCELLED") from e
         raise PrefectFlowRunFailed(
             f"the in-process Prefect flow for {step_name} failed ({type(e).__name__}: {e}); the step was NOT run "
             "locally again", "", state="FAILED") from e
