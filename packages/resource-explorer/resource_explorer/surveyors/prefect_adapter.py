@@ -90,6 +90,15 @@ def re_prefect_client() -> PrefectClient:
     return PrefectClient(config.prefect.api_url)
 
 
+def re_prefect_sync_client():
+    """`re_prefect_client`'s synchronous twin, for code that runs off any event loop: TR-62's step heartbeat thread
+    and its write-time cancel checks. Same rule, same reason: RE's own configured URL handed to the constructor,
+    never `get_client()`'s ambient settings."""
+    from prefect.client.orchestration import SyncPrefectClient
+
+    return SyncPrefectClient(get_config().prefect.api_url)
+
+
 async def _check_prefect_reachable_async() -> tuple[bool, str]:
     """(reachable, detail) — never raises. `detail` is the resolved API URL
     on success, or the exception text on failure.

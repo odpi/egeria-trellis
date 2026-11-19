@@ -33,9 +33,10 @@ DEFAULT_PHASE = "running"
 
 
 def _sync_client():
-    from prefect.client.orchestration import get_client
+    """RE's own sync Prefect client (prefect_adapter.re_prefect_sync_client: RE's configured URL, never ambient)."""
+    from resource_explorer.surveyors.prefect_adapter import re_prefect_sync_client
 
-    return get_client(sync_client=True)
+    return re_prefect_sync_client()
 
 
 class Heartbeat:

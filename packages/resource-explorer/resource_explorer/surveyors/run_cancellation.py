@@ -75,10 +75,7 @@ def prefect_run_is_cancelled(flow_run_id: str, *, client_factory=None, _warned: 
         return False
     try:
         if client_factory is None:
-            from prefect.client.orchestration import get_client
-
-            def client_factory():
-                return get_client(sync_client=True)
+            from resource_explorer.surveyors.prefect_adapter import re_prefect_sync_client as client_factory
         from uuid import UUID
 
         with client_factory() as client:
