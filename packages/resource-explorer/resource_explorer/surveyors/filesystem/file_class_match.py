@@ -222,7 +222,10 @@ def run_file_class_match(fs_entity, registry, *, catalog_loader: Callable[[], ob
         matches.sort(key=_rank)
         verdicts = Counter(d["verdict"] for d in matches)
         summary = {
-            "profile_run": profile_run, "ran_at": _now(), "columns": len(matches), "files": len(by_file),
+            # Only files with a profiled column (the set `price()` counts): `by_file` holds a row for every file of the
+            # profile run in every state, so len(by_file) said "of 4,847 profiled files" when 1,889 were profiled (D7).
+            "profile_run": profile_run, "ran_at": _now(), "columns": len(matches),
+            "files": sum(1 for f in files_out if f["outcome"] != "no_columns"),
             "verdicts": dict(verdicts), "established": sum(1 for d in matches if d["established"]),
             "privacy_relevant": sum(1 for d in matches if d["privacy_relevant"] and d["established"]),
             "proposals": verdicts.get("unmatched_patterned", 0),

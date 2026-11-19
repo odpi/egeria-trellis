@@ -29,6 +29,19 @@ export function fmtBytes(n) {
   return `${v >= 100 ? Math.round(v) : v.toFixed(1)} ${u[i]}`;
 }
 
+/** A size the way macOS Finder and the server's own price line say it (D12): decimal (1000), labelled B/KB/MB/GB, one
+ *  decimal above bytes. The file-system card uses this for every size; `fmtBytes` above (1024) keeps its other callers. */
+export function fmtBytesDecimal(n) {
+  if (typeof n !== 'number' || !Number.isFinite(n)) return String(n);
+  if (n < 1000) return `${Math.round(n)} B`;
+  let v = n;
+  for (const unit of ['KB', 'MB', 'GB']) {
+    v /= 1000;
+    if (Math.round(v * 10) / 10 < 1000 || unit === 'GB') return `${v.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${unit}`;
+  }
+  return `${n} B`;
+}
+
 /** The measured properties of one stored annotation: `json_properties` parsed, else the labelled map. */
 export function propsOf(a) {
   const d = (a && a.detail) || {};

@@ -1452,6 +1452,12 @@ def profiles_view(registry, slug: str) -> dict:
     m = record.get("metrics") or {}
     rows = registry.list_filesystem_file_columns(slug, run_id)
     counts["header_suspect"] = len({r["file_path"] for r in rows if r["state"] == HEADER_SUSPECT})
+    # D8: once any report of Egeria's has been read back, a file still `submitted` is one Egeria has not answered for:
+    # the card names it (at most three; the rest are counted). Before any read-back every file is waiting: no names.
+    read_back = counts["by_egeria"] or counts["no_columns"]
+    waiting = sorted(s["file_path"] for s in states if s["state"] == SUBMITTED) if read_back else []
+    counts["submitted_names"] = waiting[:3]
+    counts["submitted_more"] = max(0, len(waiting) - 3)
     by_file: dict[str, list[dict]] = {}
     for r in rows:
         if r["column_name"]:

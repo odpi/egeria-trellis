@@ -107,6 +107,77 @@ def _publish_chosen(req: "FileSystemSurveyRequest") -> bool:
     return bool(req.publish or req.force_publish or sent_mode)
 
 
+# ── One Activity row per press on the file-system card (TR-70) ────────────────────────────────────────────────────
+
+def _press_row(slug: str, what: str, *, status: str, outcome: str, publish: bool = False) -> None:
+    """Write the press's one row: what was pressed, by whom, how it came out. Best effort: a row that could not be
+    written is logged and never turns a press that happened into an error."""
+    try:
+        from resource_explorer.activity_logger import log_press
+        from resource_explorer.run_queue import requested_by
+
+        registry = ProjectRegistry()
+        fs = registry.get_filesystem(slug)
+        log_press(registry, "filesystem", slug, fs.display_name if fs else slug, what=what, outcome=outcome,
+                  by=requested_by() or "", status=status, publish=publish)
+    except Exception:  # noqa: BLE001
+        log.warning("%s: could not write the activity row for '%s'", slug, what, exc_info=True)
+
+
+def _logged_press(what: str, *, publish: bool = False, outcome=None):
+    """Decorator for a press route: the route's own answer says how it came out (`outcome(result)` -> words, or
+    (status, words)); a press the route refused (409/422/502...) is an error row with the refusal. A request that was not
+    allowed to start (401/403/404) leaves no row: nothing was pressed."""
+    import functools
+
+    def deco(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            slug = kwargs.get("slug") or (args[0] if args else "")
+            try:
+                result = fn(*args, **kwargs)
+            except HTTPException as exc:
+                if exc.status_code not in (401, 403, 404):
+                    _press_row(slug, what, status="error", outcome=f"refused · {str(exc.detail)[:200]}", publish=publish)
+                raise
+            except PermissionError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                _press_row(slug, what, status="error", outcome=f"failed · {type(exc).__name__}: {str(exc)[:160]}", publish=publish)
+                raise
+            try:
+                said = outcome(result) if outcome else "done"
+            except Exception:  # noqa: BLE001 -- the words are best effort
+                said = "done"
+            status, words = said if isinstance(said, tuple) else ("ok", said)
+            _press_row(slug, what, status=status, outcome=words, publish=publish)
+            return result
+        return wrapper
+    return deco
+
+
+def _published_words(r: dict) -> tuple[str, str]:
+    """A publish press's outcome from the answer: what landed, or why nothing was sent."""
+    if r.get("publish_refused") or r.get("publish_error"):
+        return "error", f"not published · {r.get('publish_refused') or r.get('publish_error')}"[:200]
+    if r.get("published"):
+        return "ok", f"published · {r.get('landed_words') or 'report ' + str(r.get('report_guid') or '')[:8]}"
+    return "error", f"not published · {r.get('not_published_why') or 'nothing landed in Egeria'}"[:200]
+
+
+def _folder_survey_words(r: dict) -> tuple[str, str]:
+    if r.get("led_by") == "egeria":
+        return "triggered", "submitted to Egeria's Folder Survey · its report is read back when it finishes"
+    files = r.get("total_files")
+    return "ok", (f"walked by Resource Explorer · {files if files is not None else 'an unknown number of'} files"
+                  + (" · capped" if r.get("capped") else "") + (" · published" if r.get("published") else ""))
+
+
+def _run_words(r: dict) -> str:
+    """The run's own words from the view the route answered with (the stored counts), else 'done'."""
+    return str((((r.get("view") or {}).get("run") or {}).get("words")) or "done")[:200]
+
+
 class EgeriaSurveyReportRow(BaseModel):
     """A SurveyReport as it actually exists in Egeria right now (live read via
     the real ReportSubject relationship). See databases.py's identical model
@@ -115,7 +186,8 @@ class EgeriaSurveyReportRow(BaseModel):
     qualified_name: str
     display_name: str
     surveyed_at: str
-    annotation_count: int
+    #: None = not counted (an Egeria-written report states no count and RE holds none): never drawn as 0.
+    annotation_count: int | None = None
     schema_count: int
     table_count: int
     column_count: int
@@ -165,6 +237,8 @@ def list_filesystems():
         disp = registry.get_disposition_for_entity("filesystem", fs.slug) or {}
         publish_status = describe_publish_status(
             registry, "filesystem", fs.slug, fs.egeria_asset_guid or "")
+        last_surveyed, is_published, publish_note = _header_survey_words(
+            registry, fs, publish_status["is_published"], publish_status["note"])
         result.append(
             FileSystemSummary(
                 slug=fs.slug,
@@ -173,7 +247,7 @@ def list_filesystems():
                 canonical_mount_point=fs.canonical_mount_point or "",
                 description=fs.description,
                 status=fs.status.value,
-                last_surveyed_at=fs.last_surveyed_at or "",
+                last_surveyed_at=last_surveyed,
                 egeria_asset_guid=fs.egeria_asset_guid or "",
                 file_count=fs.file_count,
                 data_file_count=fs.data_file_count,
@@ -181,13 +255,37 @@ def list_filesystems():
                 egeria_server=fs.egeria_server or "",
                 group_slug=getattr(fs, "group_slug", "") or "",
                 disposition=disp.get("disposition", "undecided"),
-                is_published=publish_status["is_published"],
-                egeria_publish_note=publish_status["note"],
+                is_published=is_published,
+                egeria_publish_note=publish_note,
                 working_set_hidden=registry.is_working_set_hidden("filesystem", fs.slug),
                 **_remote_summary(fs),
             )
         )
     return result
+
+
+def _header_survey_words(registry, fs, is_published: bool, note: str) -> tuple[str, bool, str]:
+    """(last_surveyed_at, is_published, note) for the stage header. `file_systems.last_surveyed_at` is moved only by an
+    RE-led walk, and `is_published` reads only the cached asset GUID, so an Egeria-led Folder Survey that was read back
+    left the header at "surveyed 24d ago · not published to Egeria". When the newest completed native Folder Survey is
+    newer, its date is the header's, and a report read back after the latest reset is "published". Derived on read from
+    the native-survey rows (no writer), so every route that moves a run reads the same answer."""
+    from resource_explorer.folder_survey_view import _when, newest_egeria_report
+
+    last = fs.last_surveyed_at or ""
+    try:
+        rep = newest_egeria_report(registry, fs.slug)
+    except Exception:  # noqa: BLE001 -- the header keeps what the registry row says
+        log.warning("%s: the newest Egeria folder survey could not be read for the header", fs.slug, exc_info=True)
+        return last, is_published, note
+    if not rep:
+        return last, is_published, note
+    at, kept = _when(rep["at"]), _when(last)
+    if at is not None and (kept is None or at > kept):
+        last = rep["at"]
+    if rep["published"]:
+        is_published, note = True, ""
+    return last, is_published, note
 
 
 def _remote_summary(fs) -> dict:
@@ -536,7 +634,30 @@ def get_filesystem_egeria_surveys(slug: str) -> list[EgeriaSurveyReportRow]:
         reports = surveyor.get_survey_reports_by_guid(fs.egeria_asset_guid)
     except EgeriaFileSystemSurveyorError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
-    return [EgeriaSurveyReportRow(**r) for r in reports]
+    stored = _stored_report_counts(registry, slug)
+    for r in reports:
+        # A count the report did not state is RE's stored count of that report, else "not counted" (None), never 0.
+        if not r.get("annotation_count_stated", True):
+            r["annotation_count"] = stored.get(r.get("guid"))
+    return [EgeriaSurveyReportRow(**{k: v for k, v in r.items() if k != "annotation_count_stated"}) for r in reports]
+
+
+def _stored_report_counts(registry, slug: str) -> dict[str, int]:
+    """{report guid: annotations RE stored from it}: the native run's `report_annotation_count` (step_runs), else the rows in
+    the native annotations table. A report RE never read in has no entry."""
+    from resource_explorer import native_survey_run as nsr
+
+    out: dict[str, int] = {}
+    for run in registry.list_native_survey_runs("filesystem", slug, nsr.FOLDER_SURVEY_QN):
+        guid = run.get("survey_report_guid") or ""
+        if not guid or guid in out:
+            continue
+        n = run.get("report_annotation_count")
+        if n is None:
+            n = registry.count_native_survey_annotations(guid) or None
+        if n is not None:
+            out[guid] = int(n)
+    return out
 
 
 @router.get("/{slug}/egeria-surveys/{report_guid}/annotations", response_model=list[EgeriaAnnotationItem])
@@ -598,6 +719,7 @@ def get_root_folder(slug: str) -> dict:
 
 
 @router.post("/{slug}/attach-root")
+@_logged_press("Attach root folder", publish=True, outcome=lambda r: "created the root folder in Egeria" if r.get("created") else "root folder already in Egeria · read back")
 def attach_root_folder(slug: str) -> dict:
     """Attach the file system's ROOT FOLDER as an Egeria asset, as the signed-in person, and read it back by GUID.
 
@@ -699,6 +821,7 @@ def get_filesystem_reach(slug: str) -> dict:
 
 
 @router.post("/{slug}/reach")
+@_logged_press("Check again", outcome=lambda r: f"still verified by the {r.get('checked_date')} survey · kept" if r.get("kept") else str(r.get("sentence") or "checked"))
 def check_filesystem_reach(slug: str) -> dict:
     """Run the mounted-prefix check now ("Check again": asks Egeria nothing; is the canonical mount under one of the
     container's mounted paths?), record the outcome with the path checked, and return the state the stored rows then
@@ -733,6 +856,7 @@ class FolderSurveyRequest(BaseModel):
 
 
 @router.post("/{slug}/folder-survey")
+@_logged_press("Survey", outcome=_folder_survey_words)
 def run_filesystem_folder_survey(slug: str, req: FolderSurveyRequest = FolderSurveyRequest()) -> dict:
     """The folder survey, led by whoever can read the path. The probe runs first (before each survey) and its stored
     outcome decides: Egeria's Folder Survey is submitted through the native-survey port (it takes minutes: the answer
@@ -781,7 +905,13 @@ def run_filesystem_folder_survey(slug: str, req: FolderSurveyRequest = FolderSur
         raise HTTPException(status_code=422, detail=str(exc))
     sd = out.get("survey_data") or {}
     limits = sd.get("walk_limits") or {}
-    result: dict = {"led_by": "resource_explorer", "surveyor": file_reach.SURVEYOR_RE, "reach": fork.as_dict(),
+    reach_refresh_error = ""
+    try:
+        file_reach.record_walk_read(registry, slug, sd.get("surveyed_at") or "")   # the reach line says "checked <today>"
+    except Exception as exc:  # noqa: BLE001 -- the walk stands; the reach line keeps its date, and the answer says so
+        log.warning("%s: the walk could not refresh the reach line", slug, exc_info=True)
+        reach_refresh_error = f"{type(exc).__name__}: {str(exc)[:160]}"
+    result: dict = {"reach_refresh_error": reach_refresh_error, "led_by": "resource_explorer", "surveyor": file_reach.SURVEYOR_RE, "reach": fork.as_dict(),
                     "surveyed_at": sd.get("surveyed_at", ""), "total_files": sd.get("total_files"),
                     "capped": bool(limits.get("capped")), "capped_reasons": limits.get("capped_reasons", []),
                     "capped_words": limits.get("capped_words", ""),
@@ -877,6 +1007,7 @@ class WalkExtensionsRequest(BaseModel):
 
 
 @router.post("/{slug}/walk-extensions")
+@_logged_press("Measure beside Egeria's survey", outcome=lambda r: f"measured {r.get('files')} files · {r.get('run_id', '')[:10]}")
 def run_filesystem_walk_extensions(slug: str, req: WalkExtensionsRequest = WalkExtensionsRequest()) -> dict:
     """Resource Explorer's measures BESIDE an Egeria-led folder survey (Files build step 1): per-folder bytes and depth,
     owner, group and mode, content hashes under a size limit, and the folders' README-type narratives, with the per-file rows
@@ -916,6 +1047,7 @@ def run_filesystem_walk_extensions(slug: str, req: WalkExtensionsRequest = WalkE
 
 
 @router.post("/{slug}/walk-extensions/publish")
+@_logged_press("Publish measures", publish=True, outcome=_published_words)
 def publish_filesystem_walk_extensions(slug: str) -> dict:
     """Publish the newest stored beside-Egeria extensions run (nothing is walked again). 409 when there is none."""
     registry = ProjectRegistry()
@@ -943,6 +1075,7 @@ def publish_filesystem_walk_extensions(slug: str) -> dict:
 
 
 @router.post("/{slug}/folder-survey/publish")
+@_logged_press("Publish walk", publish=True, outcome=_published_words)
 def publish_filesystem_folder_survey(slug: str) -> dict:
     """Publish the newest stored Resource Explorer walk (nothing is walked again). 409 when there is none."""
     registry = ProjectRegistry()
@@ -1023,6 +1156,7 @@ def get_filesystem_narrative_docs(slug: str) -> dict:
 
 
 @router.post("/{slug}/narrative-docs")
+@_logged_press("Read narrative files", outcome=_run_words)
 def run_filesystem_narrative_docs(slug: str) -> dict:
     """The press (consent is this press; the card showed the price before it): read the narrative files the newest walk
     found, whole and size-capped, chunk them by section and replace this file system's collection in Resource Explorer's
@@ -1059,6 +1193,7 @@ def get_filesystem_class_match(slug: str) -> dict:
 
 
 @router.post("/{slug}/class-match")
+@_logged_press("Match data classes", outcome=lambda r: f"{r.get('columns')} columns examined · {r.get('established')} matched a data class")
 def run_filesystem_class_match(slug: str) -> dict:
     """The press (consent is this press; the card showed what it reads before it): match every column of the newest
     profile run against the data classes Egeria holds (read as the signed-in person, read-only), with values from the
@@ -1096,6 +1231,7 @@ def get_filesystem_file_profiles(slug: str) -> dict:
 
 
 @router.post("/{slug}/file-profiles")
+@_logged_press("Profile data files", outcome=_run_words)
 def run_filesystem_file_profiles(slug: str) -> dict:
     """The press (consent is this press; the card showed the cost line before it). Profiles every data file of the newest
     walk: a `.csv` on an Egeria-led file system goes to Egeria's CSV Survey Service, every other readable file is profiled
@@ -1122,6 +1258,7 @@ def run_filesystem_file_profiles(slug: str) -> dict:
 
 
 @router.post("/{slug}/file-profiles/read-egeria")
+@_logged_press("Read Egeria's reports", outcome=lambda r: f"read {r.get('read')} · waiting {r.get('waiting')} · failed {r.get('failed')}")
 def read_filesystem_file_profiles_from_egeria(slug: str) -> dict:
     """Read Egeria's CSV reports back by GUID for the newest run's submitted files (read-only in Egeria)."""
     from resource_explorer.surveyors.filesystem import file_profiles as fp
@@ -1141,6 +1278,7 @@ def read_filesystem_file_profiles_from_egeria(slug: str) -> dict:
 
 
 @router.post("/{slug}/file-profiles/publish")
+@_logged_press("Publish profiles", publish=True, outcome=lambda r: f"published {r.get('columns')} columns")
 def publish_filesystem_file_profiles(slug: str) -> dict:
     """Publish Resource Explorer's column profiles of the newest run, only the columns whose profile differs from the last
     run (until the profile-publish reshape lands). Egeria's own reports stay Egeria's. 409 when nothing is to publish, or when this run's publish is

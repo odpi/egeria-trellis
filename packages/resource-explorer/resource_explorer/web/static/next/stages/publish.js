@@ -166,7 +166,7 @@ export function reportRowListHtml(r) {
     <div class="flex flex-wrap items-baseline gap-x-s2 text-caveat">
       <span class="text-ink">${esc(r.display_name || r.qualified_name)}</span>
       <span class="text-provenance text-ink-muted">surveyed ${r.surveyed_at ? esc(ago(r.surveyed_at)) : 'at an unknown time'}
-        · ${num(r.annotation_count)} annotations${counts}</span>
+        · ${r.annotation_count == null ? 'annotations not counted' : `${num(r.annotation_count)} annotations`}${counts}</span>
       ${guidHtml(r.guid)}
       ${linkButton(`data-report-toggle="${esc(r.guid)}" aria-expanded="false"`, 'Show annotations')}
       ${linkButton(`data-report-ask="${esc(r.guid)}"`, 'Ask about this →')}

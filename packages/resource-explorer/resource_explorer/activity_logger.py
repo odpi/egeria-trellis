@@ -84,6 +84,44 @@ def log_survey(
     return entry_id
 
 
+def log_press(
+    registry: "ProjectRegistry",
+    entity_type: str,
+    entity_slug: str,
+    entity_name: str,
+    *,
+    what: str,
+    outcome: str,
+    by: str = "",
+    status: str = "ok",
+    publish: bool = False,
+    detail: dict | None = None,
+) -> str:
+    """One Activity row for one press on a card (TR-70): what was pressed, by whom, and how it came out, on one line.
+
+    The existing operations carry it: 'publish' for a press that sends to Egeria, 'discover' for one that reads or measures
+    (nothing reads 'discover' rows back, so they cannot be mistaken for a Survey Definition run; a 'survey' row with no
+    steps would be counted as an unattributable survey by `get_analysis_last_run`). `detail` must not carry a
+    `survey_definition_ref`, `process_qualified_name` or `analysis_id`: those are the join keys of other rows."""
+    import json
+
+    entry_id = str(uuid.uuid4())
+    registry.write_activity(ActivityEntry(
+        id=entry_id,
+        ts=_now(),
+        operation="publish" if publish else "discover",
+        intent="enrichment" if publish else "discovery",
+        entity_type=entity_type,
+        entity_slug=entity_slug,
+        entity_name=entity_name,
+        entity_location="",
+        status=status,
+        summary=f"{what} · by {by or 'an unnamed caller'} · {outcome}",
+        detail=json.dumps({"press": what, "by": by, **(detail or {})}),
+    ))
+    return entry_id
+
+
 def log_catalog(
     registry: "ProjectRegistry",
     entity_type: str,

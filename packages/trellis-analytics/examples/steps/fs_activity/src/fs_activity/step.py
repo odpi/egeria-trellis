@@ -18,6 +18,10 @@ Never a silent zero, and "can't tell" said when it is so:
   be told apart and is not called cold);
 - Resource Explorer's own walk reads a file to hash it, so a file the PREVIOUS walk hashed, last read at or after
   that walk's start, may show Resource Explorer's read: it is counted apart, never as hot.
+- With no earlier walk that kept rows, this walk's own hashing is the read there is to name: any access at or after this
+  walk's start may be Resource Explorer's own and is counted apart with the same words (whichever branch led). A file last
+  read before it is not caveated. (Profile and narrative runs also open files; their times are not in the library's ODS
+  reads, so they are not caveated yet.)
 """
 from __future__ import annotations
 
@@ -114,6 +118,16 @@ def run(inputs) -> list[dict]:
     return out
 
 
+def _first_own_read(walk, previous) -> datetime | None:
+    """The earliest time Resource Explorer itself opened this file system's files that the per-file rows do not already
+    attribute: this walk's own start when it hashed and no earlier walk kept rows to say which files (so the previous-walk
+    rule has nothing to read). None otherwise. Profile and narrative runs also open files, but the library's ODS reads do not
+    expose their times yet; that needs a read added to the library (`ODS_READS`), so they are not caveated here."""
+    if previous is None and int(walk.get("hashed") or 0) > 0:
+        return _parse(walk["run_id"])
+    return None
+
+
 def _access(slug, walk, previous, rows, age, hot, cold, common, inputs) -> dict:
     if not rows:
         return {"scope": slug, "state": "nothing_found", "measure": ACCESS, "value": {**common, "basis": ACCESS_BASIS},
@@ -133,11 +147,14 @@ def _access(slug, walk, previous, rows, age, hot, cold, common, inputs) -> dict:
                              "nobody read since writing it would look the same, so which files are read cannot be told",
                        "access times not recorded on this mount", ACCESS)
     ours: set[str] = set()
+    first_read = _first_own_read(walk, previous)
+    if first_read is not None:
+        ours = {r["file_path"] for r in timed if (_parse(r.get("accessed_at")) or datetime.min) >= first_read}
     if previous is not None:
         hashed_then = {r["file_path"] for r in inputs.ods.filesystem_walk_files(slug, previous["run_id"])
                        if r.get("hash_state") == "hashed"}
-        ours = {r["file_path"] for r in timed
-                if r["file_path"] in hashed_then and (r.get("accessed_at") or "") >= previous["run_id"]}
+        ours |= {r["file_path"] for r in timed
+                 if r["file_path"] in hashed_then and (r.get("accessed_at") or "") >= previous["run_id"]}
     pairs = [(a, int(r.get("size_bytes") or 0)) for r in timed
              if r["file_path"] not in ours and (a := age(r.get("accessed_at"))) is not None]
     v = {**common, **_bands(pairs, hot, cold), "Files Without An Access Time": len(rows) - len(timed),
