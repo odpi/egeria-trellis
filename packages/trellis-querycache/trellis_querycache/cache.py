@@ -55,12 +55,22 @@ class QueryCache:
     logged and left uncached rather than raising into the caller's request
     path — a cache that cannot store something must still not break the
     operation it was speeding up.
+
+    The same rule covers an unavailable Redis. When the server is down,
+    unreachable or refuses a command, `get` reads as a miss and `set` stores
+    nothing, both with a logged warning, so the caller recomputes instead of
+    failing. `invalidate_scope` and `clear` still raise: they are explicit
+    maintenance calls, and reporting success for an invalidation that never
+    reached Redis would leave stale answers to be served once it is back.
     """
 
     def __init__(self, config: QueryCacheConfig | None = None) -> None:
         self._config = config or QueryCacheConfig()
         self._hits = 0
         self._misses = 0
+        # Exceptions that mean "Redis is unavailable" — set by _connect_redis,
+        # because the redis package is only importable when it is configured.
+        self._redis_errors: tuple[type[Exception], ...] = ()
 
         if self._config.uses_redis:
             self._redis = self._connect_redis(self._config.redis_url)
@@ -184,13 +194,19 @@ class QueryCache:
     def _connect_redis(self, url: str):
         import redis  # imported lazily: only apps that configure Redis need it
 
+        self._redis_errors = (redis.exceptions.RedisError,)
         return redis.from_url(url, decode_responses=True)
 
     def _scope_set_key(self, scope: str) -> str:
         return f"{self._config.scope_prefix}{scope}:keys"
 
     def _redis_get(self, key: str) -> Any | None:
-        raw = self._redis.get(self._config.key_prefix + key)
+        try:
+            raw = self._redis.get(self._config.key_prefix + key)
+        except self._redis_errors as exc:
+            # A cache outage is a miss, not a failed request.
+            log.warning("Redis cache read failed; treating as a miss: %s", exc)
+            return None
         if raw is None:
             return None
         try:
@@ -208,20 +224,30 @@ class QueryCache:
             log.debug("Value for %s is not JSON-serializable; not cached", key[:8])
             return
 
-        redis_key = self._config.key_prefix + key
-        # Redis has no "never expires" TTL via setex, so fall back to a plain
-        # set when the config says entries do not expire.
-        if self._config.ttl_seconds is None:
-            self._redis.set(redis_key, payload)
-        else:
-            self._redis.setex(redis_key, int(self._config.ttl_seconds), payload)
+        try:
+            self._redis_write(self._config.key_prefix + key, payload, scope)
+        except self._redis_errors as exc:
+            # Same rule as an unserializable value: leave it uncached.
+            log.warning("Redis cache write failed; value not cached: %s", exc)
 
+    def _redis_write(self, redis_key: str, payload: str, scope: str | None) -> None:
+        # Track the key under its scope BEFORE writing the value. If Redis fails
+        # between the two commands, a set member with no entry is harmless; an
+        # entry its scope does not list would survive invalidate_scope and keep
+        # serving a stale answer.
         if scope is not None:
             scope_set = self._scope_set_key(scope)
             self._redis.sadd(scope_set, redis_key)
             if self._config.ttl_seconds is not None:
                 # Outlive the entries it tracks, so invalidation still finds them.
                 self._redis.expire(scope_set, int(self._config.ttl_seconds) * 2)
+
+        # Redis has no "never expires" TTL via setex, so fall back to a plain
+        # set when the config says entries do not expire.
+        if self._config.ttl_seconds is None:
+            self._redis.set(redis_key, payload)
+        else:
+            self._redis.setex(redis_key, int(self._config.ttl_seconds), payload)
 
     def _redis_invalidate(self, scope: str) -> int:
         scope_set = self._scope_set_key(scope)
