@@ -9,8 +9,9 @@ Since then, our work on Trellis has focused on:
 * Learning from the people who use the tools, through shared feedback, triage, and a document index that can be
   rebuilt and rolled back.
 
-Egeria Advisor now reads and authors the same dashboards and report specs held in Egeria as the Portal does, and a
-new Studio application gives report specs, reports and dashboard sheets a dedicated authoring space.
+Egeria Advisor now reads and authors the same dashboards and report specs held in Egeria as the Portal does. Studio,
+an emerging preview, is where authoring is starting to come together; today it covers report specs, reports and
+dashboard sheets.
 
 Both remain a **Tech Preview**: they are changing quickly, and your feedback shapes where they go next. This release
 goes with **Egeria 6.3** and needs **pyegeria 6.3.0 or later**, the release that matches Egeria 6.3. For the changes to the Egeria platform itself, see
@@ -88,9 +89,10 @@ In numbers: 1,343 commits and about 556 merged pull requests across 12 packages 
   as the signed-in user, and calls with no credentials are refused (#1045, #1046). Feedback uses the shared library
   (#1069, #1078). If Egeria is down when you sign in, you're told it is unreachable rather than that you were
   rejected (#1077).
-- **Studio** is a new application for authoring report specs, reports and dashboard sheets, with forms, preview and
-  lifecycle, built on pyegeria's authoring API. It has no language model of its own: AI-assisted authoring comes
-  from Egeria Advisor, shown as a panel (#1095).
+- **Studio, an emerging preview** (#1095). Studio is the new component where we will bring together and extend the
+  authoring of report specs, dashboards, Dr.Egeria plans, surveys and more. Today it authors report specs, reports
+  and dashboard sheets, on pyegeria's authoring API; more will follow. It has no language model of its own: AI help
+  comes from Egeria Advisor, shown as a panel.
 - **Resource Explorer fixes** (#1100): a survey definition can have only one run queued or running on a resource at a
   time, and a second request is told which run is in progress and how to cancel it; cancelling a queued run closes its
   activity entry; sign-in errors from Egeria are recognised by their error class and code rather than their wording;

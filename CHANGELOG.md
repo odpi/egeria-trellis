@@ -82,11 +82,10 @@ Resource Explorer and Egeria Advisor as early previews. See [RELEASE_NOTES.md](R
 - **`/health` shows the report-spec authoring switches** (`spec_authoring`), as booleans (#1106).
 
 #### Studio
-- **Studio**, a new application for authoring report specs, reports and dashboard sheets, with forms, preview and
-  lifecycle, built on pyegeria's authoring API. It has no language model of its own; AI-assisted authoring comes from
-  Egeria Advisor, shown as a panel. Started with `packages/studio/scripts/start-studio.sh`, with its own CI workflow
-  (#1095).
-
+- **Studio, an emerging preview**: the new component where the authoring of report specs, dashboards, Dr.Egeria
+  plans, surveys and more will be brought together and extended. Today it authors report specs, reports and
+  dashboard sheets on pyegeria's authoring API; AI help comes from Egeria Advisor, shown as a panel. Started with
+  `packages/studio/scripts/start-studio.sh`, with its own CI workflow (#1095).
 - **Short-lived sessions with a rotating refresh** (TR-10, #1113): `STUDIO_JWT_TTL_MINUTES` (default 15) and
   `STUDIO_SESSION_MAX_HOURS` (default 8); each refresh re-checks the Egeria sign-in, a replayed refresh token revokes
   the session, and sign-out ends refresh.
