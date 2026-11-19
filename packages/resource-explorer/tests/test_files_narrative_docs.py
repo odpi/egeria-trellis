@@ -219,9 +219,9 @@ def test_the_collection_is_replaced_whole_on_each_run(registry, tmp_path, store)
     first = len(store.collections["fs_tree_narratives"])
     (Path(fs.local_mount_point) / "codebook.txt").unlink()
     _walk(registry, fs)
-    nd.run_narrative_docs(fs, registry, store_factory=lambda: store)
+    out = nd.run_narrative_docs(fs, registry, store_factory=lambda: store)
     # the new passages are swapped in; the replaced index is dropped only after (TR-69)
-    assert store.dropped == ["fs_tree_narratives__old"]
+    assert store.dropped == ["fs_tree_narratives__old"] and out["leftover"] == ""
     rows = store.collections["fs_tree_narratives"]
     assert len(rows) < first and {m["file_path"] for _, m in rows} == {"survey/README.md"}
 

@@ -68,7 +68,10 @@ class NotReachable(RuntimeError):
 
 
 class NotStored(RuntimeError):
-    """The passages could not be stored; the previous index is kept."""
+    """The passages could not be stored; the previous index is kept. `staging_left`: the staging collection could not
+    be dropped either (the next run drops it first)."""
+
+    staging_left = False
 
 
 def _now() -> str:
@@ -267,8 +270,8 @@ def run_narrative_docs(fs_entity, registry, *, store_factory: Callable[[], objec
             per_file.append({"file_path": rel, "outcome": outcome, "chunks": n_chunks})
         store = (store_factory or default_store)()
         collection = collection_for(store, slug)
-        stored = _replace(store, collection, chunks)
-        summary = {"walk_run": run, "ran_at": _now(), "collection": collection, "files": len(files),
+        stored, leftover = _replace(store, collection, chunks)
+        summary = {"walk_run": run, "ran_at": _now(), "collection": collection, "leftover": leftover, "files": len(files),
                    "outcomes": outcomes, "sections": sections, "chunks": len(chunks), "stored": int(stored or 0),
                    "files_detail": per_file[:200], "files_not_shown": max(0, len(per_file) - 200),
                    "max_file_bytes": limit, "machine": machine()}
@@ -279,14 +282,16 @@ def run_narrative_docs(fs_entity, registry, *, store_factory: Callable[[], objec
         registry.release_claim(claim_key, holder)
 
 
-def _replace(store, collection: str, chunks: list[tuple[str, dict]]) -> int:
+def _replace(store, collection: str, chunks: list[tuple[str, dict]]) -> tuple[int, str]:
     """Replace the collection whole, never dropping it before the new one is in: the passages are inserted under a
     staging name (ids minted under the live name), then swapped in, in one transaction, and the replaced index dropped.
-    On any failure the staging collection is dropped, the previous index is left untouched, and NotStored is raised."""
+    On any failure the staging collection is dropped, the previous index is left untouched, and NotStored is raised.
+    Returns (passages stored, the replaced collection's name if it could not be dropped, else ''); the next run drops
+    it first."""
     if not chunks:
         if store.collection_exists(collection):
             store.drop_collection(collection)
-        return 0
+        return 0, ""
     staging, replaced = collection + STAGING, collection + REPLACED
     try:
         for leftover in (staging, replaced):
@@ -297,18 +302,22 @@ def _replace(store, collection: str, chunks: list[tuple[str, dict]]) -> int:
         store.swap_collections(renames + [(staging, collection)])
     except Exception as exc:  # noqa: BLE001 -- any failure keeps the previous index; the type name only reaches the page
         log.warning("narrative passages for %s could not be stored", collection, exc_info=True)
+        err = NotStored(f"the passages could not be stored ({type(exc).__name__}) · the previous index is kept")
         try:
             if store.collection_exists(staging):
                 store.drop_collection(staging)
-        except Exception:  # noqa: BLE001 -- best effort; the old index is still in place
+        except Exception:  # noqa: BLE001 -- the old index is still in place; the next run drops the staging one
+            err.staging_left = True
             log.warning("could not drop %s", staging, exc_info=True)
-        raise NotStored(f"the passages could not be stored ({type(exc).__name__}) · the previous index is kept") from exc
+        raise err from exc
+    leftover = ""
     try:
         if store.collection_exists(replaced):
             store.drop_collection(replaced)
-    except Exception:  # noqa: BLE001 -- the new index is in; the replaced one is dropped on the next run
+    except Exception:  # noqa: BLE001 -- the new index is in; the replaced one is named on the run row, dropped next run
+        leftover = replaced
         log.warning("could not drop %s", replaced, exc_info=True)
-    return stored
+    return stored, leftover
 
 
 def _plural(n: int, one: str, many: str = "") -> str:
