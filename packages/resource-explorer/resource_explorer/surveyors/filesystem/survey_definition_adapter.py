@@ -503,10 +503,15 @@ def _filesystem_inventory_headline(registry, slug: str) -> dict | None:
 # step that never ran stays "Not yet run" through the facts layer's run gate: a reader returns {} only when the step has
 # no stored run to read, and the gate (a step_runs row) decides never-run. A run row with nothing readable behind it is
 # "not established", never "ran and found nothing".
-def _not_established(**extra) -> dict:
+def _not_established(registry, slug: str, step_key: str) -> dict:
+    """What a reader returns when the step has no readable run. {} when the step never ran at all (the callers that read
+    a result without the run gate, `question_has_data`, must see "nothing", never a status dict that reads as data); a
+    "not established" status when a run row exists with nothing readable behind it, so it is never "ran and found nothing"."""
     from resource_explorer.surveyors.result_status import NOT_ESTABLISHED
 
-    return {"_status": {"state": NOT_ESTABLISHED}, **extra}
+    if not registry.query_step_runs(slug=slug, step_key=step_key, entity_type="filesystem", limit=1):
+        return {}
+    return {"_status": {"state": NOT_ESTABLISHED}}
 
 
 def _date(stamp) -> str:
@@ -518,7 +523,7 @@ def _file_profiles_results(registry, slug: str) -> dict:
 
     run = (profiles_view(registry, slug) or {}).get("run")
     if not run:
-        return _not_established()
+        return _not_established(registry, slug, "file_profiles")
     c = run["counts"]
     return {"run_at": run["run_id"], "words": run["words"], "files": c["files"], "profiled": c["profiled"],
             "by_egeria": c["by_egeria"], "by_re": c["by_re"], "sampled": c["sampled"], "not_read": c["not_read"],
@@ -535,7 +540,7 @@ def _narrative_docs_results(registry, slug: str) -> dict:
 
     run = (narrative_docs.view(registry, slug) or {}).get("run")
     if not run:
-        return _not_established()
+        return _not_established(registry, slug, "narrative_docs")
     o = run.get("outcomes") or {}
     return {"run_at": run.get("ran_at", ""), "words": run["words"], "stated": run["stated"],
             "stale": bool(run.get("stale")), "files_read": o.get(narrative_docs.READ, 0),
@@ -559,7 +564,7 @@ def _file_data_class_match_results(registry, slug: str) -> dict:
 
     run = (file_class_match.view(registry, slug) or {}).get("run")
     if not run:
-        return _not_established()
+        return _not_established(registry, slug, "file_data_class_match")
     return {"run_at": run.get("ran_at", ""), "words": run["words"], "stale": bool(run.get("stale")),
             "columns": run.get("columns", 0), "files": run.get("files", 0), "established": run.get("established", 0),
             "privacy_relevant": run.get("privacy_relevant", 0), "proposals": run.get("proposals", 0),

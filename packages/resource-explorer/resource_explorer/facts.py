@@ -1477,7 +1477,10 @@ class FactLayer:
                     headline_capped=bool(head.get("capped")), headline_categories=str(head.get("categories") or ""),
             provenance=self._provenance_for(value),
             last_run_at=run.get("last_run_at", ""), can_run=can_run,
-            note=self._note_for(state, value, run),
+            note=(f"Read back from Egeria's own survey report ({value['report_sentence']}), not from a run of Resource "
+                  "Explorer's."
+                  if self._provenance_for(value) == PROVENANCE_EGERIA and value.get("report_sentence") else
+                  self._note_for(state, value, run)),
         )
 
     def _headline_for(self, analysis_id: str, slug: str, level: str = "resource") -> str:

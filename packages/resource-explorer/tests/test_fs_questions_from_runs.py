@@ -270,3 +270,11 @@ def test_the_three_steps_each_credit_their_own_analysis(registry):
     for aid in ("file_profiles", "narrative_docs", "file_data_class_match"):
         assert last[aid]["last_run_at"], aid
     assert "survey_price" not in last and "resource_reachability" not in last
+
+
+def test_a_reader_with_no_run_returns_nothing_so_has_data_is_never_true_for_a_step_that_never_ran(registry):
+    """`question_has_data` reads results without the run gate: a status dict from a reader would count as data."""
+    from resource_explorer.surveyors.filesystem import survey_definition_adapter as fsa
+
+    for aid in ("file_profiles", "narrative_docs", "file_data_class_match", "resource_reachability", "survey_price"):
+        assert fsa.FILESYSTEM_ANALYSIS_RESULTS_MAP[aid][0](registry, SLUG) == {}, aid
