@@ -16357,7 +16357,41 @@ class ProjectRegistry:
                 ).fetchall()
         except Exception:
             return []
-        return [(r["step_key"], str(r["surveyed_at"])) for r in rows if r["surveyed_at"]]
+        found = [(r["step_key"], str(r["surveyed_at"])) for r in rows if r["surveyed_at"]]
+        if entity_type == "filesystem":
+            # C1: a completed Egeria Folder Survey (report read back) is a run of filesystem_inventory, where Egeria leads.
+            found = sorted(found + [("filesystem_inventory", ts) for ts in self._completed_native_survey_times(slug)],
+                           key=lambda kv: kv[1], reverse=True)
+        return found
+
+    def _completed_native_survey_times(self, slug: str) -> list[str]:
+        """`surveyed_at` of the `egeria-native:*` rows of this file system whose engine action succeeded AND whose
+        survey report was read back (a GUID, a read time and a stored count). A submitted, running, failed or
+        report-less row proves nothing and credits nothing. Empty when Egeria is not what leads the file system: its
+        inventory then reads RE's own walk rows, and a native run would credit a reader that has nothing of it."""
+        from resource_explorer.native_survey_run import SUCCESS_STATUSES
+
+        statuses = sorted(SUCCESS_STATUSES)
+        try:
+            with self._conn() as conn:
+                rows = conn.execute(
+                    "SELECT surveyed_at FROM step_runs WHERE entity_type = 'filesystem' AND slug = ? "
+                    "AND step_key LIKE ? AND engine_action_guid <> '' "
+                    f"AND engine_action_status IN ({', '.join('?' for _ in statuses)}) "
+                    "AND COALESCE(survey_report_guid, '') <> '' AND COALESCE(report_read_at, '') <> '' "
+                    "AND report_annotation_count IS NOT NULL ORDER BY surveyed_at DESC",
+                    (slug, NATIVE_SURVEY_STEP_PREFIX + "%", *statuses),
+                ).fetchall()
+            if not rows:
+                return []
+            from resource_explorer import file_reach
+
+            fs = self.get_filesystem(slug)
+            if fs is None or file_reach.fork_for(self, fs).surveyor != file_reach.SURVEYOR_EGERIA:
+                return []
+        except Exception:
+            return []
+        return [str(r["surveyed_at"]) for r in rows if r["surveyed_at"]]
 
     @staticmethod
     def _covered_by_step_runs(survey_ts: str, step_runs: list[tuple[str, str]],

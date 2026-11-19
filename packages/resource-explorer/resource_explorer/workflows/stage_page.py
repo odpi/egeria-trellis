@@ -678,8 +678,10 @@ def build_analyses_index(registry, slug: str, entity_type: str = "repo", *,
     source_steps = adapter.analysis_source_steps() if adapter.analysis_source_steps else {}
     defs = definitions if definitions is not None else documented_definition_steps(entity_type)
 
+    # "read": answers questions from a step's stored run and has its own press on the survey card, so a card here would
+    # only be a Run that is always off (C1, 2026-11-19).
     entries = [a for a in get_analyses(entity_type, include_egeria_live=False)
-               if a.get("action") != "publish"]
+               if a.get("action") not in ("publish", "read")]
     questions = get_questions(entity_type)
 
     rows: list[dict] = []

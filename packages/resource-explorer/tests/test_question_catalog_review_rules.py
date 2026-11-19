@@ -401,10 +401,13 @@ class TestTheCommittedCsvGeneratesTheNumbersInThePrBody:
     def test_the_gap_rows_for_unbuilt_file_analyses_parse_as_gaps(self, generated):
         _, out, _ = generated
         fs = {e["id"]: e for e in out["filesystem_questions"]}
-        for qid, name in (("Q-0101", "file_profiles"), ("Q-0105", "folder_narratives")):
-            assert fs[qid]["answering"]["kind"] == "gap", qid
-            assert name in fs[qid]["answering"]["note"], qid
-        # built in Files build steps 6 and 7 (2026-10-28): no longer gaps
+        # built in Files build steps 5 and 7 and answered from their runs (C1, 2026-11-19), and in steps 6 and 7
+        # (2026-10-28): no longer gaps
+        for qid, name in (("Q-0101", "file_profiles"), ("Q-0105", "narrative_docs")):
+            assert fs[qid]["answering"]["kind"] == "analysis", qid
+            assert fs[qid]["answering"]["analysis_ids"] == [name], qid
+        # the repository copy of Q-0105 is still the CSV's own gap
+        assert {e["id"]: e for e in out["repo_questions"]}["Q-0105"]["answering"]["kind"] == "gap"
         assert fs["Q-0102"]["answering"]["kind"] == "analysis"
         assert fs["Q-0102"]["answering"]["analysis_ids"] == ["fs_change_rates"]
         assert fs["Q-0104"]["answering"]["kind"] == "analysis"

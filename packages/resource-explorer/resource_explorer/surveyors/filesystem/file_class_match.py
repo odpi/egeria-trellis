@@ -35,6 +35,8 @@ from pathlib import Path, PurePosixPath
 log = logging.getLogger(__name__)
 
 STEP_KEY = "file_data_class_match"
+#: The stale warning, in the words the survey card shows beside the run (fs-survey.js `classStale`).
+STALE_WORDS = "newer profiles exist · match again to bring this up to date"
 #: How much of each file is read for values: its head, cut at the last whole line.
 SAMPLE_BYTES = 1024 * 1024
 #: Values kept per column (non-null, in file order).
