@@ -103,8 +103,8 @@ def list_flow_runs(limit: int = 50) -> dict:
 
 
 async def _cancel(flow_run_id: str) -> str:
-    """The run's status after the request: "cancelling" (the worker will stop it) or "cancelled" (it had not
-    started; Prefect cancelled it at once, TR-62c). Raises when Prefect refused."""
+    """The run's status after the request: "cancelling" (the worker will stop it) or "cancelled" (it is already
+    CANCELLED, e.g. a run that never started, which Prefect cancels at once: TR-62c). Raises when Prefect refused."""
     from uuid import UUID
 
     from resource_explorer.surveyors.prefect_adapter import request_cancel
@@ -114,7 +114,7 @@ async def _cancel(flow_run_id: str) -> str:
         outcome = await request_cancel(client, UUID(flow_run_id))
     if outcome.refused:
         raise RuntimeError(outcome.refused)
-    return "cancelled" if outcome.before_start else "cancelling"
+    return "cancelled" if outcome.cancelled else "cancelling"
 
 
 @router.post("/flow-runs/{flow_run_id}/cancel")

@@ -552,9 +552,14 @@ async def _choose_deployment(client: Any, pool: str) -> Any:
 
 
 class CancelOutcome(NamedTuple):
-    """What a cancel request came to. `refused` is "" unless Prefect refused it; `before_start` is True when the run
-    had not started and is already CANCELLED (or CANCELLING), so there was no process to stop."""
+    """What a cancel request came to.
+
+    - `refused`: "" unless Prefect refused it.
+    - `cancelled`: the run is already CANCELLED. False means CANCELLING: the worker is still stopping it.
+    - `before_start`: CANCELLED, and the run never started (no start_time), so there was no process to stop. Only
+      then may anything say "before it started" (TR-62c R1)."""
     refused: str = ""
+    cancelled: bool = False
     before_start: bool = False
 
 
@@ -570,8 +575,10 @@ async def request_cancel(client: Any, flow_run_id: Any) -> CancelOutcome:
     TR-62c (laz, flow run 90cf24d0, 2026-11-19): a run with no infrastructure yet (SCHEDULED, PENDING) is not moved
     to CANCELLING. The server REJECTs the proposal ("Scheduled flow run has no infrastructure to terminate.") and
     sets CANCELLED itself (BypassCancellingFlowRunsWithNoInfra). So an ABORT or REJECT is not by itself a refusal:
-    the run is read again, and CANCELLED or CANCELLING there is a cancel that worked, before the run started. Any
-    other state, or a failed read, keeps the refusal."""
+    the run is read again. CANCELLING there is a cancel already under way (e.g. a second Admin Cancel); CANCELLED is
+    a cancel that worked, and "before it started" only when the run has no start_time (R1: an earlier cancel of a
+    run that HAD started is cancelled, not cancelled before it started). Any other state, or a failed read, keeps
+    the refusal."""
     from prefect.states import Cancelling
 
     result = await client.set_flow_run_state(flow_run_id=flow_run_id, state=Cancelling())
@@ -581,8 +588,11 @@ async def request_cancel(client: Any, flow_run_id: Any) -> CancelOutcome:
     unread = ""
     try:
         run = await client.read_flow_run(flow_run_id)
-        if _state_type(getattr(run, "state", None)) in ("CANCELLED", "CANCELLING"):
-            return CancelOutcome(before_start=True)
+        kind = _state_type(getattr(run, "state", None))
+        if kind == "CANCELLING":
+            return CancelOutcome()
+        if kind == "CANCELLED":
+            return CancelOutcome(cancelled=True, before_start=getattr(run, "start_time", None) is None)
     except Exception as exc:  # an unreadable state proves nothing: the refusal stands, and says it could not check
         unread = f"; its state could not be read afterwards ({type(exc).__name__})"
     reason = getattr(getattr(result, "details", None), "reason", "") or "no reason given"

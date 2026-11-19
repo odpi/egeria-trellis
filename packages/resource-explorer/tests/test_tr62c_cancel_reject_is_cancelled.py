@@ -25,17 +25,18 @@ def _set_state_result(status: str, reason: str = ""):
                                  details=types.SimpleNamespace(reason=reason))
 
 
-def _run_in(kind: str):
+def _run_in(kind: str, started: bool = False):
     state = MagicMock()
     state.is_completed.return_value = kind == "COMPLETED"
     state.is_failed.return_value = False
     state.is_cancelled.return_value = kind == "CANCELLED"
     state.name = kind.title()
     state.type = types.SimpleNamespace(value=kind)
-    return types.SimpleNamespace(state=state)
+    return types.SimpleNamespace(state=state, start_time="2026-11-19T17:17:39Z" if started else None)
 
 
-def _client(cancel_status: str, after: str, *, before: str = "SCHEDULED", reason: str = NO_INFRA):
+def _client(cancel_status: str, after: str, *, before: str = "SCHEDULED", reason: str = NO_INFRA,
+            started: bool = False):
     """A fake Prefect client: the run reads `before` until the cancel is proposed, then `after`."""
     c = MagicMock()
     c.__aenter__ = AsyncMock(return_value=c)
@@ -47,7 +48,7 @@ def _client(cancel_status: str, after: str, *, before: str = "SCHEDULED", reason
         return _set_state_result(cancel_status, reason)
 
     async def read(_id):
-        return _run_in(current["kind"])
+        return _run_in(current["kind"], started)
 
     c.set_flow_run_state = AsyncMock(side_effect=set_state)
     c.read_flow_run = read
@@ -57,10 +58,21 @@ def _client(cancel_status: str, after: str, *, before: str = "SCHEDULED", reason
 
 class TestRequestCancel:
     @pytest.mark.parametrize("status", ["REJECT", "ABORT"])
-    @pytest.mark.parametrize("after", ["CANCELLED", "CANCELLING"])
-    def test_a_rejected_proposal_on_a_run_prefect_cancelled_is_success(self, status, after):
-        out = asyncio.run(adapter.request_cancel(_client(status, after), RUN_ID))
-        assert out == adapter.CancelOutcome(refused="", before_start=True)
+    def test_a_rejected_proposal_on_a_run_that_never_started_is_cancelled_before_it_started(self, status):
+        out = asyncio.run(adapter.request_cancel(_client(status, "CANCELLED"), RUN_ID))
+        assert out == adapter.CancelOutcome(refused="", cancelled=True, before_start=True)
+
+    @pytest.mark.parametrize("started", [False, True])
+    def test_a_refusal_over_cancelling_is_a_cancel_under_way_never_before_it_started(self, started):
+        """R1 (a): e.g. a second Admin Cancel on a running run; the worker is still stopping it."""
+        out = asyncio.run(adapter.request_cancel(_client("REJECT", "CANCELLING", started=started), RUN_ID))
+        assert out == adapter.CancelOutcome()
+
+    def test_a_refusal_over_a_started_run_already_cancelled_is_cancelled_not_before_it_started(self):
+        """R1 (b): an earlier cancel won on a run that HAD started."""
+        out = asyncio.run(adapter.request_cancel(_client("REJECT", "CANCELLED", before="RUNNING", started=True),
+                                                 RUN_ID))
+        assert out == adapter.CancelOutcome(refused="", cancelled=True, before_start=False)
 
     def test_an_abort_on_a_completed_run_stays_a_refusal(self):
         out = asyncio.run(adapter.request_cancel(
@@ -109,6 +121,14 @@ class TestDeadlinePath:
         assert "; cancel attempt FAILED (Prefect refused the cancel (abort: run is already COMPLETED))" in msg
         assert msg.endswith("- the run may still be live")
 
+    def test_a_started_run_already_cancelled_does_not_say_before_it_started(self):
+        msg = _time_out(_client("REJECT", "CANCELLED", before="RUNNING", started=True))
+        assert msg.endswith("; the run was cancelled") and "before it started" not in msg
+
+    def test_a_started_run_already_cancelling_does_not_say_before_it_started(self):
+        msg = _time_out(_client("REJECT", "CANCELLING", before="RUNNING", started=True))
+        assert msg.endswith("; the run was cancelled") and "before it started" not in msg
+
     def test_a_running_run_accepted_into_cancelling_reads_as_before(self):
         msg = _time_out(_client("ACCEPT", "CANCELLING", before="RUNNING"))
         assert msg.endswith("; the run was cancelled")
@@ -129,6 +149,16 @@ class TestAdminRoute:
         r = self._post(_client("ABORT", "COMPLETED", before="COMPLETED", reason="run is already COMPLETED"))
         assert r.status_code == 502
         assert "run is already COMPLETED" in r.json()["detail"]
+
+    def test_a_second_cancel_on_a_running_run_is_200_cancelling_not_cancelled(self):
+        """R1 (a): Prefect refuses the second CANCELLING; the run is still being stopped."""
+        r = self._post(_client("REJECT", "CANCELLING", before="CANCELLING", started=True,
+                               reason="already cancelling"))
+        assert r.status_code == 200 and r.json() == {"status": "cancelling", "id": RUN_ID}
+
+    def test_a_started_run_an_earlier_cancel_finished_is_200_cancelled(self):
+        r = self._post(_client("REJECT", "CANCELLED", before="CANCELLED", started=True))
+        assert r.status_code == 200 and r.json()["status"] == "cancelled"
 
     def test_a_running_run_is_200_cancelling(self):
         r = self._post(_client("ACCEPT", "CANCELLING", before="RUNNING"))
