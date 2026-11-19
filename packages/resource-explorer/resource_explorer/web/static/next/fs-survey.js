@@ -31,7 +31,8 @@ import { getFolderSurvey, attachFilesystemRoot, runFolderSurvey, publishFolderSu
   runFileProfiles, readFileProfilesFromEgeria, publishFileProfiles, runFilesystemAnalysis, runNarrativeDocs, runClassMatch,
   pollActivity, activityFailure, failureText } from '/static/re-api.js';
 import { enhanceTable } from '/static/trellis-ui/colresize.js';
-import { fmtBytes } from '/static/next/stages/native-report.js';
+import { fmtBytesDecimal as fmtBytes } from '/static/next/stages/native-report.js';
+import { whenMs } from '/static/next/format.js';
 import { readSectionPref, writeSectionPref, sectionStartsOpen } from '/static/next/sections.js';
 
 /** Placeholder words, in one table, for the designer. */
@@ -44,6 +45,13 @@ export const FOLDER_SURVEY_WORDS = {
   checking: 'Checking…',
   pressHelp: "Runs the folder survey (Egeria's Folder Survey leads when Egeria can read the path). Walks every file; stores the walk here. Publishing is a separate press.",
   pressOffHelp: 'Off: no one can be named to lead the survey yet. Check again reads whether the path can be reached.',
+  // D11: the reason a primary press is off, on one line beside the action that resolves it (the tooltip keeps the long form).
+  pressNoAssetWhy: 'Survey is off: Egeria has no asset for this folder yet · attach the root folder first',
+  pressNoLeadWhy: 'Survey is off: no one can be named to lead yet · Check again',
+  // TR-70: a run in flight, from the newest native row (Egeria leads), and the run's submit time.
+  pressingEgeria: (since) => `${FOLDER_SURVEY_WORDS.pressing} (Egeria${since ? `, since ${since}` : ''})`,
+  // D10: "Check again" changed nothing because a settled survey already proved the path; the date is that survey's.
+  keptLine: (date) => `still verified by the ${date || 'earlier'} survey · a path check doesn't replace it`,
   attach: 'Attach root folder to Egeria',
   attaching: 'Attaching…',
   attachHelp: "Creates the root folder's asset in Egeria as you; Egeria's Folder Survey acts on that asset.",
@@ -95,7 +103,13 @@ export const FOLDER_SURVEY_WORDS = {
   noProfiles: 'not profiled yet',
   profiledAt: (date) => `profiled${date ? ` · ${date}` : ''}`,
   sampled: 'sampled',
-  submitted: (n) => `${num(n)} CSV file${n === 1 ? '' : 's'} submitted to Egeria's CSV Survey Service · its reports not read back yet`,
+  // TR-70 + D8: one line for the CSV profiles Egeria has not answered yet: the count and the time while nothing has come
+  // back, the files by name (at most three) once some have; `failed` is the last read-back's own count.
+  submitted: (c, since, failed) => [
+    (c.submitted_names || []).length
+      ? `no report from Egeria yet: ${c.submitted_names.join(', ')}${c.submitted_more ? ` (+${num(c.submitted_more)} more)` : ''}`
+      : `waiting for ${num(c.submitted)} report${c.submitted === 1 ? '' : 's'} from Egeria`,
+    since ? `since ${since}` : '', failed ? `${num(failed)} could not be read` : ''].filter(Boolean).join(' · '),
   notInstalled: (n) => `not installed · Egeria's CSV Survey Service is not installed where its engine host runs · ${num(n)} CSV file${n === 1 ? '' : 's'} not profiled`,
   egeriaUnchecked: (n) => `could not check whether Egeria's CSV Survey Service is installed · ${num(n)} CSV file${n === 1 ? '' : 's'} not profiled`,
   submitFailed: (n) => `${num(n)} CSV file${n === 1 ? '' : 's'} refused by Egeria`,
@@ -139,6 +153,13 @@ export const FOLDER_SURVEY_WORDS = {
 };
 
 const dash = '–';
+/** The states of a native run that still has read-back work to do: `native_survey_run.IN_FLIGHT_STATES`. */
+export const IN_FLIGHT_STATES = ['submitted', 'running', 'unreadable', 'awaiting_report', 'report_incomplete'];
+/** "HH:MM" in the reader's own time, '' when the stamp cannot be read. */
+export const clock = (iso) => {
+  const ms = whenMs(iso);
+  return Number.isNaN(ms) ? '' : new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
 const num = (n) => (typeof n === 'number' && Number.isFinite(n) ? n.toLocaleString('en-US') : dash);
 const MONTHS = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06', Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' };
 /** The date part of a stored time: ISO ("2026-10-19T08:00:00") or Egeria's Java `Date.toString()` ("Mon Oct 19 08:00:00 UTC 2026"). */
@@ -150,14 +171,14 @@ export const day = (value) => {
 };
 
 /** The probe line: the sentence exactly as stored, a cue glyph for the state, and who leads. */
-export function reachLineHtml(reach) {
+export function reachLineHtml(reach, keptNote = '') {
   const r = reach || {};
   const glyph = { egeria: '✓', expected: '◔', mounts_unknown: '?', re_only: '✓', egeria_cannot: '⚠', nobody: '⚠', connection_broken: '⚠',
     undecided: '?', not_checked: '◔' }[r.state] || '◔';
   const lead = r.surveyor ? FOLDER_SURVEY_WORDS.led(r.surveyor) : FOLDER_SURVEY_WORDS.noLead;
   return `<div data-fs-reach data-reach-state="${esc(r.state || 'not_checked')}" class="text-caveat text-ink">
     <span class="font-glyph" aria-hidden="true">${glyph}</span> ${esc(r.sentence || 'not checked yet')}
-    <span class="text-ink-muted"> · ${esc(lead)}</span>
+    <span class="text-ink-muted" ${keptNote ? 'data-fs-reach-kept' : ''}> · ${esc(keptNote || lead)}</span>
     ${r.path ? `<div class="text-provenance text-ink-muted" data-fs-reach-path>${esc(FOLDER_SURVEY_WORDS.pathChecked(r.path))}</div>` : ''}
     ${r.why ? `<div class="text-provenance text-ink-muted" data-fs-reach-why>${esc(r.why)}</div>` : ''}
   </div>`;
@@ -411,7 +432,7 @@ const STATE_WORDS = {
 const sourceWords = (s) => (String(s || '').startsWith('egeria:') ? `Egeria · report ${String(s).slice(7, 15)}` : s === 'resource-explorer' ? 'RE' : '');
 
 /** The data-file profiles (Files build step 5): the cost line BEFORE the press, then the run's counts, each from stored rows. */
-export function fileProfilesHtml(fp, fold = null) {
+export function fileProfilesHtml(fp, fold = null, read = null) {
   const W = FOLDER_SURVEY_WORDS;
   if (!fp) return '';
   if (fp.error) return `<div data-fp data-fp-state="error" class="mt-s3 text-provenance text-state-warn">${esc(fp.error)}</div>`;
@@ -426,7 +447,7 @@ export function fileProfilesHtml(fp, fold = null) {
     <div data-fp-price class="text-caveat text-ink">${esc(price.words || '')}${pointer}</div>`;
   if (!run) return `<div data-fp data-fp-state="none" class="mt-s3">${head}<div class="text-provenance text-ink-muted">${esc(W.noProfiles)}</div></div>`;
   const c = run.counts || {};
-  const egeriaLines = [c.submitted ? W.submitted(c.submitted) : '', c.not_installed ? W.notInstalled(c.not_installed) : '',
+  const egeriaLines = [c.submitted ? W.submitted(c, clock(run.run_id), read && read.failed) : '', c.not_installed ? W.notInstalled(c.not_installed) : '',
     c.egeria_unchecked ? W.egeriaUnchecked(c.egeria_unchecked) : '', c.submit_failed ? W.submitFailed(c.submit_failed) : '',
     c.file_system_name_unknown ? W.fsNameUnknown(c.file_system_name_unknown) : '']
     .filter(Boolean);
@@ -598,13 +619,19 @@ export const PRESS_FILLS = { survey: 'files', measure: 'measures', profile: 'pro
 
 /** The whole card. `busy` is 'survey' | 'check' | 'publish' | 'measure' | 'publish-measures' | 'profile' | 'read-egeria' |
  *  'publish-profiles' | 'derive' | 'read-narratives' | 'match-classes' | ''. */
-export function folderSurveyCardHtml(view, { busy = '', error = '', open = null } = {}) {
+export function folderSurveyCardHtml(view, { busy = '', error = '', open = null, keptNote = '', read = null } = {}) {
   const W = FOLDER_SURVEY_WORDS;
   const reach = (view && view.reach) || {};
   const canSurvey = !!reach.surveyor;     // a state that names who leads (Egeria expected or verified; RE-led)
   // Egeria leads and holds no folder asset: its Folder Survey would be refused, so Survey is drawn off, with the reason.
   const needsAsset = reach.surveyor === "Egeria's Folder Survey" && !!view && view.egeria_asset === false;
   const surveyHelp = needsAsset ? W.pressNoAssetHelp : canSurvey ? W.pressHelp : W.pressOffHelp;
+  // An Egeria-led run is in flight (the view's `egeria_run_state`): the press says so and is off until it settles.
+  const inFlight = !!view && IN_FLIGHT_STATES.includes(view.egeria_run_state);
+  const surveyOn = !busy && canSurvey && !needsAsset && !inFlight;
+  // D11: why the primary press is off, on one line (only while it is off for a reason a person can act on).
+  const surveyWhy = busy || inFlight || surveyOn ? '' : needsAsset ? W.pressNoAssetWhy : W.pressNoLeadWhy;
+  const surveyLabel = busy === 'survey' ? W.pressing : inFlight ? W.pressingEgeria(clock(view.egeria_run_since)) : W.press;
   const needsPublish = view && view.state === 'measured' && view.surveyor && !view.published
     && view.surveyor !== "Egeria's Folder Survey" && reach.surveyor === 'Resource Explorer';
   // Egeria's Folder Survey leads: Resource Explorer's own walk measures what that survey does not keep, beside it.
@@ -621,10 +648,10 @@ export function folderSurveyCardHtml(view, { busy = '', error = '', open = null 
   return `<div id="fs-folder-survey" class="mt-s3 mb-s3" data-fs-card>
     <div class="text-caps uppercase tracking-caps text-ink-muted">${esc(W.heading)}</div>
     <div class="mt-[2px] flex flex-wrap items-baseline gap-s2">
-      ${reachLineHtml(reach)}
+      ${reachLineHtml(reach, keptNote)}
       ${btn('check', busy === 'check' ? W.checking : W.check, !busy, W.checkHelp)}
       ${needsAsset ? btn('attach', busy === 'attach' ? W.attaching : W.attach, !busy, W.attachHelp) : ''}
-      ${btn('survey', busy === 'survey' ? W.pressing : W.press, !busy && canSurvey && !needsAsset, surveyHelp)}
+      ${btn('survey', surveyLabel, surveyOn, surveyHelp)}
       ${needsPublish ? btn('publish', busy === 'publish' ? W.publishing : W.publish, !busy, W.publishHelp) : ''}
       ${besideEgeria ? btn('measure', busy === 'measure' ? W.measuringBeside : W.measureBeside, !busy, W.measureBesideHelp) : ''}
       ${needsPublishMeasures ? btn('publish-measures', busy === 'publish-measures' ? W.publishing : W.publishMeasures, !busy, W.publishMeasuresHelp) : ''}
@@ -635,12 +662,14 @@ export function folderSurveyCardHtml(view, { busy = '', error = '', open = null 
       ${view && view.narrative_docs && view.narrative_docs.price && view.narrative_docs.price.files ? btn('read-narratives', busy === 'read-narratives' ? W.narrativeReading : W.narrativePress, !busy, W.narrativePressHelp) : ''}
       ${view && view.class_match && view.class_match.price && view.class_match.price.columns ? btn('match-classes', busy === 'match-classes' ? W.classMatching : W.classPress, !busy, W.classPressHelp) : ''}
     </div>
+    ${surveyWhy ? `<div data-fs-survey-why class="mt-[2px] text-provenance text-ink-muted">${esc(surveyWhy)}</div>` : ''}
     ${priceLineHtml(view && view.price)}
+    ${besideEgeria && view && view.measure_price ? `<div data-fs-measure-price class="mt-[2px] text-caveat text-ink-muted">${esc(view.measure_price.words || W.notPriced)}</div>` : ''}
     ${error ? `<div data-fs-error class="mt-[2px] text-provenance text-state-warn">${esc(error)}</div>` : ''}
     ${folderResultsHtml(view, fold('files'))}
     ${walkMeasuresHtml(view && view.extensions, fold('measures'))}
     ${narrativeDocsHtml(view && view.narrative_docs)}
-    ${fileProfilesHtml(view && view.file_profiles, fold('profiles'))}
+    ${fileProfilesHtml(view && view.file_profiles, fold('profiles'), read)}
     ${classMatchHtml(view && view.class_match, fold('classes'))}
     ${derivedHtml(view && view.derived, fold('derived'))}
   </div>`;
@@ -663,6 +692,8 @@ export async function mountFolderSurvey(host, slug, { onChange = () => {} } = {}
   let view = null;
   let error = '';
   let filled = '';                                 // the section the last press filled: open for one paint
+  let keptNote = '';                               // D10: "Check again" left a settled survey standing; said until the next press
+  let readNote = null;                             // the last read-back of Egeria's CSV reports ({ waiting, failed })
   const me = whoAmI();
   // Which sections start open: the press that just filled one, else the person's choice for this resource, else rows.
   const openMap = () => {
@@ -677,7 +708,7 @@ export async function mountFolderSurvey(host, slug, { onChange = () => {} } = {}
   });
   const paint = (busy = '') => {
     const open = openMap();
-    host.innerHTML = folderSurveyCardHtml(view, { busy, error, open });
+    host.innerHTML = folderSurveyCardHtml(view, { busy, error, open, keptNote, read: readNote });
     host.querySelectorAll('[data-fs-act]').forEach((b) => b.addEventListener('click', () => press(b.dataset.fsAct)));
     enhanceOpen();
     host.querySelectorAll('details[data-fs-section]').forEach((d) => {
@@ -698,16 +729,23 @@ export async function mountFolderSurvey(host, slug, { onChange = () => {} } = {}
   const press = async (act) => {
     error = '';
     filled = '';
+    keptNote = '';
     paint(act);
     try {
-      if (act === 'check') await checkFilesystemReach(slug);
+      if (act === 'check') {
+        const out = await checkFilesystemReach(slug);
+        keptNote = out && out.kept ? FOLDER_SURVEY_WORDS.keptLine(out.checked_date) : '';
+      }
       else if (act === 'attach') await attachFilesystemRoot(slug);
       else if (act === 'survey') await runFolderSurvey(slug, { publish: false });
       else if (act === 'publish') await publishFolderSurvey(slug);
       else if (act === 'measure') await runWalkExtensions(slug, { publish: false });
       else if (act === 'publish-measures') await publishWalkExtensions(slug);
       else if (act === 'profile') await runFileProfiles(slug);
-      else if (act === 'read-egeria') await readFileProfilesFromEgeria(slug);
+      else if (act === 'read-egeria') {
+        const out = await readFileProfilesFromEgeria(slug);
+        readNote = out ? { waiting: out.waiting, failed: out.failed } : null;      // the response is no longer dropped
+      }
       else if (act === 'publish-profiles') await publishFileProfiles(slug);
       else if (act === 'read-narratives') await runNarrativeDocs(slug);
       else if (act === 'match-classes') await runClassMatch(slug);
@@ -736,6 +774,20 @@ export async function mountFolderSurvey(host, slug, { onChange = () => {} } = {}
   await read();
   paint('');
   return () => paint('');
+}
+
+/** TR-70: the `onRows` handler that reads the pane again when a file system's live native row stops being live. The rows
+ *  are followed by native-surveys.js (a read-back POST every 2 s for the first minute, then 10 s, a give-up at 10 minutes);
+ *  this only decides when to re-read, so the card, the stage header and the questions move to the new survey with no manual
+ *  reload. `reload` runs once per settle; a re-definition row is the definition cards' own business. */
+export function reloadWhenFolderSurveySettles(initialRows, resourceType, reload) {
+  const live = (rows) => resourceType === 'filesystem' && (rows || []).some((r) => r.kind !== 're_definition' && r.in_flight);
+  let was = live(initialRows);
+  return (rows) => {
+    const now = live(rows);
+    if (was && !now) { was = false; reload(); }
+    was = was || now;
+  };
 }
 
 /** The card's place while its read is out: the heading and "reading…", no press and no fact. */

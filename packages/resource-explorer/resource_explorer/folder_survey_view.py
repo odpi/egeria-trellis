@@ -59,6 +59,8 @@ def _egeria_candidate(registry, slug: str) -> dict | None:
 
     runs = registry.list_native_survey_runs("filesystem", slug, nsr.FOLDER_SURVEY_QN)
     newest_state = ""
+    # When the newest run was submitted: the card says "Surveying… (Egeria, since HH:MM)" from it while the run is in flight.
+    newest_since = (runs[0].get("surveyed_at") or "") if runs else ""
     for i, run in enumerate(runs):
         report = run.get("survey_report_guid") or ""
         stored = registry.count_native_survey_annotations(report) if report else None
@@ -73,11 +75,11 @@ def _egeria_candidate(registry, slug: str) -> dict | None:
             pre = pre_reset_claim(_reset_at(registry, slug), at)
             return {"surveyor": file_reach.SURVEYOR_EGERIA, "at": at,
                     "report_guid": report, "annotations": registry.query_native_survey_annotations(report),
-                    "run_state": newest_state, "limits": None, "published": pre is None,
+                    "run_state": newest_state, "run_since": newest_since, "limits": None, "published": pre is None,
                     "publish": None, "pre_reset": pre, "report_sentence": file_reach.EGERIA_REPORT_SENTENCE,
                     # Said on every Egeria-led report (design 2026-10-21 section 2, and the analysis level sent).
                     "detail_lines": [file_reach.analysis_level_line(), file_reach.EGERIA_CSV_LINE]}
-    return {"none": True, "run_state": newest_state} if runs else None
+    return {"none": True, "run_state": newest_state, "run_since": newest_since} if runs else None
 
 
 def _re_candidate(registry, slug: str) -> dict | None:
@@ -215,6 +217,17 @@ def _walk_derived(registry, slug: str, fork) -> tuple[dict, dict]:
     return price, derived
 
 
+def _measure_price(registry, slug: str) -> dict:
+    """The price line of the "Measure beside" press (D13). A failed read is said on its own line; the card still renders."""
+    from resource_explorer.surveyors.filesystem import walk_derived
+
+    try:
+        return walk_derived.measure_price(registry, slug)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("%s: the measure-beside price could not be read", slug, exc_info=True)
+        return {"priced": False, "words": f"not priced · could not read the last walk: {type(exc).__name__}: {exc}"}
+
+
 def _narrative_docs(registry, slug: str) -> dict:
     """The narrative files read in full (Files build step 7, F11's long form): the price before the press and the newest
     run. A failed read is said on its own line; the card still renders."""
@@ -248,10 +261,12 @@ def folder_survey_view(registry, slug: str) -> dict:
     candidates = [c for c in (egeria, re_walk) if c and not c.get("none")]
     base = {"slug": slug, "reach": fork.as_dict(), "leads": fork.surveyor,
             "egeria_run_state": (egeria or {}).get("run_state", ""),
+            "egeria_run_since": (egeria or {}).get("run_since", ""),
             "egeria_asset": bool((getattr(fs, "egeria_asset_guid", "") or "").strip()), "extensions": extensions_view(registry, slug),
             "file_profiles": _file_profiles(registry, slug), "narrative_docs": _narrative_docs(registry, slug),
             "class_match": _class_match(registry, slug)}
     base["price"], base["derived"] = _walk_derived(registry, slug, fork)
+    base["measure_price"] = _measure_price(registry, slug)
     _egeria_counts_only(base["file_profiles"], egeria)
     if not candidates:
         return {**base, "state": "none", "surveyor": "", "surveyed_at": "", "report_guid": "", "published": False,
@@ -264,3 +279,24 @@ def folder_survey_view(registry, slug: str) -> dict:
             "detail_lines": best.get("detail_lines", []), "results": read_folder_survey(best["annotations"]),
             "limits": best["limits"], "broken_symlinks": best.get("broken_symlinks", []),
             "broken_symlink_count": best.get("broken_symlink_count")}
+
+
+def newest_egeria_report(registry, slug: str) -> dict | None:
+    """The newest completed Egeria Folder Survey whose report RE has read back: {at, report_guid, published}, or None.
+
+    The stage header's "surveyed" date and "published" word come from this when it is newer than the file system's own
+    `last_surveyed_at` (which only an RE-led walk moves). Read-only and light: no annotations are loaded. `published` is
+    False for a report read back before the latest Egeria reset (history, as in the card)."""
+    from resource_explorer import native_survey_run as nsr
+    from resource_explorer.catalogue_commit import pre_reset_claim
+
+    for run in registry.list_native_survey_runs("filesystem", slug, nsr.FOLDER_SURVEY_QN):
+        report = run.get("survey_report_guid") or ""
+        if not report:
+            continue
+        stored = registry.count_native_survey_annotations(report)
+        if nsr.derive_native_state(run, stored_annotation_count=stored).get("state") != nsr.COMPLETE:
+            continue
+        at = run.get("survey_report_at") or run.get("surveyed_at") or ""
+        return {"at": at, "report_guid": report, "published": pre_reset_claim(_reset_at(registry, slug), at) is None}
+    return None

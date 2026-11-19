@@ -42,6 +42,7 @@ took. "Not checked yet" and "could not tell" are not outcomes. The path that was
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 import os
@@ -82,6 +83,7 @@ NOT_VISIBLE_CODE = "BASIC-FILE-CONNECTOR-404-001"
 #: `probed_from` of a row written by a settled Egeria-led run (the survey-derived rows).
 FROM_SURVEY = "egeria-folder-survey"
 FROM_ATTACH = "resource-explorer"
+FROM_WALK = "resource-explorer-walk"
 
 #: Said on every Egeria-led report: Egeria's FolderSurveyService adds its file-name log step unconditionally, so the CSV is
 #: written inside the container whatever RE asks; RE's half of "off" is that it never reads, stores or shows it.
@@ -149,6 +151,9 @@ class ForkState:
     evidence_action_guid: str = ""
     #: The stored path is not today's canonical mount: the row is about a path that has since been edited.
     path_changed: bool = False
+    #: "Check again" left a settled "verified" row standing (a path check cannot outweigh a survey that read the path):
+    #: the card says so in one line instead of staying silent (D10). False on every read that is not that press.
+    kept: bool = False
 
     @property
     def decided(self) -> bool:
@@ -165,7 +170,7 @@ class ForkState:
                 "path": self.path, "container_path": self.path, "prefix": self.prefix,
                 "prefix_source": self.prefix_source, "report_sentence": self.report_sentence,
                 "evidence_action_guid": self.evidence_action_guid, "path_changed": self.path_changed,
-                "decided": self.decided}
+                "kept": self.kept, "decided": self.decided}
 
 
 def container_path_of(fs) -> str:
@@ -296,7 +301,7 @@ def probe_filesystem(slug: str, registry, *, mount_map: list | None = None,
     path = container_path_of(fs)
     latest = registry.get_latest_reachability(slug)
     if latest and latest.get("outcome") in _VERIFIED and read_detail(latest).get("path", path) == path:
-        return fork_from_row(fs, latest)
+        return dataclasses.replace(fork_from_row(fs, latest), kept=True)
     pairs = egeria_mounts.get_mount_map() if mount_map is None else mount_map
     if not pairs:
         _record(registry, slug, "mounts_unknown", probed_from=FROM_ATTACH, detail=_detail(path=path))
@@ -312,6 +317,23 @@ def probe_filesystem(slug: str, registry, *, mount_map: list | None = None,
     else:
         _record(registry, slug, "nobody_can_read", probed_from=FROM_ATTACH, detail=_detail(path=path, re_why=why))
     return fork_for(registry, fs)
+
+
+def record_walk_read(registry, slug: str, run_id: str) -> bool:
+    """A completed RE-led walk proves Resource Explorer read the path at that time: the reach line says so with today's
+    date (D14: it kept saying "checked 2026-10-21" after a walk that read the tree). One `re_only` row per walk run, written
+    only where the state already says RE alone can read the path: a walk beside Egeria's survey must not overwrite a
+    verified row, and a walk proves nothing about the mounts Egeria sees. Returns whether a row was written."""
+    fs = registry.get_filesystem(slug)
+    if fs is None or not run_id:
+        return False
+    fork = fork_for(registry, fs)
+    if fork.state != RE_ONLY:
+        return False
+    if any(read_detail(r).get("walk_run") == run_id for r in registry.list_reachability_history(slug, limit=100)):
+        return False
+    _record(registry, slug, "re_only", probed_from=FROM_WALK, detail=_detail(path=container_path_of(fs), walk_run=run_id))
+    return True
 
 
 def probe_remote(fs, registry, *, mechanism=None) -> ForkState:

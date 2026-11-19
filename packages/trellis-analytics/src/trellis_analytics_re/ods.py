@@ -337,6 +337,20 @@ class OdsReader:
             r["capped"] = capped.get(r["run_id"])
         return runs
 
+    #: The steps whose runs open a file system's files themselves (a profile reads each data file, the narrative reader each
+    #: README), by the key RE stores their runs under (`step_runs.step_key`).
+    FILE_READING_STEPS = ("file_profiles", "narrative_docs")
+
+    def filesystem_re_reads(self, slug: str, limit: int = 50) -> list[dict]:
+        """When Resource Explorer itself last opened this file system's files outside a walk: `[{"kind", "at"}]`, newest
+        first, one row per run of a file-reading step (`FILE_READING_STEPS`). `at` is the run's own start time. A step reads
+        it to say which access times may be RE's own read (fs_activity). One parameterised statement."""
+        marks = ", ".join("?" for _ in self.FILE_READING_STEPS)
+        return self.query(
+            f"SELECT step_key AS kind, surveyed_at AS at FROM step_runs WHERE entity_type = 'filesystem' AND slug = ? "
+            f"AND step_key IN ({marks}) ORDER BY surveyed_at DESC LIMIT ?",
+            (normalize_slug(slug), *self.FILE_READING_STEPS, max(1, min(int(limit), 200))))
+
     def filesystem_walk_files(self, slug: str, run_id: str) -> list[dict]:
         """One walk run's per-file rows, by path: `[{file_path, folder_path, folder_depth, size_bytes, modified_at,
         accessed_at, owner_name, group_name, mode_octal, world_readable, content_hash, hash_state}]`. Names, sizes,

@@ -95,7 +95,7 @@ test("Egeria's CSV half: not installed says so; submitted files offer the read-b
   assert.match(text(host.querySelector('[data-fp-egeria]')), /not installed · Egeria's CSV Survey Service is not installed .* 4 CSV files not profiled/);
   assert.equal(host.querySelector('[data-fs-act="read-egeria"]'), null);
   host.innerHTML = fs.folderSurveyCardHtml(VIEW({ price: PRICE(), run: RUN({ counts: COUNTS({ submitted: 2 }) }) }));
-  assert.match(text(host.querySelector('[data-fp-egeria]')), /2 CSV files submitted to Egeria's CSV Survey Service · its reports not read back yet/);
+  assert.match(text(host.querySelector('[data-fp-egeria]')), /waiting for 2 reports from Egeria · since \S+/);
   assert.ok(host.querySelector('[data-fs-act="read-egeria"]'));
 });
 

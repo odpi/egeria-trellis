@@ -2159,12 +2159,30 @@ def refresh_run(registry, port: EgeriaSurveyPort, run: dict, *, entity_type: str
         try:
             from resource_explorer import file_reach
 
-            file_reach.settle_from_run(registry, slug, derived)
+            if file_reach.settle_from_run(registry, slug, derived):
+                _log_folder_survey_settled(registry, slug, run, derived)
         except Exception as exc:  # noqa: BLE001 -- recording the proof must not break the read-back
             log.warning("%s: could not record what the folder survey proved", slug, exc_info=True)
             # Observable to the caller: the proof was NOT recorded (the run's own state is unchanged).
             derived = {**derived, "verification_error": _short_error(exc)}
     return derived
+
+
+def _log_folder_survey_settled(registry, slug: str, run: dict, derived: dict) -> None:
+    """The second Activity row of an Egeria-led Folder Survey (TR-70): the first was written when it was submitted; this one
+    says how it came out. `file_reach.settle_from_run` returns an outcome once per engine action, so this is written once.
+    Best effort: a failed log write must not break the read-back."""
+    try:
+        from resource_explorer.activity_logger import log_press
+
+        done = derived.get("state") == COMPLETE
+        outcome = ("complete · report " + str(derived.get("survey_report_guid") or run.get("survey_report_guid") or "")[:8]
+                   + " read back" if done else "did not complete · " + (derived.get("message") or derived.get("state") or "")[:160])
+        log_press(registry, "filesystem", slug, slug, what="Egeria's Folder Survey", outcome=outcome,
+                  by=run.get("submitted_by") or "", status="ok" if done else "error",
+                  detail={"engine_action_guid": derived.get("engine_action_guid") or ""})
+    except Exception as exc:  # noqa: BLE001
+        log.warning("%s: could not write the settled-survey activity row: %s", slug, exc)
 
 
 def _read_report_in(registry, port, run, action, *, entity_type, slug, process_qn) -> None:

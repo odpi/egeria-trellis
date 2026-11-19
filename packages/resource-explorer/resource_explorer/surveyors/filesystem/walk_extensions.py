@@ -146,12 +146,10 @@ class HashBudget:
 
 
 def _fmt_bytes(n: int) -> str:
-    v = float(n)
-    for unit in ("B", "KiB", "MiB", "GiB"):
-        if v < 1024 or unit == "GiB":
-            return f"{v:.0f} {unit}" if unit == "B" else f"{v:.1f} {unit}"
-        v /= 1024
-    return f"{v:.1f} GiB"
+    """Decimal (1000), labelled B/KB/MB/GB: the one size format of the file-system card (D12), as macOS Finder shows it."""
+    from resource_explorer.surveyors.filesystem.walk_derived import _fmt_bytes as fmt
+
+    return fmt(n)
 
 
 # ── safe opening: a plain file or nothing ────────────────────────────────────────────────────────────────────────────

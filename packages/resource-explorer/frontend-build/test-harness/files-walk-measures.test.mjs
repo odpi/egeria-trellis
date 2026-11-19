@@ -102,7 +102,7 @@ test('the measures: depth, owners, modes, hashes, noise directories, each from t
   assert.match(t, /World-readable\s?77/);
   assert.match(t, /0644 ×900, 0755 ×20/);
   assert.match(t, /Not walked\s?\.git ×3, node_modules ×12/, 'noise directories are counted and named');
-  assert.match(text(m.querySelector('[data-fs-measures-hash]')), /880 files hashed \(SHA-256\) · files over 10(\.0)? MB are not hashed/);
+  assert.match(text(m.querySelector('[data-fs-measures-hash]')), /880 files hashed \(SHA-256\) · files over 10\.5 MB are not hashed/);
   assert.match(text(m.querySelector('[data-fs-measures-hash]')), /3 over the size limit · 5 with a secret-looking name · 2 linked/);
   assert.match(t, /walked to the end of every folder it entered/);
 });

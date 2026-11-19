@@ -69,6 +69,9 @@ def get_survey_reports_by_guid(asset_maker, resource_guid: str) -> list[dict]:
                 "display_name": props.get("displayName", ""),
                 "surveyed_at": surveyed_at,
                 "annotation_count": _safe_int(additional.get("annotation_count")),
+                # Only RE's own publishers write `annotation_count` into the report; Egeria's native reports never carry
+                # it, so the 0 above is "not stated", not "none" (D5). A caller that shows a count reads this first.
+                "annotation_count_stated": additional.get("annotation_count") is not None,
                 "schema_count": _safe_int(additional.get("schema_count")),
                 "table_count": _safe_int(additional.get("table_count")),
                 "column_count": _safe_int(additional.get("column_count")),

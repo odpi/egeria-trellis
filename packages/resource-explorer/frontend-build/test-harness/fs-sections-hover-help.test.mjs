@@ -97,7 +97,7 @@ test('above 8 rows or with a table a section starts collapsed, and its summary a
   const files = section(host, 'files');
   assert.equal(files.open, false, '10 file types: more than 8 rows');
   assert.ok(files.hasAttribute('data-fs-results'), 'the section keeps its own data attributes');
-  assert.equal(text(files.querySelector('summary')), 'Files · 134 files · 57.2 MB · 10 types · surveyed by Resource Explorer · 2026-10-28');
+  assert.equal(text(files.querySelector('summary')), 'Files · 134 files · 60.0 MB · 10 types · surveyed by Resource Explorer · 2026-10-28');
   const measures = section(host, 'measures');
   assert.equal(measures.open, false, 'a table: collapsed');
   assert.match(text(measures.querySelector('summary')), /^Walk measures · 7 folders with files · deepest level 3 · measured · 2026-10-28$/);

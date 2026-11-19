@@ -407,7 +407,8 @@ def test_http_publish_refused_until_the_probe_proves_a_lead(api, registry, tmp_p
     registry.record_reachability_check("walkme", probed_at="2026-10-20T10:00:00+00:00", outcome="re_only",
                                        error_detail=json.dumps({"path": "/x/walkme"}))
     assert client.post("/api/filesystems/walkme/folder-survey", json={}, headers=headers).status_code == 200
-    registry.record_reachability_check("walkme", probed_at="2026-10-20T11:00:00+00:00", outcome="expected_reachable",
+    # newer than the walk's own reach row (D14: a completed RE-led walk records "checked <today>"), as a later probe is
+    registry.record_reachability_check("walkme", probed_at="2099-01-01T00:00:00+00:00", outcome="expected_reachable",
                                        error_detail=json.dumps({"path": "/x/walkme", "prefix": "/x"}))
     _fake_surveyor(monkeypatch, landed=None)
     body = client.post("/api/filesystems/walkme/folder-survey/publish", headers=headers).json()
