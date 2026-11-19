@@ -1027,7 +1027,8 @@ def run_filesystem_narrative_docs(slug: str) -> dict:
     """The press (consent is this press; the card showed the price before it): read the narrative files the newest walk
     found, whole and size-capped, chunk them by section and replace this file system's collection in Resource Explorer's
     search index. Opens no other file, writes nothing into the path, publishes nothing to Egeria. 409 when no walk has
-    found narrative files, while a run for this file system is in flight, or when the mount cannot be reached."""
+    found narrative files, while a run for this file system is in flight, when the mount cannot be reached, or when the
+    passages could not be stored (the previous index is kept)."""
     from resource_explorer.surveyors.filesystem import narrative_docs
     from resource_explorer.web.routes.curate import require_resource_write
 
@@ -1038,7 +1039,8 @@ def run_filesystem_narrative_docs(slug: str) -> dict:
     require_resource_write(registry, "filesystem", slug, "start_action")
     try:
         summary = narrative_docs.run_narrative_docs(fs, registry)
-    except (narrative_docs.NothingToRead, narrative_docs.AlreadyRunning, narrative_docs.NotReachable) as exc:
+    except (narrative_docs.NothingToRead, narrative_docs.AlreadyRunning, narrative_docs.NotReachable,
+            narrative_docs.NotStored) as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     return {**summary, "view": narrative_docs.view(registry, slug)}
 
