@@ -105,13 +105,13 @@ def list_flow_runs(limit: int = 50) -> dict:
 async def _cancel(flow_run_id: str) -> None:
     from uuid import UUID
 
-    from prefect.client.schemas.objects import StateType
-    from prefect.states import Cancelled
+    from resource_explorer.surveyors.prefect_adapter import request_cancel
 
+    # TR-62b: CANCELLING, unforced, so the worker stops the process (see request_cancel).
     async with re_prefect_client() as client:
-        await client.set_flow_run_state(
-            flow_run_id=UUID(flow_run_id), state=Cancelled(), force=True,
-        )
+        refused = await request_cancel(client, UUID(flow_run_id))
+    if refused:
+        raise RuntimeError(refused)
 
 
 @router.post("/flow-runs/{flow_run_id}/cancel")

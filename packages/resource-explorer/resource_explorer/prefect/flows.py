@@ -236,8 +236,46 @@ def _run_step_as_flow_run(flow_run_id: str, entity_type: str, slug: str, step_na
       - with `keep_result`, the output is kept in flow_run_results BEFORE the flow returns, so COMPLETED implies the
         row. The output is already scrubbed of any one-run secret by run_surveyor_step_task.
 
-    The summary (step_run_id, norm_hash, counts) is the flow's state message: a cross-check, never the data."""
+    The summary (step_run_id, norm_hash, counts) is the flow's state message: a cross-check, never the data.
+
+    TR-62b: every write below, and every write the runner makes on the step path, first checks that this flow run
+    has not been cancelled (surveyors/run_cancellation.py); a cancelled run raises RunCancelled and writes nothing."""
+    from resource_explorer.surveyors import run_cancellation
+
+    # TR-62a: the step's heartbeat runs for exactly as long as the step (stopped and joined on the way out).
+    with _heartbeat_for(flow_run_id) as hb, \
+            run_cancellation.watching(flow_run_id, _cancel_check_for(flow_run_id, hb)):
+        return _run_step_guarded(flow_run_id, entity_type, slug, step_name, runner_kwargs,
+                                 credential_ref=credential_ref, keep_result=keep_result, placement=placement)
+
+
+def _heartbeat_for(flow_run_id: str):
+    """TR-62a: a heartbeat for this flow run (surveyors/step_heartbeat.py). One seam so tests can substitute one."""
+    from resource_explorer.surveyors import step_heartbeat
+
+    return step_heartbeat.running(flow_run_id)
+
+
+def _cancel_check_for(flow_run_id: str, hb=None):
+    """TR-62b: the check every write on this step's path makes first: is this flow run CANCELLING or CANCELLED?
+    The heartbeat's flag answers at once when a beat has already seen the cancel; otherwise the state is read
+    through a sync client of its own. A failed read is logged once and answers no. No flow run id (no Prefect
+    context), no check. One seam so tests can substitute a fake run."""
+    from resource_explorer.surveyors import run_cancellation
+
+    if not flow_run_id:
+        return lambda: False
+    warned: list = []
+    flag = getattr(hb, "cancelled", None)
+    return lambda: (flag is not None and flag.is_set()) or run_cancellation.prefect_run_is_cancelled(
+        flow_run_id, _warned=warned)
+
+
+def _run_step_guarded(flow_run_id: str, entity_type: str, slug: str, step_name: str,
+                      runner_kwargs: dict[str, Any], *, credential_ref: str, keep_result: bool,
+                      placement: str) -> tuple[dict[str, Any], dict[str, Any]]:
     from resource_explorer.survey_time import now_utc_iso
+    from resource_explorer.surveyors.run_cancellation import raise_if_cancelled
 
     registry = ProjectRegistry()
     info = _step_info_for(entity_type, step_name)
@@ -255,6 +293,9 @@ def _run_step_as_flow_run(flow_run_id: str, entity_type: str, slug: str, step_na
         return [r for r in registry.step_run_ids_for_flow_run(flow_run_id)
                 if r.get("step_key") == step_name and not r.get("demanded_by")]
 
+    # TR-62b: a run cancelled while its step ran writes nothing from here on (fbfab6f3 wrote its result row 68 s
+    # after the cancel).
+    raise_if_cancelled("recording the step's work row")
     runner_wrote_it = (step_name, "") in recorded
     if not runner_wrote_it and observed:
         # The runner recorded no work row of its own (database, filesystem): write the one, from the flow's own
@@ -282,12 +323,21 @@ def _run_step_as_flow_run(flow_run_id: str, entity_type: str, slug: str, step_na
     if keep_result:
         if not flow_run_id:
             raise RuntimeError("RE Survey Flow ran without a flow run id: its result could not be kept")
+        raise_if_cancelled("writing flow_run_results")
         registry.write_flow_run_result(flow_run_id, entity_type=entity_type, slug=slug, step_key=step_name,
                                        step_run_id=step_run_id, output_json=text, norm_hash=norm_hash)
     annotations = (output or {}).get("annotations") if isinstance(output, dict) else None
     summary = {"flow_run_id": flow_run_id, "step_run_id": step_run_id, "norm_hash": norm_hash,
                "annotations": len(annotations) if isinstance(annotations, list) else 0}
+    raise_if_cancelled("returning the step's outcome")
     return output or {}, summary
+
+
+def _cancelled_state(exc):
+    """The state a flow ends in when its run was cancelled under it (TR-62b): Cancelled, never Completed."""
+    from prefect.states import Cancelled
+
+    return Cancelled(message=f"cancelled while running; nothing was written after the cancel ({exc.where})")
 
 
 @flow(name="RE Survey Flow", persist_result=False)
@@ -304,8 +354,14 @@ def re_survey_flow(
     from prefect.runtime import flow_run as _flow_run_ctx
     from prefect.states import Completed
 
-    _, summary = _run_step_as_flow_run(str(_flow_run_ctx.id or ""), entity_type, slug, step_name, runner_kwargs,
-                                       keep_result=True)
+    from resource_explorer.surveyors.run_cancellation import RunCancelled
+
+    try:
+        _, summary = _run_step_as_flow_run(str(_flow_run_ctx.id or ""), entity_type, slug, step_name, runner_kwargs,
+                                           keep_result=True)
+    except RunCancelled as exc:
+        # TR-62b: never COMPLETED over a cancel. The flow ends Cancelled and has kept nothing.
+        return _cancelled_state(exc)
     return Completed(message=json.dumps(summary, sort_keys=True), data=summary)
 
 
@@ -331,9 +387,16 @@ def re_survey_step_in_process_flow(
     flow_run_id = str(_flow_run_ctx.id or "")
     # In RE's own process: the output comes straight back, so nothing is kept in flow_run_results; the one work row
     # carries this flow run's id like a worker's (TR-21).
-    result, _summary = _run_step_as_flow_run(flow_run_id, entity_type, slug, step_name, runner_kwargs,
-                                             credential_ref=credential_ref, keep_result=False,
-                                             placement=step_dispatch_policy.IN_PROCESS)
+    from resource_explorer.surveyors.run_cancellation import RunCancelled
+
+    try:
+        result, _summary = _run_step_as_flow_run(flow_run_id, entity_type, slug, step_name, runner_kwargs,
+                                                 credential_ref=credential_ref, keep_result=False,
+                                                 placement=step_dispatch_policy.IN_PROCESS)
+    except RunCancelled as exc:
+        # In RE's own process a BaseException must not escape the flow: it ends Cancelled, and Prefect raises
+        # CancelledRun to the caller (prefect_adapter._run_step_in_process_flow maps it to "cancelled").
+        return _cancelled_state(exc)
     return {"result": result, "flow_run_id": flow_run_id}
 
 
