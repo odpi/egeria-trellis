@@ -273,3 +273,21 @@ test('TR-71: the collapsed loading_bay card is no longer than before (only D13\'
   host.innerHTML = fs.folderSurveyCardHtml(LOADING_BAY(), COLLAPSED);
   assert.ok(visibleLines(host).length <= BEFORE, 'without the measure price the card is not one line longer');
 });
+
+test('item 5: when a survey settles the stage header is redrawn from the list read again (today, published), no reload', async () => {
+  const { document } = makeDomEnvironment();
+  const stale = { slug: 'loading_bay', display_name: 'Loading bay', last_surveyed_at: '2026-10-25T10:00:00+00:00', is_published: false, status: 'active' };
+  const fresh = { ...stale, last_surveyed_at: new Date().toISOString(), is_published: true };
+  globalThis.fetch = async (url) => ok(/\/api\/filesystems\/?$/.test(String(url)) ? [fresh] : {});
+  const app = await import('/static/next/app.js');
+  Object.assign(app.state, { resourceType: 'filesystem', selectedSlug: 'loading_bay', filesystems: [stale], filesystemsLoaded: true, subTab: 'survey' });
+  const host = document.createElement('div'); host.id = 'resource-header'; document.body.appendChild(host);
+  host.innerHTML = app.resourceHeaderHtml('loading_bay');
+  assert.match(text(host), /surveyed \d+d ago/);
+  assert.match(text(host), /not published to Egeria/);
+  await app.refreshFilesystemSummary('loading_bay');
+  assert.match(text(host), /surveyed just now/);
+  assert.match(text(host), /published to Egeria/);
+  assert.doesNotMatch(text(host), /not published/);
+  app.state.subTab = 'questions';
+});
