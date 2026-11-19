@@ -556,6 +556,7 @@ def test_the_published_report_names_resource_explorer_and_says_when_capped(regis
     s = EgeriaFileSystemSurveyor()
     s.connect = lambda: None
     s._asset_maker = maker
+    s._find_element_guid = lambda *a, **k: ""          # no report of this walk is in Egeria yet
     made = []
     s._create_annotations = lambda anns, guid, slug, at: made.extend(anns) or [g.annotation_type for g in anns]
     out = s.publish_step_annotations(fs, sd, registry)
@@ -747,7 +748,9 @@ def test_the_press_walks_when_only_re_can_read_and_keeps_it_unpublished_until_as
     assert body["published"] is False and body["capped"] is False and body["total_files"] == 5
     view = client.get("/api/filesystems/walkme/folder-survey", headers=headers).json()
     assert view["surveyor"] == "Resource Explorer" and view["published"] is False
-    assert view["reach"]["sentence"] == "only Resource Explorer can read this path · checked 2026-10-20"
+    # D14: the completed RE-led walk refreshed the reach line: it says "checked <the walk's day>", not the stale 2026-10-20
+    assert view["reach"]["sentence"].startswith("only Resource Explorer can read this path · checked ")
+    assert view["reach"]["sentence"] != "only Resource Explorer can read this path · checked 2026-10-20"
 
 
 # ── 8. the screens and the routes agree on names ────────────────────────────────────────────────────────────────────

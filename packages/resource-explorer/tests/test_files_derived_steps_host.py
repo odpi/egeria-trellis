@@ -292,4 +292,5 @@ def test_the_questions_name_the_steps_that_answer_them():
     assert by_id["Q-0102"]["answering"]["kind"] == "analysis"
     for qid, step in (("Q-0106", "fs_duplicates"), ("Q-0107", "fs_activity"), ("Q-0108", "fs_permissions")):
         assert by_id[qid]["answering"]["analysis_ids"] == [step], qid
-    assert by_id["Q-0109"]["answering"]["kind"] == "direct"
+    assert by_id["Q-0109"]["answering"]["kind"] == "analysis"     # C1: answered from the survey_price lines
+    assert by_id["Q-0109"]["answering"]["analysis_ids"] == ["survey_price"]

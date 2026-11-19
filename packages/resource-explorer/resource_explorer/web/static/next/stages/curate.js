@@ -20,7 +20,7 @@ import {
 } from '/static/re-api.js';
 import {
   bandFrameHtml, renderFindableBand, renderPeopleBand, databaseWorkHtml, databaseScopeHtml, databaseStructureHtml,
-  filesystemWorkHtml, renderRulesBlock, renderQualityBlock, UNSIGNED_LABEL,
+  filesystemWorkHtml, renderFilesystemReview, renderRulesBlock, renderQualityBlock, UNSIGNED_LABEL,
 } from '/static/next/stages/curate-bands.js';
 import { renderCatalogueScope, setCommitPanelGate, startScopeCommitIfShown } from '/static/next/stages/curate-scope.js';
 import { renderPublishBand, renderPublishRepo, renderPublishDb, paintDbPublishState, showPublishFailure } from '/static/next/stages/publish.js';
@@ -670,6 +670,10 @@ export async function renderCurate(slug) {
       return;
     }
     host.innerHTML = nonRepoCurateHtml(entityType);
+    if (entityType === 'filesystem') {
+      // C3: the proposals a person confirms or rejects (folder descriptions, data-class matches). RE's own rows.
+      bands.push(renderFilesystemReview(host, slug));
+    }
     if (entityType === 'database') {
       // PI-041: the read-only rules block under the glossary section; it fails inside itself.
       bands.push(renderRulesBlock(host.querySelector('[data-curate-rules]')));

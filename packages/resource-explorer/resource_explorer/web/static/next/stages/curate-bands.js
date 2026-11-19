@@ -44,6 +44,7 @@ import {
   getCurateEgeriaState, syncCurateEgeria, getCurateFeedbackState,
   getCurateFeedback, addCurateFeedback, getCurateNotes, deleteCurateNote,
   assignGroup, listGroups, getDataClassRules, getQualityProposals, postQualityVerdict, postQualityTableComparison, getQualityRules, postQualityPublish,
+  getFilesystemReview, putFilesystemReviewVerdict,
 } from '/static/re-api.js';
 import { mountQualityChecks } from '/static/next/stages/quality-checks.js';
 import {
@@ -180,6 +181,115 @@ export const FILESYSTEM_WORK_SENTENCE =
 
 export function filesystemWorkHtml() {
   return `<div data-curate-work="filesystem" class="text-caveat text-ink-muted">${esc(FILESYSTEM_WORK_SENTENCE)}</div>`;
+}
+
+/* ── Band 2, file system: the proposals to review (C3) ─────────────────── */
+
+/** Proposals listed at once; the rest wait behind "more". */
+export const REVIEW_PAGE = 20;
+const REVIEW_LISTS = [
+  { key: 'folders', kind: 'fs_folder_description', title: 'Folder descriptions' },
+  { key: 'classes', kind: 'fs_data_class', title: 'Data-class matches' },
+];
+const clip = (t, n) => (String(t || '').length > n ? `${String(t).slice(0, n - 1)}…` : String(t || ''));
+const verdictWords = (v) => (v ? `${v.verdict === 'confirm' ? 'confirmed' : 'rejected'} by ${v.by} ${day(v.at)}` : '');
+
+/** The collapsed line: proposals still to review, and how many are confirmed. */
+export function reviewLine(review) {
+  return `${review.to_review} proposal${review.to_review === 1 ? '' : 's'} to review · ${review.confirmed} confirmed`;
+}
+
+function reviewItemHtml(list, it, signedIn) {
+  const what = list.kind === 'fs_data_class'
+    ? `${esc(it.file)} › ${esc(it.column)} <span class="text-ink-muted">matches</span> ${esc(it.data_class)}${it.privacy_relevant ? ' <span class="text-ink-muted">· privacy-relevant</span>' : ''}`
+    : `${esc(it.folder || '/')} <span class="text-ink-muted">·</span> ${esc(clip(it.title || it.description, 80))}${
+      it.title && it.description ? ` <span class="text-ink-muted">— ${esc(clip(it.description, 160))}</span>` : ''}`;
+  const half = (verdict, label) => `<button type="button" data-review-verdict="${verdict}" data-review-key="${esc(it.key)}"
+    aria-pressed="${it.verdict && it.verdict.verdict === verdict ? 'true' : 'false'}"${signedIn ? '' : ` disabled title="${esc(signInReason('give a verdict'))}"`}
+    class="cursor-pointer rounded-sm border ${it.verdict && it.verdict.verdict === verdict ? 'border-accent text-accent-ink' : 'border-rule-strong text-ink'} bg-transparent px-2 py-[1px] text-caveat disabled:cursor-default disabled:opacity-60">${label}</button>`;
+  return `<div class="flex flex-wrap items-baseline gap-x-s2 py-[2px] text-caveat" data-review-item="${esc(it.key)}">
+    <span class="min-w-0 text-ink">${what}</span>${half('confirm', 'Confirm')}${half('reject', 'Reject')}
+    <span class="text-provenance text-ink-muted" data-review-verdict-words>${esc(verdictWords(it.verdict))}</span>
+    <span class="text-provenance text-state-warn" data-review-feedback></span></div>`;
+}
+
+function reviewGoneHtml(list, it) {
+  const what = list.kind === 'fs_data_class' ? `${esc(it.file)} › ${esc(it.column)} · ${esc(it.data_class)}` : esc(it.file);
+  return `<div class="py-[2px] text-caveat text-ink-muted" data-review-gone="${esc(it.key)}">${what}
+    <span class="text-provenance">· ${esc(it.words)} · ${esc(verdictWords(it.verdict))}${it.verdict && it.verdict.run ? ` · proposed by the run of ${esc(day(it.verdict.run))}` : ''}</span></div>`;
+}
+
+/** One list: its heading with the count, the first `shown` proposals, "more (N)" for the rest, then the verdicts whose
+ *  proposal a later run did not make again ("no longer proposed"). */
+function reviewListHtml(list, section, shown, signedIn) {
+  const items = section.items || [];
+  const gone = section.gone || [];
+  if (!items.length && !gone.length) {
+    return `<div data-review-list="${list.key}" class="mt-s2"><div class="text-caps uppercase tracking-caps text-ink-muted">${esc(list.title)} · none proposed</div></div>`;
+  }
+  const rest = Math.max(0, items.length - shown.n);
+  const goneRest = Math.max(0, gone.length - shown.g);
+  return `<div data-review-list="${list.key}" class="mt-s2">
+    <div class="text-caps uppercase tracking-caps text-ink-muted">${esc(list.title)} · ${items.length}${section.not_kept ? ` · ${section.not_kept} more not kept by the run` : ''}</div>
+    ${items.slice(0, shown.n).map((it) => reviewItemHtml(list, it, signedIn)).join('')}
+    ${rest ? `<button type="button" data-review-more="${list.key}" class="cursor-pointer bg-transparent p-0 text-caveat text-accent-ink underline">more (${rest})</button>` : ''}
+    ${gone.length ? `<div class="mt-s1 text-provenance text-ink-muted">${esc(section.gone.length)} no longer proposed</div>
+      ${gone.slice(0, shown.g).map((it) => reviewGoneHtml(list, it)).join('')}
+      ${goneRest ? `<button type="button" data-review-more-gone="${list.key}" class="cursor-pointer bg-transparent p-0 text-caveat text-accent-ink underline">more (${goneRest})</button>` : ''}` : ''}</div>`;
+}
+
+/** The whole band for a read answer: ONE line while collapsed, the lists open on demand. With nothing proposed and no
+ *  verdict held, the old sentence stands (nothing to review). */
+export function filesystemReviewHtml(review, shownBy, signedIn, open = false) {
+  const r = review || {};
+  const held = REVIEW_LISTS.some((l) => ((r[l.key] || {}).items || []).length || ((r[l.key] || {}).gone || []).length);
+  if (!held) return filesystemWorkHtml();
+  return `<div data-curate-work="filesystem" data-fs-review class="text-caveat">
+    <details data-fs-review-details${open ? ' open' : ''}><summary class="cursor-pointer text-ink" data-fs-review-line>${esc(reviewLine(r))}</summary>
+      <div class="mt-s1 text-provenance text-ink-muted" data-fs-review-stays>${esc(r.stays || '')}</div>
+      ${REVIEW_LISTS.map((l) => reviewListHtml(l, r[l.key] || {}, shownBy[l.key], signedIn)).join('')}
+    </details></div>`;
+}
+
+/** Fill the file system's band 2 from the server's review (RE's own rows). A failed read says so; it never throws into
+ *  the pane. A verdict is redrawn from the server's answer, never from the click. */
+export async function renderFilesystemReview(el, slug) {
+  if (!el) return;
+  const signedIn = !!whoAmI();
+  let review = null;
+  try { review = await getFilesystemReview(slug); } catch (err) {
+    if (!stale(el, slug)) el.innerHTML = `<div data-curate-work="filesystem" class="text-caveat text-state-warn">The proposals could not be read: ${esc(err.message || 'unreadable')}</div>`;
+    return;
+  }
+  if (stale(el, slug)) return;
+  const shownBy = Object.fromEntries(REVIEW_LISTS.map((l) => [l.key, { n: REVIEW_PAGE, g: REVIEW_PAGE }]));
+  const draw = (open) => {
+    el.innerHTML = filesystemReviewHtml(review, shownBy, signedIn, open);
+    const details = el.querySelector('[data-fs-review-details]');
+    el.querySelectorAll('[data-review-more]').forEach((b) => b.addEventListener('click', () => { shownBy[b.dataset.reviewMore].n += REVIEW_PAGE; draw(true); }));
+    el.querySelectorAll('[data-review-more-gone]').forEach((b) => b.addEventListener('click', () => { shownBy[b.dataset.reviewMoreGone].g += REVIEW_PAGE; draw(true); }));
+    el.querySelectorAll('[data-review-verdict]').forEach((b) => b.addEventListener('click', async () => {
+      if (b.disabled || b.dataset.pending) return;                  // a second press is ignored
+      b.dataset.pending = '1';
+      const list = REVIEW_LISTS.find((l) => b.closest(`[data-review-list="${l.key}"]`));
+      const row = b.closest('[data-review-item]');
+      try {
+        const section = await putFilesystemReviewVerdict(slug, list.kind, b.dataset.reviewKey, b.dataset.reviewVerdict);
+        if (!el.isConnected) return;
+        review = { ...review, [list.key]: section };
+        const sum = (k) => REVIEW_LISTS.reduce((n, l) => n + ((review[l.key] || {})[k] || 0), 0);
+        review.to_review = sum('to_review');
+        review.confirmed = sum('confirmed');
+        draw(true);
+      } catch (err) {
+        delete b.dataset.pending;
+        const fb = row && row.querySelector('[data-review-feedback]');
+        if (fb) fb.textContent = `not saved · ${err.message || 'the verdict was refused'}`;
+      }
+    }));
+    return details;
+  };
+  draw(false);
 }
 
 /* ── Band 1: Findable ─────────────────────────────────────────────────── */

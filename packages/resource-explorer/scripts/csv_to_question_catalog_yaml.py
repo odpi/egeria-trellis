@@ -732,6 +732,9 @@ def _restrict_answering_to_type(answering: dict, resource_type: str) -> None:
 _OWNER_Q = "Who owns this resource (accountable owner), and who administers it?"
 _LICENSE_Q = "What explicit license does this resource use, and are there non-standard or copyleft terms?"
 _CHANGED_Q = "How much has changed since the last time this was surveyed — is it worth re-running now?"
+_NARRATIVE_Q = "What do the narrative files inside it (README, INDEX, ABOUT, NOTES, a data dictionary, a codebook, LICENSE, CHANGELOG) say the contents are, folder by folder?"
+_CLASS_Q = "Which columns conform to a known Data Class, with what confidence, and which look like a class we do not have yet?"
+_REACH_Q = "Can Egeria's survey engine reach this resource, or must Resource Explorer survey it locally — and which is cheaper?"
 _ESTATE_Q = "Does it fit our estate — the platforms we run, our monitoring, our security controls?"
 
 _OWNER_CLAUSE = (
@@ -834,6 +837,63 @@ PER_TYPE_ANSWERING_OVERRIDES: dict[str, dict[str, dict[str, str]]] = {
             "Catalog History": (
                 "2026-10-22: answering names fs_change_rates (F5) as the gap instead of the repository's "
                 "refresh_plan (review §2). | 2026-10-28: fs_change_rates is built (Files build step 6)."
+            ),
+        },
+    },
+    # C1 (2026-11-19, walk D2): the file-system copies of three shared questions answer from the runs that answer them. The
+    # CSV row stays the repository's (or the database's) answer; only the filesystem copy is replaced.
+    _NARRATIVE_Q: {
+        "filesystem": {
+            "Answering Analysis": "narrative_docs (the narrative files the walk found, read in full: files, sections and passages; each passage a proposal stated by its file)",
+            "Answering Mechanism": 'Agent-Based Analysis + Human-Supplied',
+            "Rationale/Source": (
+                'folder_narratives is sought proactively, read as evidence, and proposes — a document says what the '
+                'data is, a person confirms. For a repository the README is already read by architecture_doc_lens.'
+            ),
+            "Catalog History": (
+                "2026-10-22: added: F11 of the Files brief (§2), owner pick 2026-10-20 (review §4); kinds filesystem and "
+                "repo (the open-data kind has no adapter yet). | 2026-11-19: C1: answered from the narrative_docs run; was GAP."
+            ),
+        },
+    },
+    _CLASS_Q: {
+        "filesystem": {
+            "Answering Analysis": "file_data_class_match (the columns of the newest profile run against the data classes Egeria holds, proposals only)",
+            "Answering Mechanism": 'Value Profiling + Egeria Queries',
+            "Rationale/Source": (
+                'Generalises the existing PII matching: column name, type and sampled value patterns matched against '
+                'every Egeria DataClass, producing a DataClassAnnotation per column with a stated confidence. Columns '
+                'that show a clear pattern but match nothing raise an RFA proposing a new Data Class, carrying the '
+                'observed pattern. Per design §5.8 the confidence is always stated against the sample, never as an '
+                'unqualified "conforms".'
+            ),
+            "Catalog History": (
+                "2026-10-22: `dataset` withdrawn from Resource Types until a dataset surveyor exists (review §1.1). | "
+                "2026-11-19: C1: answered from the file_data_class_match run; was GAP."
+            ),
+        },
+    },
+    _REACH_Q: {
+        "filesystem": {
+            "Answering Analysis": (
+                "PARTIAL: resource_reachability (the probe: file systems only so far — Phase 1 slice 13, 2026-09-22; a "
+                "CHECK_ASSET-only engine action whose results are stored in the resource_reachability table and read by the "
+                "Folder Survey fork) answers whether Egeria's engine can reach a file system; databases and repositories have no probe yet, and the observed-cost comparison "
+                "step_cost_observer already collects is unused for any type. This row is F4 of the Files brief."
+            ),
+            "Answering Mechanism": 'Egeria Queries + Direct Field',
+            "Rationale/Source": (
+                'Reachability is testable by running the native survey with finalAnalysisStep=CHECK_ASSET from the '
+                'engine host; efficiency is a separate axis (data locality, latency to first result, load on the '
+                'source, concurrency, provenance) — see multi-resource-questions-design.md §3 rule B. An unreachable '
+                'resource falls back to a Resource Explorer local mirror published under the native annotation '
+                'shapes, plus an RFA recording that Egeria could not reach it.'
+            ),
+            "Catalog History": (
+                "2026-10-22: names resource_reachability, which now has a catalogue entry, so the answer reads PARTIAL for "
+                "want of a probe for databases and repositories rather than GAP for want of a row (review §2); this row is "
+                "F4. | 2026-11-19: C1: answered from the stored resource_reachability probe row; still PARTIAL (the cost "
+                "comparison is unread)."
             ),
         },
     },

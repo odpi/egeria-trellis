@@ -38,7 +38,9 @@
 #                       Egeria survey/catalog action).
 #   run_time          - fast | minutes | async — UI speed badge.
 #   action            - "survey" (read-only analysis) or "publish" (writes
-#                       to the Egeria catalog of record).
+#                       to the Egeria catalog of record), or "read" (answers
+#                       questions from a step's stored run; the step has its own
+#                       press, so the Survey & analyses panes list no card for it).
 #   target_shape      - repo scope-narrowing funnel plan (docs/repo-scope-
 #                       narrowing-funnel.md), D5/D6 — what shape of target
 #                       this analysis can mechanically operate on if scope
@@ -3385,6 +3387,166 @@ filesystem_analyses:
         rows: 1
         order: the latest probe
         truncation: '{shown} of {total} probes shown, latest first'
+        token_cost: 80
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: measured
+      scope: resource
+
+  - id: file_profiles
+    name: "Data-File Profiles"
+    description: >
+      The newest run of the data-file profile step (Files build step 5): how many data files were profiled, by Egeria and by Resource Explorer, and how many were not read and why. Read from the stored run; a file system never profiled reads as not run.
+    resource_types: ["filesystem"]
+    intent: discovery
+    perspectives: ["Consumer", "Data Expert"]
+    annotation_types: []
+    source: local
+    run_time: minutes
+    action: read
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: false
+      native_process_ref: null
+    declaration:
+      result_kind: measure
+      measures:
+      - name: file_profiles
+        unit: data files profiled
+        as_of: run_at
+        value_field: profiled
+      absence:
+        not_measured: 'Not run: no data-file profile has run on this file system yet.'
+        not_permitted: 'Not permitted: the account running the profile cannot read these files.'
+        not_applicable: 'Not applicable: this resource holds no data files to profile.'
+        nothing_found: 'Measured: the profile ran and found no data file it could read.'
+      extents:
+      - name: file_profiles
+        fields: [run_id, files, profiled, by_egeria, by_re, sampled, not_read, not_read_formats, not_permitted, words]
+        rows: 1
+        order: the newest run
+        truncation: '{shown} of {total} runs shown, latest first'
+        token_cost: 80
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: measured
+      scope: resource
+
+  - id: narrative_docs
+    name: "Narrative Documents"
+    description: >
+      The newest run of the narrative-files step (Files build step 7): the README, codebook and data-dictionary files read in full, their sections and passages in the search index. Each passage is a proposal stated by its file. A run on an older walk than the newest says so.
+    resource_types: ["filesystem"]
+    intent: discovery
+    perspectives: ["Consumer", "Data Expert"]
+    annotation_types: []
+    source: local
+    run_time: minutes
+    action: read
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: false
+      native_process_ref: null
+    declaration:
+      result_kind: measure
+      measures:
+      - name: narrative_docs
+        unit: narrative files read
+        as_of: run_at
+        value_field: files_read
+      absence:
+        not_measured: 'Not run: no narrative file has been read on this file system yet.'
+        not_permitted: 'Not permitted: the account running the step cannot read these files.'
+        not_applicable: 'Not applicable: the walk found no narrative file here.'
+        nothing_found: 'Measured: the step ran and read no narrative file.'
+      extents:
+      - name: narrative_docs
+        fields: [run_at, files_read, sections, passages, stale, words, stated]
+        rows: 1
+        order: the newest run
+        truncation: '{shown} of {total} runs shown, latest first'
+        token_cost: 80
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: measured
+      scope: resource
+
+  - id: file_data_class_match
+    name: "Data Class Match"
+    description: >
+      The newest run of the data-class match over the file profiles (Files build step 8): which profiled columns match a data class Egeria holds, against how many classes and with how many columns not sampled. Every match is a proposal. A run on older profiles than the newest says so.
+    resource_types: ["filesystem"]
+    intent: analysis
+    perspectives: ["Governance", "Data Expert"]
+    annotation_types: []
+    source: local
+    run_time: minutes
+    action: read
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: false
+      native_process_ref: null
+    declaration:
+      result_kind: measure
+      measures:
+      - name: file_data_class_match
+        unit: columns matching a data class
+        as_of: run_at
+        value_field: established
+      absence:
+        not_measured: 'Not run: no data-class match has run on this file system yet.'
+        not_permitted: 'Not permitted: the account running the match cannot read these files.'
+        not_applicable: 'Not applicable: no data file has been profiled to match.'
+        nothing_found: 'Measured: the match ran and no column matched a data class.'
+      extents:
+      - name: file_data_class_match
+        fields: [run_at, columns, files, established, privacy_relevant, proposals, data_classes, stale, words]
+        rows: 1
+        order: the newest run
+        truncation: '{shown} of {total} runs shown, latest first'
+        token_cost: 80
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: measured
+      scope: resource
+
+  - id: survey_price
+    name: "Survey Price"
+    description: >
+      What each press of the file-system survey would cost, from the stored walk and runs: the walk, the data-file profiles, the narratives and the class match. A step with no price yet is named as not priced, never given a guessed one.
+    resource_types: ["filesystem"]
+    intent: discovery
+    perspectives: ["Financial", "Administration"]
+    annotation_types: []
+    source: local
+    run_time: fast
+    action: read
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: false
+      native_process_ref: null
+    declaration:
+      result_kind: measure
+      measures:
+      - name: survey_price
+        unit: steps priced
+        as_of: run.read_snapshot
+        value_field: priced_steps
+      absence:
+        not_measured: 'Not priced: no step of this file system has a price yet.'
+        not_permitted: 'Not permitted: the account running the survey cannot read this file system.'
+        not_applicable: 'Not applicable: this resource is not a file system.'
+        nothing_found: 'Measured: nothing to price.'
+      extents:
+      - name: survey_price
+        fields: [priced_steps, not_priced_steps, lines]
+        rows: 1
+        order: the survey steps in order
+        truncation: '{shown} of {total} runs shown, latest first'
         token_cost: 80
         citation: '{analysis} · {scope} · as of {as_of}'
       confidence:
