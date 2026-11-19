@@ -2,8 +2,7 @@
 
 The caveat used to fire only for files the PREVIOUS walk hashed. On a file system with no earlier walk that kept rows it
 never fired, though this walk hashed and a data-file profile had opened files minutes before. The rule now: any access at or
-after the earliest read Resource Explorer made (this walk's own hashing, a file-profile or narrative run after the
-previous walk) is counted apart, with the same words; a file last read before Resource Explorer's first read is not.
+after the earliest read Resource Explorer made (this walk's own hashing) is counted apart, with the same words; a file last read before Resource Explorer's first read is not.
 Fakes only: no registry, no network.
 """
 import sys
@@ -56,20 +55,6 @@ def test_a_walk_that_hashed_caveats_access_at_or_after_its_own_start():
     assert "possibly by Resource Explorer's previous walk, not counted" in a["summary"]
 
 
-def test_a_profile_run_after_the_previous_walk_caveats_later_access_and_not_earlier():
-    rows = [row("before", "2026-11-19T00:30:00"), row("after", "2026-11-19T01:10:00")]
-    a = access(one_walk(rows, hashed=0, reads=[{"kind": "file_profiles", "at": "2026-11-19T01:00:00"}]))
-    v = a["value"]
-    assert v["Access Possibly Resource Explorer's Own Read"] == 1
-    assert v["Hot Files"] == 1
-
-
-def test_a_narrative_run_counts_like_a_profile_run():
-    rows = [row("after", "2026-11-19T01:10:00")]
-    a = access(one_walk(rows, hashed=0, reads=[{"kind": "narrative_docs", "at": "2026-11-19T01:05:00"}]))
-    assert a["value"]["Access Possibly Resource Explorer's Own Read"] == 1
-
-
 def test_nothing_read_by_resource_explorer_means_no_caveat():
     a = access(one_walk([row("a", "2026-11-18T00:00:00"), row("b", "2026-11-19T01:10:00")], hashed=0))
     v = a["value"]
@@ -77,10 +62,9 @@ def test_nothing_read_by_resource_explorer_means_no_caveat():
     assert "possibly by Resource Explorer" not in a["summary"]
 
 
-def test_a_read_before_the_previous_walk_is_left_to_that_walks_own_rows():
+def test_with_an_earlier_walk_the_per_file_rule_stands_and_the_broad_one_does_not_apply():
     prev = {"run_id": "2026-11-10T00:00:00", "led_by": "resource_explorer", "files": 1, "bytes": 10, "hashed": 0,
             "with_mode": 1, "with_access_time": 1, "capped": 0}
-    cur = {**prev, "run_id": WALK}
-    ods = Ods([cur, prev], {WALK: [row("a", "2026-11-12T00:00:00")], prev["run_id"]: [row("a", "2026-11-01T00:00:00")]},
-              reads=[{"kind": "file_profiles", "at": "2026-11-05T00:00:00"}])    # older than the previous walk: not in the window
+    cur = {**prev, "run_id": WALK, "hashed": 5}
+    ods = Ods([cur, prev], {WALK: [row("a", "2026-11-19T01:40:00")], prev["run_id"]: [row("a", "2026-11-01T00:00:00")]})
     assert access(ods)["value"]["Access Possibly Resource Explorer's Own Read"] == 0

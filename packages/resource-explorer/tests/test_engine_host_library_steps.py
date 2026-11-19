@@ -466,7 +466,7 @@ def test_f2_a_step_gets_no_registry_no_dsn_and_no_egeria_identity(staleness_inst
     assert seen["attrs"] == {"row_count_snapshots", "commit_proofs", "catalogue_scope_events",
                              "resource_scope_events", "outbox_status_counts", "table_activity_snapshots",
                              "table_keys", "filesystem_walk_runs", "filesystem_walk_files",
-                             "filesystem_hash_matches", "filesystem_re_reads", "filesystem_walk_not_walked",
+                             "filesystem_hash_matches", "filesystem_walk_not_walked",
                              "schema_inventory"}, seen["attrs"]   # no `query`
     assert all(b is None for b in seen["bound"]), "a method is bound to the reader object"
     assert seen["identity"] == "none"

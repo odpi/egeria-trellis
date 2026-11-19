@@ -18,10 +18,10 @@ Never a silent zero, and "can't tell" said when it is so:
   be told apart and is not called cold);
 - Resource Explorer's own walk reads a file to hash it, so a file the PREVIOUS walk hashed, last read at or after
   that walk's start, may show Resource Explorer's read: it is counted apart, never as hot.
-- So does everything else of Resource Explorer's that opens files: a data-file profile and a narrative read open files too,
-  and this walk's own hashing did. Whichever branch led, any access at or after the EARLIEST of those reads (after the
-  previous walk, where one kept rows) may be RE's own read and is counted apart with the same words. A file last read
-  before Resource Explorer's first read is not caveated.
+- With no earlier walk that kept rows, this walk's own hashing is the read there is to name: any access at or after this
+  walk's start may be Resource Explorer's own and is counted apart with the same words (whichever branch led). A file last
+  read before it is not caveated. (Profile and narrative runs also open files; their times are not in the library's ODS
+  reads, so they are not caveated yet.)
 """
 from __future__ import annotations
 
@@ -118,22 +118,14 @@ def run(inputs) -> list[dict]:
     return out
 
 
-def _first_own_read(walk, previous, inputs, slug) -> datetime | None:
+def _first_own_read(walk, previous) -> datetime | None:
     """The earliest time Resource Explorer itself opened this file system's files that the per-file rows do not already
-    attribute: this walk's start when it hashed (and no earlier walk kept rows to say which files), and every file-profile
-    or narrative run after the previous walk. None when RE read nothing. A read the store cannot list is not guessed."""
-    since = _parse(previous["run_id"]) if previous is not None else None
-    reads: list[datetime] = []
+    attribute: this walk's own start when it hashed and no earlier walk kept rows to say which files (so the previous-walk
+    rule has nothing to read). None otherwise. Profile and narrative runs also open files, but the library's ODS reads do not
+    expose their times yet; that needs a read added to the library (`ODS_READS`), so they are not caveated here."""
     if previous is None and int(walk.get("hashed") or 0) > 0:
-        at = _parse(walk["run_id"])
-        if at is not None:
-            reads.append(at)
-    reader = getattr(inputs.ods, "filesystem_re_reads", None)
-    for r in (reader(slug) if reader else []) or []:
-        at = _parse(r.get("at"))
-        if at is not None and (since is None or at >= since):
-            reads.append(at)
-    return min(reads) if reads else None
+        return _parse(walk["run_id"])
+    return None
 
 
 def _access(slug, walk, previous, rows, age, hot, cold, common, inputs) -> dict:
@@ -155,7 +147,7 @@ def _access(slug, walk, previous, rows, age, hot, cold, common, inputs) -> dict:
                              "nobody read since writing it would look the same, so which files are read cannot be told",
                        "access times not recorded on this mount", ACCESS)
     ours: set[str] = set()
-    first_read = _first_own_read(walk, previous, inputs, slug)
+    first_read = _first_own_read(walk, previous)
     if first_read is not None:
         ours = {r["file_path"] for r in timed if (_parse(r.get("accessed_at")) or datetime.min) >= first_read}
     if previous is not None:

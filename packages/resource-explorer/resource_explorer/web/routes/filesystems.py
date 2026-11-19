@@ -645,21 +645,18 @@ def get_filesystem_egeria_surveys(slug: str) -> list[EgeriaSurveyReportRow]:
 def _stored_report_counts(registry, slug: str) -> dict[str, int]:
     """{report guid: annotations RE stored from it}: the native run's `report_annotation_count` (step_runs), else the rows in
     the native annotations table. A report RE never read in has no entry."""
-    out: dict[str, int] = {}
-    try:
-        from resource_explorer import native_survey_run as nsr
+    from resource_explorer import native_survey_run as nsr
 
-        for run in registry.list_native_survey_runs("filesystem", slug, nsr.FOLDER_SURVEY_QN):
-            guid = run.get("survey_report_guid") or ""
-            if not guid or guid in out:
-                continue
-            n = run.get("report_annotation_count")
-            if n is None:
-                n = registry.count_native_survey_annotations(guid) or None
-            if n is not None:
-                out[guid] = int(n)
-    except Exception:  # noqa: BLE001 -- no stored count: the panel says "not counted"
-        log.warning("%s: the stored report counts could not be read", slug, exc_info=True)
+    out: dict[str, int] = {}
+    for run in registry.list_native_survey_runs("filesystem", slug, nsr.FOLDER_SURVEY_QN):
+        guid = run.get("survey_report_guid") or ""
+        if not guid or guid in out:
+            continue
+        n = run.get("report_annotation_count")
+        if n is None:
+            n = registry.count_native_survey_annotations(guid) or None
+        if n is not None:
+            out[guid] = int(n)
     return out
 
 
@@ -908,11 +905,13 @@ def run_filesystem_folder_survey(slug: str, req: FolderSurveyRequest = FolderSur
         raise HTTPException(status_code=422, detail=str(exc))
     sd = out.get("survey_data") or {}
     limits = sd.get("walk_limits") or {}
+    reach_refresh_error = ""
     try:
         file_reach.record_walk_read(registry, slug, sd.get("surveyed_at") or "")   # the reach line says "checked <today>"
-    except Exception:  # noqa: BLE001 -- the walk stands; the reach line keeps its date
+    except Exception as exc:  # noqa: BLE001 -- the walk stands; the reach line keeps its date, and the answer says so
         log.warning("%s: the walk could not refresh the reach line", slug, exc_info=True)
-    result: dict = {"led_by": "resource_explorer", "surveyor": file_reach.SURVEYOR_RE, "reach": fork.as_dict(),
+        reach_refresh_error = f"{type(exc).__name__}: {str(exc)[:160]}"
+    result: dict = {"reach_refresh_error": reach_refresh_error, "led_by": "resource_explorer", "surveyor": file_reach.SURVEYOR_RE, "reach": fork.as_dict(),
                     "surveyed_at": sd.get("surveyed_at", ""), "total_files": sd.get("total_files"),
                     "capped": bool(limits.get("capped")), "capped_reasons": limits.get("capped_reasons", []),
                     "capped_words": limits.get("capped_words", ""),
