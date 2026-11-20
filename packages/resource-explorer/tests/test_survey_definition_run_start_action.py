@@ -98,6 +98,7 @@ def test_with_a_project_assigned_the_publish_check_still_applies(client, registr
     _nothing_enqueued(registry)
 
 
+@pytest.mark.usefixtures("signed_in_caller")
 def test_the_quality_batch_refusal_denies_a_caller_without_start_action(registry, monkeypatch):
     from resource_explorer.workflows.egeria_work_access import definition_batch_refusal
 
@@ -107,6 +108,7 @@ def test_the_quality_batch_refusal_denies_a_caller_without_start_action(registry
     assert [a[2] for a in asked] == ["start_action"]
 
 
+@pytest.mark.usefixtures("signed_in_caller")
 def test_the_quality_batch_refusal_still_applies_publish_after_start_action(registry, monkeypatch):
     asked = _decider(monkeypatch, deny={"publish"})
     monkeypatch.setattr(ProjectRegistry, "has_assigned_egeria_project", lambda self, *a: True)

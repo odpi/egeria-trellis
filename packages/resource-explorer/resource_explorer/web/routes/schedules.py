@@ -181,6 +181,12 @@ def run_schedule_now(entity_type: str, slug: str, analysis_id: str) -> dict:
 
     registry = ProjectRegistry()
     _require_resource(registry, entity_type, slug)
+    if entity_type != WORK_LIST_ENTITY:
+        # TR-95: running a schedule starts the same work its target's Run does (a Survey Definition can start engine
+        # actions), so the caller needs `start_action` on the resource. A work-list schedule is checked member by
+        # member inside the batch (`definition_batch_refusal`).
+        from resource_explorer.web.routes.curate import require_resource_write
+        require_resource_write(registry, entity_type, slug, "start_action")
 
     rows = registry.get_schedules(entity_type, slug)
     entry = next((r for r in rows if r.get("analysis_id") == analysis_id), None)
@@ -257,6 +263,9 @@ def save_schedule(entity_type: str, slug: str, entry: ScheduleEntry) -> dict:
         # they are recorded as `created_by` and every timer run runs as them, so the run re-checks their rights;
         # a schedule with no creator (from before) follows the no-requester rule.
         from resource_explorer.web.routes.curate import require_resource_write
+        if entry.target_kind == TARGET_SURVEY:
+            # TR-95: the timer will start this definition's engine actions as them, so it needs `start_action` too.
+            require_resource_write(registry, entity_type, slug, "start_action")
         require_resource_write(registry, entity_type, slug, "publish")
     registry.save_schedule(
         entity_type=entity_type,
