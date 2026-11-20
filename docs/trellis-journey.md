@@ -1,5 +1,7 @@
 # The Trellis journey — a narrative timeline
 
+> **Status (2026-11-19, 6.3 Tech Preview):** a narrative timeline written through 2026-08-28 and **not extended** since (the span, commit counts and acts end there). The 6.3 story is in `RELEASE_NOTES.md` and `CHANGELOG.md`.
+
 Source material for writing about the project. Dates and figures are from the
 repository, not recollection; commit hashes are given so anything here can be
 checked rather than trusted.

@@ -1,5 +1,7 @@
 # Morning brief — 2026-08-31
 
+> **Status (2026-11-19, 6.3 Tech Preview):** archived. A dated overnight brief; its "outbox is not built" and repo-state lines are of 2026-08-31 and not maintained. Nothing links here.
+
 Written overnight after a backlog review. Everything below was checked against the code or a
 live query, not taken from a tracker's own status line — three tracker entries turned out to be
 stale and are corrected in the same commit as this file.

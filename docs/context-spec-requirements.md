@@ -1,5 +1,7 @@
 # Context specs and report specs — requirements for one spec model with several flavours (2026-10-02)
 
+> **Status (2026-11-19, 6.3 Tech Preview):** requirements. Partly met: `ContextSpec`, the resolver and packer are in `trellis-context`. The multiple flavours and the report-spec enhancements it asks for are not tracked here as built.
+
 **Status: requirements, nothing decided, nothing built.** From the design
 session at the project owner's request, 2026-10-02: *we need to start
 thinking through the requirements for a context spec (there could be

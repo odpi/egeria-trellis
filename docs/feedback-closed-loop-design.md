@@ -1,5 +1,7 @@
 # Closing the loop on answer feedback
 
+> **Status (2026-11-19, 6.3 Tech Preview):** steps 0 (#1015), 1 (trellis-feedback 0.3 and RE's cause menu) and 2 (routing, #1031–#1034) are built. Steps 3–5 (replay cases, rebalanced chunk scoring, measurement views): no replay or regression code was found in 6.3, so treat them as not built.
+
 Status: **accepted; the project owner answered §8 on 2026-11-10.**
 - The architect read back the first version (f33610dd). This revision folds in that read-back's four
   design changes and its smaller points.

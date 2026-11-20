@@ -1,5 +1,7 @@
 # Context compilation — a shared spec model for RE and EA
 
+> **Status (2026-11-19, 6.3 Tech Preview):** the original design; **partly implemented**. `trellis-artifact-tree` and `trellis-context` (`ContextSpec`, the packer, the manifest) exist; what was built is described in [context-compilation-architecture.md](context-compilation-architecture.md), which wins where the two differ. The sharing with Egeria Advisor is not built.
+
 **Status: design. Nothing built, and — unlike
 `packages/resource-explorer/docs/investigation-framing-design.md`, which measured its dispatch
 chain against the real catalog before asserting it — nothing here is measured.** Everything

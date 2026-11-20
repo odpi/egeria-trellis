@@ -1,5 +1,7 @@
 # Context as a product — requirements for the Context Intelligence flavour (2026-10-06)
 
+> **Status (2026-11-19, 6.3 Tech Preview):** requirements for discussion; the Context Intelligence flavour is **not built**. The shared pieces it builds on (`ContextSpec`, the packer) are in `trellis-context`; see [context-compilation-architecture.md](context-compilation-architecture.md).
+
 Design session note, from the owner's direction of 2026-10-05 and 2026-10-06.
 Status: requirements for discussion; nothing built. Companion:
 `docs/context-spec-requirements.md` (context for a computation we run),
