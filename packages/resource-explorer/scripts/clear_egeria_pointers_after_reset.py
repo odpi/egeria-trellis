@@ -625,9 +625,10 @@ def apply_plan(conn, plan: dict, cleared_by: str, snapshot_path: Path, now: date
             _group(conn, run)
             done[a["id"]] = n[0]
     except Exception as exc:
+        failed_kind = type(exc).__name__
         _group(conn, lambda: conn.execute(
             "UPDATE activity_log SET status = 'error', summary = ? WHERE id = ?",
-            (f"Egeria reset cleanup FAILED in group {group} after {len(done)} committed: {type(exc).__name__}",
+            (f"Egeria reset cleanup FAILED in group {group} after {len(done)} committed: {failed_kind}",
              act_id)))
         raise ApplyFailed(group, list(done), exc) from None
     try:
