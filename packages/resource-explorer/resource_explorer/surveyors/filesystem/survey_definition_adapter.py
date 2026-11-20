@@ -128,6 +128,34 @@ def _run_filesystem_inventory(fs_entity, registry, fork=None, **_) -> dict:
             **({"persist_error": persist_error} if persist_error else {})}
 
 
+def _run_file_profiles(fs_entity, registry, **_) -> dict:
+    """Profile the newest walk's data files: the same press as the file-profiles Run route (no second implementation).
+
+    The press's own refusals (NothingToProfile, AlreadyRunning, ClaimLost) propagate; the executor records their words
+    as this step's error, never an empty success."""
+    from resource_explorer.egeria_clients import Caller
+    from resource_explorer.surveyors.filesystem import file_profiles as fp
+
+    summary = fp.run_file_profiles(fs_entity, registry, port_factory=lambda: fp.make_port(identity=Caller()))
+    return {"step": "file_profiles", **summary}
+
+
+def _run_narrative_docs(fs_entity, registry, **_) -> dict:
+    """Read the newest walk's narrative files into the search index: the same press as the narrative-docs Run route."""
+    from resource_explorer.surveyors.filesystem import narrative_docs
+
+    summary = narrative_docs.run_narrative_docs(fs_entity, registry)
+    return {"step": "narrative_docs", **summary}
+
+
+def _run_file_data_class_match(fs_entity, registry, **_) -> dict:
+    """Match the newest profile run's columns against Egeria's data classes: the same press as the class-match Run route."""
+    from resource_explorer.surveyors.filesystem import file_class_match
+
+    summary = file_class_match.run_file_class_match(fs_entity, registry)
+    return {"step": "file_data_class_match", **summary}
+
+
 def _get_filesystem_entity(registry, slug: str):
     return registry.get_filesystem(slug)
 
@@ -305,7 +333,12 @@ _ADAPTER = ResourceTypeAdapter(
     # meant a Survey Definition authored with the real name would never match
     # RE's candidate lookup.
     technology_type="File System Directory",
-    re_analysis_steps={"filesystem_inventory": _run_filesystem_inventory},
+    re_analysis_steps={
+        "filesystem_inventory": _run_filesystem_inventory,
+        "file_profiles": _run_file_profiles,
+        "narrative_docs": _run_narrative_docs,
+        "file_data_class_match": _run_file_data_class_match,
+    },
     get_entity=_get_filesystem_entity,
     publish=_publish,
     re_analysis_step_info={
@@ -321,6 +354,27 @@ _ADAPTER = ResourceTypeAdapter(
                 "RequestForActionAnnotation",
                 "SchemaAnalysisAnnotation",
             ],
+        },
+        "file_profiles": {
+            "description": (
+                "Profiles the columns of the data files the newest walk found (a .csv on an Egeria-led file system goes "
+                "to Egeria's CSV Survey Service; every other readable file is profiled here). Writes nothing into the path."
+            ),
+            "annotation_types": [],
+        },
+        "narrative_docs": {
+            "description": (
+                "Reads the narrative files the newest walk found, whole and size-capped, chunks them by section and "
+                "replaces this file system's collection in Resource Explorer's search index. Publishes nothing to Egeria."
+            ),
+            "annotation_types": [],
+        },
+        "file_data_class_match": {
+            "description": (
+                "Matches every column of the newest profile run against the data classes Egeria holds, and the file names "
+                "against the personal-data words. Every match is a proposal; nothing is published or created in Egeria."
+            ),
+            "annotation_types": [],
         },
     },
     other_engine_handlers={
@@ -365,7 +419,7 @@ FILESYSTEM_ANALYSIS_STEP_MAP: dict[str, list[str]] = {
     "filesystem_inventory": ["filesystem_inventory"],
     # C1 (2026-11-19): the three built steps that have their own presses and routes. Each names its own step_runs key, so
     # a run credits the question it answers ("answered from the <step> run") instead of leaving it "Not yet run".
-    # `filesystem_library_step_key` still reads only attached Analytic Library steps, so none of these gains a Run route.
+    # D1: each is also a runnable step in `re_analysis_steps`, calling the same press its Run route calls, so the executor runs it.
     # A completed Egeria Folder Survey (`egeria-native:*`) credits filesystem_inventory in
     # `registry._step_run_times`, not here: it is a row property (a report read back), not a step key.
     "file_profiles": ["file_profiles"],
