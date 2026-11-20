@@ -128,16 +128,25 @@ def _run_filesystem_inventory(fs_entity, registry, fork=None, **_) -> dict:
             **({"persist_error": persist_error} if persist_error else {})}
 
 
+def _run_words(view, registry, slug: str) -> str:
+    """The stored run in words, from the same view the Run route answers with; best effort, never fails the step."""
+    try:
+        return str(((view(registry, slug) or {}).get("run") or {}).get("words") or "")
+    except Exception:  # noqa: BLE001 -- the words are a convenience; the press already did its work
+        log.warning("%s: the run's words could not be read", slug, exc_info=True)
+        return ""
+
+
 def _run_file_profiles(fs_entity, registry, **_) -> dict:
     """Profile the newest walk's data files: the same press as the file-profiles Run route (no second implementation).
 
     The press's own refusals (NothingToProfile, AlreadyRunning, ClaimLost) propagate; the executor records their words
-    as this step's error, never an empty success."""
+    as this step's error, never an empty success. `words` is what the run found, in the route's own words."""
     from resource_explorer.egeria_clients import Caller
     from resource_explorer.surveyors.filesystem import file_profiles as fp
 
     summary = fp.run_file_profiles(fs_entity, registry, port_factory=lambda: fp.make_port(identity=Caller()))
-    return {"step": "file_profiles", **summary}
+    return {"step": "file_profiles", **summary, "words": _run_words(fp.profiles_view, registry, fs_entity.slug)}
 
 
 def _run_narrative_docs(fs_entity, registry, **_) -> dict:
@@ -145,7 +154,7 @@ def _run_narrative_docs(fs_entity, registry, **_) -> dict:
     from resource_explorer.surveyors.filesystem import narrative_docs
 
     summary = narrative_docs.run_narrative_docs(fs_entity, registry)
-    return {"step": "narrative_docs", **summary}
+    return {"step": "narrative_docs", **summary, "words": _run_words(narrative_docs.view, registry, fs_entity.slug)}
 
 
 def _run_file_data_class_match(fs_entity, registry, **_) -> dict:
@@ -153,7 +162,8 @@ def _run_file_data_class_match(fs_entity, registry, **_) -> dict:
     from resource_explorer.surveyors.filesystem import file_class_match
 
     summary = file_class_match.run_file_class_match(fs_entity, registry)
-    return {"step": "file_data_class_match", **summary}
+    return {"step": "file_data_class_match", **summary,
+            "words": _run_words(file_class_match.view, registry, fs_entity.slug)}
 
 
 def _get_filesystem_entity(registry, slug: str):

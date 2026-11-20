@@ -1,6 +1,8 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
+from resource_explorer.registry import ProjectRegistry
+
 from resource_explorer.registry import FileSystemEntity
 from resource_explorer.surveyors.survey_definition_executor import get_adapter
 
@@ -54,7 +56,7 @@ class TestFilesystemChainedStepsRunnable:
             args, kwargs = mock_run.call_args
             assert args == (entity, registry)
             assert callable(kwargs["port_factory"])
-            assert result == {"step": "file_profiles", **summary_dict}
+            assert {"step": "file_profiles", **summary_dict}.items() <= result.items()
 
     def test_narrative_docs_runner_calls_press_and_returns_summary(self):
         entity = FileSystemEntity(
@@ -73,7 +75,7 @@ class TestFilesystemChainedStepsRunnable:
             result = fs_adapter._run_narrative_docs(entity, registry)
 
             mock_run.assert_called_once_with(entity, registry)
-            assert result == expected_result
+            assert expected_result.items() <= result.items()
 
     def test_file_data_class_match_runner_calls_press_and_returns_summary(self):
         entity = FileSystemEntity(
@@ -92,7 +94,7 @@ class TestFilesystemChainedStepsRunnable:
             result = fs_adapter._run_file_data_class_match(entity, registry)
 
             mock_run.assert_called_once_with(entity, registry)
-            assert result == expected_result
+            assert expected_result.items() <= result.items()
 
     def test_file_profiles_runner_propagates_nothing_to_profile(self):
         entity = FileSystemEntity(
@@ -313,3 +315,81 @@ class TestRunThroughTheExecutor:
         statuses = {s["step"]: s["status"] for s in result["steps"]}
         assert statuses["Step::file_profiles"] == "error"
         assert any("no walk of this file system yet" in e for e in result["errors"])
+        entry = next(s for s in result["steps"] if s["step"] == "Step::file_profiles")
+        assert "no walk of this file system yet" in entry["detail"]
+
+    @pytest.mark.parametrize("step_key, module, exc_name, words", [
+        ("file_profiles", "file_profiles", "AlreadyRunning", "a profile run is already going"),
+        ("file_profiles", "file_profiles", "ClaimLost", "the claim was lost"),
+        ("narrative_docs", "narrative_docs", "NothingToRead", "nothing to read"),
+        ("narrative_docs", "narrative_docs", "NotReachable", "the mount cannot be reached"),
+        ("narrative_docs", "narrative_docs", "AlreadyRunning", "a read is already going"),
+        ("narrative_docs", "narrative_docs", "NotStored", "the passages could not be stored"),
+        ("file_data_class_match", "file_class_match", "NothingToMatch", "nothing to match"),
+        ("file_data_class_match", "file_class_match", "NotReachable", "the mount cannot be reached"),
+        ("file_data_class_match", "file_class_match", "AlreadyRunning", "a match is already going"),
+    ])
+    def test_every_press_refusal_is_the_steps_error_with_its_words(self, step_key, module, exc_name, words):
+        import importlib
+
+        exc = getattr(importlib.import_module(f"resource_explorer.surveyors.filesystem.{module}"), exc_name)
+        result, _ = self._run(step_key, press_side_effect=exc(words))
+        entry = next(s for s in result["steps"] if s["step"] == f"Step::{step_key}")
+        assert entry["status"] == "error"
+        assert entry["detail"] == words
+        assert any(words in e for e in result["errors"])
+
+
+class TestRealPressThroughTheExecutor:
+    """R1: a real press, a real (temporary) registry and a real-shape walk: what the step runs is what the press writes,
+    and a step that found nothing says so instead of reading as success with 0."""
+
+    @staticmethod
+    def _setup(tmp_path, readme: bytes):
+        from tests.test_files_narrative_docs import FakeStore, _register, _walk
+
+        registry = ProjectRegistry(db_path=str(tmp_path / "chain.db"))
+        root = tmp_path / "tree"
+        root.mkdir()
+        (root / "README.md").write_bytes(readme)
+        fs = _register(registry, root, slug="tree")
+        _walk(registry, fs)
+        return registry, fs, FakeStore()
+
+    def _through_the_executor(self, registry, store):
+        from resource_explorer.surveyors.survey_definition_executor import PUBLISH_NOT_CHOSEN, SurveyDefinitionExecutor
+        from resource_explorer.surveyors.survey_definition_reader import SurveyDefinition, SurveyStep
+
+        definition = SurveyDefinition(
+            process_guid="proc-fs", display_name="FS chain", qualified_name="GovActionProcess::FsChain",
+            supported_technology_type="File System Directory",
+            steps=[SurveyStep(guid="s1", display_name="narrative_docs", qualified_name="Step::narrative_docs",
+                              executes_at="resource-explorer", re_analysis_step="narrative_docs")],
+        )
+        reader = MagicMock()
+        reader.fetch.return_value = definition
+        reader.find_candidate_process_guids.return_value = [
+            {"guid": "proc-fs", "qualified_name": "GovActionProcess::FsChain", "display_name": "FS chain"}]
+        with patch("resource_explorer.surveyors.filesystem.narrative_docs.default_store", return_value=store):
+            return SurveyDefinitionExecutor(registry, reader=reader).run(
+                entity_type="filesystem", slug="tree", publish=PUBLISH_NOT_CHOSEN, engine_override="resource-explorer")
+
+    def test_the_step_writes_the_step_runs_row_the_press_writes(self, tmp_path):
+        registry, _, store = self._setup(tmp_path, b"# Title\n\nbody\n\n## Section\n\ntext\n")
+        result = self._through_the_executor(registry, store)
+        entry = next(s for s in result["steps"] if s["step"] == "Step::narrative_docs")
+        assert entry["status"] == "ok", (result["steps"], result["errors"])
+        rows = registry.query_step_runs(slug="tree", step_key="narrative_docs", entity_type="filesystem", limit=1)
+        assert rows, "the press's own step_runs row is missing after the run through the executor"
+        assert rows[0]["metrics"]["files"] == 1 and rows[0]["metrics"]["stored"] >= 1
+        assert "1 file read in full" in entry["detail"]
+        assert store.collections, "the passages were not stored in the search index"
+
+    def test_a_step_that_read_nothing_says_so_and_is_not_a_success_with_zero(self, tmp_path):
+        registry, _, store = self._setup(tmp_path, b"\x00\x01 binary, not text")
+        result = self._through_the_executor(registry, store)
+        entry = next(s for s in result["steps"] if s["step"] == "Step::narrative_docs")
+        # The press looked and read nothing; the step's own words say exactly that, never a bare "ok".
+        assert "0 files read in full" in entry["detail"]
+        assert "binary content" in entry["detail"]
+        assert not store.collections, "nothing was read, so nothing may be in the search index"
