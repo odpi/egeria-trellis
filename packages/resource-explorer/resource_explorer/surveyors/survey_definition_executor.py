@@ -571,6 +571,7 @@ class SurveyDefinitionExecutor:
         steps_report: list = []
         step_outputs: list = []
         errors: list = []
+        cancelled_count: int = 0
         #: §17.1 — chains this run wants the user to confirm, and prerequisite
         #: steps it ran on its own initiative. Both are returned so the caller
         #: (the classic UI's survey response) can offer "run it?" without a
@@ -1032,8 +1033,15 @@ class SurveyDefinitionExecutor:
                     # not "error", for what was a deliberate action.
                     msg = f"Prefect step '{step.re_analysis_step}' was cancelled: {exc}"
                     log.info(msg)
-                    errors.append(msg)
-                    steps_report.append({"step": step.qualified_name, "re_analysis_step": _step_key(step), "status": "cancelled", "engine": "prefect"})
+                    # Do NOT add to errors — a cancelled step is not an error.
+                    # The cancellation message stays in the run's detail for
+                    # audit, but it doesn't count as an error.
+                    cancelled_count += 1
+                    steps_report.append({
+                        "step": step.qualified_name, "re_analysis_step": _step_key(step),
+                        "status": "cancelled", "engine": "prefect",
+                        "detail": msg,
+                    })
                 except PrefectFlowRunTimeout as exc:
                     # An honest error, never a pass: no output was produced, so
                     # no cost row and no findings are written for this step
@@ -1485,13 +1493,18 @@ class SurveyDefinitionExecutor:
         # The ref is what makes the row attributable to THIS definition rather
         # than to the repo generally.
         try:
+            # Status is "error" only if there are actual errors, not cancelled steps.
+            # A run with only cancelled steps is stored as "ok" (no errors).
+            has_errors = bool(errors)
+            status = "error" if has_errors else "ok"
+            summary=f"{survey_def.display_name}: {steps_summary(steps_report, errors)}"
             survey_entry = log_survey(
                 self.registry, entity_type, slug,
                 getattr(entity, "display_name", "") or slug,
                 getattr(entity, "github_url", "") or "",
                 intent="discovery",
-                status="error" if errors else "ok",
-                summary=f"{survey_def.display_name}: {steps_summary(steps_report, errors)}",
+                status=status,
+                summary=summary,
                 detail=json.dumps({
                     "survey_definition_ref": process_qn,
                     "process_guid": process_guid,
@@ -1536,6 +1549,9 @@ class SurveyDefinitionExecutor:
             "surveyed_at": surveyed_at,
             "steps": steps_report,
             "errors": errors,
+            # Count of steps that were cancelled (separate from errors).
+            # A run with only cancelled steps has cancelled_count > 0 but errors = [].
+            "cancelled_count": cancelled_count,
             # §17.1 — chains awaiting consent, and prerequisites this run took
             # on itself. Returned rather than only logged: a proposal nobody
             # can see is a skip with extra words, and "run it?" has to be

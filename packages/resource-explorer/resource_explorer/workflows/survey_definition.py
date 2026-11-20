@@ -84,6 +84,7 @@ class SurveyDefinitionRunResult:
     status: str  # "ok" | "error"
     summary: str = ""
     errors: list[str] = field(default_factory=list)
+    cancelled_count: int = 0
     result: dict = field(default_factory=dict)
 
 
@@ -196,18 +197,36 @@ def execute_and_record_definition(entity_type: str, slug: str,
         )
 
     errors = result.get("errors") or []
-    summary = (f"Completed with {len(errors)} error(s)" if errors
-               else "Survey Definition run complete")
+    cancelled_count = result.get("cancelled_count", 0)
+    # Status is "error" only if there are actual errors, not cancelled steps.
+    has_errors = bool(errors)
+    status = "error" if has_errors else "ok"
+    # Summary wording:
+    # - Only errors: "Completed with N error(s)"
+    # - Only cancelled: "Completed · 1 step cancelled" (plural for >1)
+    # - Both: "Completed with N error · 1 step cancelled" (note: singular "error" when count is 1)
+    if has_errors and cancelled_count:
+        error_word = "error" if len(errors) == 1 else "errors"
+        cancelled_words = f"{cancelled_count} step{'' if cancelled_count == 1 else 's'} cancelled"
+        summary = f"Completed with {len(errors)} {error_word} · {cancelled_words}"
+    elif has_errors:
+        summary = f"Completed with {len(errors)} error(s)"
+    elif cancelled_count:
+        cancelled_words = f"{cancelled_count} step{'' if cancelled_count == 1 else 's'} cancelled"
+        summary = f"Completed · {cancelled_words}"
+    else:
+        summary = "Survey Definition run complete"
     result["survey_definition_ref"] = ref
     registry.update_activity_status(
-        activity_id, "error" if errors else "ok", summary=summary,
+        activity_id, status, summary=summary,
         detail=_detail(result),
     )
     from resource_explorer.secret_redaction import scrub
 
     return SurveyDefinitionRunResult(
-        status="error" if errors else "ok", summary=summary,
-        errors=scrub(errors, secret), result=scrub(result, secret),
+        status=status, summary=summary,
+        errors=scrub(errors, secret), cancelled_count=cancelled_count,
+        result=scrub(result, secret),
     )
 
 
