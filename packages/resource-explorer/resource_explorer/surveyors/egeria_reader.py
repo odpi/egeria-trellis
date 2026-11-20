@@ -93,29 +93,6 @@ class EgeriaReader:
 
     # ── asset lookup ──────────────────────────────────────────────────────────
 
-    def find_asset_guid(self, github_url: str) -> str | None:
-        """Return the Egeria GUID of the repository Asset for the given GitHub URL.
-
-        Searches by the qualifiedName prefix `GitHubRepository::{github_url}`
-        (the repository is a plain Asset since the 2026-09-14
-        SourceControlLibrary correction -- see egeria_publisher.py's module
-        docstring). Returns None if not found.
-        """
-        self.connect()
-        qualified_name = f"GitHubRepository::{github_url}"
-        try:
-            results = self._asset_maker.find_assets(
-                search_string=qualified_name,
-                starts_with=True,
-                ignore_case=False,
-                output_format="JSON",
-            )
-            if isinstance(results, list) and results:
-                return results[0].get("elementHeader", {}).get("guid")
-        except Exception as exc:
-            log.debug("find_asset_guid search failed: %s", exc)
-        return None
-
     # ── survey report listing ─────────────────────────────────────────────────
 
     def get_survey_reports_from_registry(self, slug: str) -> list[dict]:
