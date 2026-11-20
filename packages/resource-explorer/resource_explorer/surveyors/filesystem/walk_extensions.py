@@ -134,7 +134,7 @@ class HashBudget:
         return self._clock() - self._start >= self.max_seconds
 
     def words(self) -> str:
-        """"hashing stopped at 2.0 GiB: 14 files not hashed", or '' when the budget held."""
+        """"hashing stopped at 2.1 GB: 14 files not hashed", or '' when the budget held."""
         if not self.stopped_by:
             return ""
         at = f"{_fmt_bytes(self.max_bytes)}" if self.stopped_by == "bytes" else f"{int(self.max_seconds)} seconds"

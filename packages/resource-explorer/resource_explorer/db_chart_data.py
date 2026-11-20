@@ -349,7 +349,7 @@ def table_sizes(registry, slug: str, limit: int = 20, measure: str = "rows") -> 
     env["totals"] = _totals(counted)
 
     def mb(v):
-        return None if v is None else round(v / 1_048_576, 2)
+        return None if v is None else round(v / 1_000_000, 2)
 
     env["tables"] = [_qualified(t) for t in top]
     env["row_counts"] = [t.get("row_count") for t in top]

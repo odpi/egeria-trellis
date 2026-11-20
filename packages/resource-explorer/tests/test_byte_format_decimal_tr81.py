@@ -44,3 +44,30 @@ def test_the_boundaries_move_up_a_unit_rather_than_show_1000():
     assert [f(0), f(999), f(1000), f(999_949), f(999_950)] == ["0 B", "999 B", "1.0 KB", "999.9 KB", "1.0 MB"]
     assert f(2_500_000_000_000) == "2.5 TB"
     assert f(5, bytes_word="bytes") == "5 bytes"
+
+
+# ── fix-up 1: the sites that divided by 1024 under an MB label ───────────────────────────────────────────────────────
+
+def test_reindex_says_the_space_it_needs_in_decimal_words():
+    from resource_explorer import reindex
+    assert "needs about 60.2 MB more" in reindex.needs_words(LOADING_BAY_BYTES)
+
+
+def _registry_with_repo_size(tmp_path, kb):
+    from resource_explorer.registry import Project, ProjectRegistry
+    registry = ProjectRegistry(db_path=str(tmp_path / "r.db"))
+    registry.add(Project(slug="demo", display_name="Demo", github_url="https://github.com/demo/demo"))
+    with registry._conn() as conn:
+        conn.execute("INSERT INTO project_stats (project_slug, fetched_at, stars, forks, repo_size_kb, deployments_count) "
+                     "VALUES (?, ?, 5, 1, ?, 0)", ("demo", "2026-11-01T00:00:00", kb))
+    return registry
+
+
+# GitHub reports a repository's size in KiB: 58,800 KiB is 60,211,200 bytes, "60.2 MB" in the tile and in chat alike.
+def test_chat_and_the_repo_header_give_a_repository_the_same_size(tmp_path, monkeypatch):
+    from resource_explorer.agents import stats_agent, tools
+    registry = _registry_with_repo_size(tmp_path, 58_800)
+    monkeypatch.setattr("resource_explorer.registry.ProjectRegistry", lambda *a, **k: registry)
+    assert "Size: 60.2 MB" in tools.query_project_stats_raw("demo")
+    monkeypatch.setattr(stats_agent, "ProjectRegistry", lambda *a, **k: registry)
+    assert "Size:               60.2 MB" in stats_agent.StatsAgent._fetch_stats(object.__new__(stats_agent.StatsAgent), "demo")
