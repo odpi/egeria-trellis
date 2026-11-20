@@ -911,7 +911,7 @@ class EgeriaFileSystemSurveyor:
                         "class": "AssetProperties", "typeName": "SurveyReport", "qualifiedName": qualified_name,
                         "displayName": f"{spec.step_name}: {fs_name}",
                         "description": f"{spec.step_name} findings for {fs_name}, step run {run} · surveyed by Resource Explorer",
-                        "additionalProperties": {"annotation_count": "1", "step": spec.step, "surveyor": "Resource Explorer"}}})
+                        "additionalProperties": {"step": spec.step, "surveyor": "Resource Explorer"}}})   # no annotation_count: a second finding on this report would make it stale
             held = self._held_annotation_names(report_guid) if reused else {}
             if held is None:
                 raise EgeriaFileSystemSurveyorError(

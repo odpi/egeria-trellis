@@ -277,3 +277,16 @@ def test_storing_and_reading_a_step_result_publishes_nothing(registry, tmp_path,
     walk_derived.derived_view(registry, "walkme")
     pt.build_rows(registry, "filesystem", "walkme")
     assert egeria.report_creates == [] and egeria.annotation_creates == [] and _rfa_rows(registry) == []
+
+
+def test_the_report_carries_no_annotation_count_that_a_second_finding_would_make_stale(registry, tmp_path, monkeypatch):
+    """Found in the live proof: the report was created with annotation_count "1" and, after a second finding, held two."""
+    _register(registry, _tree(tmp_path))
+    bodies = []
+    real = FakeEgeria.create_asset
+    monkeypatch.setattr(FakeEgeria, "create_asset", lambda self, body=None, **kw: bodies.append(body) or real(self, body=body, **kw))
+    install(monkeypatch, FakeEgeria())
+    _surveyor_press(registry, "fs_permissions", "world_readable_sensitive", "World Readable Secret Named Files", "world_readable_sensitive")
+    assert len(bodies) == 1
+    extra = bodies[0]["properties"]["additionalProperties"]
+    assert "annotation_count" not in extra and extra["step"] == "fs_permissions" and extra["surveyor"] == "Resource Explorer"
