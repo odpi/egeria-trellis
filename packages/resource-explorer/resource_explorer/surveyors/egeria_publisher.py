@@ -52,10 +52,9 @@ log = logging.getLogger(__name__)
 #: native-survey process discovery (`_REPO_TECH_TYPE`) keys on: ONE constant, both read it.
 REPO_DEPLOYED_IMPLEMENTATION_TYPE = "GitHub Repository"
 
-#: **UNCONFIRMED (TR-89, 2026-11-20): waiting on Mandy's value.** The `deployedImplementationType` of the GitHub
-#: SoftwareServerPlatform AND of its CloudPlatform classification, from this ONE constant. "GitHub" is the
-#: builder's placeholder. The branch does not merge until the project owner relays the confirmed value; change it
-#: HERE and nowhere else (`tests/test_tr89_repo_as_scl.py` fails if the literal is scattered).
+#: The `deployedImplementationType` of the GitHub SoftwareServerPlatform AND of its CloudPlatform classification
+#: (the same fact), from this ONE constant. "GitHub" is the project owner's ruling (2026-11-20, relayed by the
+#: Architect). Change it HERE and nowhere else (`tests/test_tr89_repo_as_scl.py` fails if the literal is scattered).
 GITHUB_PLATFORM_DEPLOYED_IMPLEMENTATION_TYPE = "GitHub"
 
 # ── Egeria connection defaults (standard pyegeria env vars) ──────────────────

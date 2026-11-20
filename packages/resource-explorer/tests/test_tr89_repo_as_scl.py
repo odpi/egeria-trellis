@@ -6,7 +6,7 @@ SoftwareCapability, NOT an Asset, so `find_assets` / `get_asset_by_guid` / `upda
 Asset-end relationship refuse or answer NotFound for it. A repository path still on an Asset API fails here.
 
 Type facts are from the type archives at Egeria 7d0db895 (audit §2); the live proof on a throwaway Egeria
-re-verifies them. The platform's `deployedImplementationType` is UNCONFIRMED (Mandy's value pending).
+re-verifies them. The platform's `deployedImplementationType` is "GitHub" (project owner, 2026-11-20).
 """
 from __future__ import annotations
 
@@ -185,12 +185,13 @@ def test_a_platform_lookup_that_cannot_be_made_creates_nothing():
     assert egeria.ops("create_asset") == []
 
 
-def test_the_platform_deployed_implementation_type_is_one_named_unconfirmed_constant():
+def test_the_platform_deployed_implementation_type_is_github_from_one_named_constant():
     assert ep.GITHUB_PLATFORM_DEPLOYED_IMPLEMENTATION_TYPE == "GitHub"
-    src = (PKG / "surveyors" / "egeria_publisher.py").read_text()
-    assert "UNCONFIRMED" in src.split("GITHUB_PLATFORM_DEPLOYED_IMPLEMENTATION_TYPE =")[0].splitlines()[-4:].__str__() \
-        or "UNCONFIRMED" in src[src.index("GITHUB_PLATFORM_DEPLOYED_IMPLEMENTATION_TYPE =") - 600:
-                                src.index("GITHUB_PLATFORM_DEPLOYED_IMPLEMENTATION_TYPE =")]
+    assert ep.REPO_DEPLOYED_IMPLEMENTATION_TYPE == "GitHub Repository"      # the repository keeps its own
+    egeria = FakeRepoEgeria()
+    platform = _publisher(egeria)._find_or_create_github_platform()
+    assert egeria.elements[platform]["props"]["deployedImplementationType"] == "GitHub"
+    assert egeria.elements[platform]["classifications"]["CloudPlatform"]["deployedImplementationType"] == "GitHub"
     # the literal is never scattered: no `deployedImplementationType: "GitHub"` anywhere in the package
     for path in PKG.rglob("*.py"):
         text = path.read_text()
