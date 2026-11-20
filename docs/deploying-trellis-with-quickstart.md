@@ -3,12 +3,16 @@
 
 # Deploying, configuring and running Trellis with the Egeria QuickStart
 
-Trellis is two applications that sit beside an Egeria deployment:
+Trellis is two applications (plus an emerging preview, Trellis Studio) that sit beside an Egeria deployment:
 
 - **Resource Explorer (RE)** scouts, surveys, publishes and curates software resources (GitHub
   repositories today) into Egeria, and answers questions about them.
 - **Egeria Advisor (EA)** answers questions about Egeria itself and runs Egeria reports, with a
   retrieval corpus over the Egeria code bases and documentation.
+- **Trellis Studio** (an emerging preview in the 6.3 Tech Preview) is a third web app on port 8840. It runs natively only
+  (there is no Studio image and it is not in the demo compose), has no service account, and uses the same
+  `TRELLIS_JWT_SECRET` and Egeria sign-in as RE and EA. This document is about RE and EA; Studio's setup is in
+  `QUICKSTART.md` and `packages/studio/.env.example`, and §3.4 and §5 note where it differs.
 
 Both use the QuickStart's Egeria platform, the shared Postgres (pgvector) and Kroki from
 `shared-infra`, an Ollama model server, and the QuickStart Portal's login. This document covers the
@@ -77,7 +81,7 @@ platform tokens last one hour; an app session is the shorter of that and the app
 
 | Key | Meaning | Source |
 |---|---|---|
-| `TRELLIS_JWT_SECRET` | signs the apps' own session tokens; every RE/EA process on a box must share it | generate once per box: `openssl rand -hex 32` |
+| `TRELLIS_JWT_SECRET` | signs the apps' own session tokens; every RE/EA/Studio process on a box must share it | generate once per box: `openssl rand -hex 32`, or let `./trellis-up` write it (same value, existing values never overwritten) into each app's `.env` |
 | `RE_DAEMON_USER_ID` / `TRELLIS_SERVICE_ACCOUNTS` | Egeria user ids no human may sign in as (RE's background account; comma-separated list); EA refuses them with 403 because it shares `TRELLIS_JWT_SECRET` with RE | RE's `EGERIA_USER_ID`; unset refuses nobody |
 | `ADVISOR_PORTAL_SECRET` / `TRELLIS_PORTAL_SECRET` | lets the Portal hand a signed-in user to EA and RE | the same value as the QuickStart's `EGERIA_ADVISOR_SSO_SECRET` |
 | `PGVECTOR_PASSWORD` | the `egeria_advisor` Postgres role. Required, no default: compose, RE and EA refuse to start without it | `compose-configs/shared-infra/.env` (`gen-env.sh` generates it on a new install; `init_trellis.sh` creates the role with it). A role still on the old `advisor`: change it first (shared-infra README) |
@@ -87,7 +91,8 @@ platform tokens last one hour; an app session is the shorter of that and the app
 | `RE_DAEMON_USER_ID` / `RE_DAEMON_USER_PASSWORD` for RE | RE's daemon identity (TR-37, 2026-11-17: these replace RE's `EGERIA_USER_ID` / `EGERIA_USER_PASSWORD`, still read for one release and removed after 6.3; keep `EGERIA_USER` / `EGERIA_USER_PASSWORD` out of RE's environment), RE's own account `resourceexplorernpa` (not a person: RE refuses an interactive sign-in as it). Development bootstrap; not for a shipped product | the account's password in Egeria's user directory; see RE's `docs/admin-guide.md`, "RE's daemon account" |
 
 Never commit any of these, and never bake them into an image (the trellis `.dockerignore`
-excludes `.env` files for that reason).
+excludes `.env` files for that reason). Keep every file that holds them at mode 600 (`chmod 600 .env`);
+`./trellis-up` leaves the `.env` files it writes at 600.
 
 ### 1.5 Ports
 
@@ -95,6 +100,7 @@ excludes `.env` files for that reason).
 |---|---|
 | 8810 | Resource Explorer web (and API) |
 | 8880 | Egeria Advisor web (and API) |
+| 8840 | Trellis Studio web (native only; emerging preview) |
 | 9443 | Egeria platform (HTTPS, self-signed) |
 | 8800 / 8843 | QuickStart Portal (HTTP / HTTPS) |
 | 5442 | shared Postgres (pgvector) |
@@ -247,7 +253,9 @@ docker exec -w /app/packages/egeria-advisor trellis-ea-web python scripts/clone_
 docker exec -w /app/packages/egeria-advisor trellis-ea-web python scripts/ingest_collections.py --phase all
 ```
 
-Phase 1 alone is only egeria-python; concept questions need egeria-docs and the other phase 2 repositories.
+Phase 1 alone is only egeria-python; concept questions need egeria-docs and the other phase 2 repositories. Until
+the corpus is built, EA says so ("My knowledge base hasn't been built yet: all N of its collections are empty") and
+prints these commands, rather than answering from the model alone; that is not a model or question problem.
 
 ### 2.6 Operating
 
@@ -334,8 +342,10 @@ Minimum edits:
 | EA | `EGERIA_VIEW_SERVER_URL=https://localhost:9443`, `EGERIA_VIEW_SERVER=qs-view-server`, `EA_DAEMON_USER_ID` / `EA_DAEMON_USER_PASSWORD` (EA's own service account, never a person; before TR-34 `EGERIA_USER` / `EGERIA_PASSWORD`, read with a warning until after 6.3); `OLLAMA_BASE_URL=http://localhost:11434`; `ADVISOR_DATA_PATH` for EA's **writable** state (cache, feedback, index — default `./data`), and `ADVISOR_EGERIA_PYTHON_PATH` for the **read-only** egeria-python checkout its data-prep pipeline ingests. These were one env var until 2026-09-06, so setting it for either meaning silently redirected the other |
 | optional | `ADVISOR_PORTAL_SECRET` / `RE_PORTAL_SECRET` equal to the QuickStart's `EGERIA_ADVISOR_SSO_SECRET` for tile handoff; `EXPLORER_MODEL_TIER` / `ADVISOR_MODEL_TIER` (default `dev`) |
 
-Postgres defaults (`localhost:5442`, database `egeria_advisor`, user `egeria_advisor`, password
-`advisor`) match `shared-infra`; override the `PGVECTOR_*` keys only if you changed the init SQL.
+Postgres defaults (`localhost:5442`, database `egeria_advisor`, user `egeria_advisor`) match `shared-infra`.
+`PGVECTOR_PASSWORD` has no default and both apps refuse to start without it: copy it from
+`compose-configs/shared-infra/.env` into both app `.env` files. Override the other `PGVECTOR_*` keys only if you
+changed the init SQL.
 
 `TRELLIS_ANONYMOUS_READ=true` is a developer-only override that lets read-only requests through
 without a login. Do not use it on a demo box.
@@ -346,7 +356,11 @@ without a login. Do not use it on a demo box.
 make dev        # RE web on 8810 with the worker embedded, and EA web on 8880; Ctrl-C stops both
 ```
 
-or individually: `make re-web`, `make re-worker`, `make ea-web`. `make ps` lists every trellis
+or individually: `make re-web`, `make re-worker`, `make ea-web`, `make studio-web` (Studio, port 8840, settings from
+`packages/studio/.env`). `make up` (or `./trellis-up`, with `--re`, `--ea`, `--studio`, `--check`, `--start-check`)
+runs a preflight, writes a shared `TRELLIS_JWT_SECRET` if none exists, starts all three natively, and reports an app
+that exits or does not answer its `/health` by name, with the first error line, then stops the others and exits
+non-zero. `make ps` lists every trellis
 process and container with its role, age and port. `make help` lists the rest (tests, lint,
 image builds).
 
@@ -424,13 +438,14 @@ Keys the apps read, grouped by concern. `<APP>_` forms override the shared `TREL
 |---|---|---|---|
 | Session signing secret | `RE_JWT_SECRET` or `TRELLIS_JWT_SECRET` | `ADVISOR_JWT_SECRET` or `TRELLIS_JWT_SECRET` | `TRELLIS_JWT_SECRET` |
 | Session lifetime | `RE_JWT_TTL_HOURS` (default 8; Egeria's token caps it at 1 h) | same mechanism | inherited |
+| Studio session (Studio only) | `STUDIO_JWT_TTL_MINUTES` (default 15) and `STUDIO_SESSION_MAX_HOURS` (default 8). The page refreshes the short-lived JWT while you are active; each refresh re-checks the Egeria sign-in and a replayed refresh token revokes the session. They replace `STUDIO_JWT_TTL_HOURS`, which is no longer read | n/a: not in the demo compose |
 | Portal handoff secret | `RE_PORTAL_SECRET` or `TRELLIS_PORTAL_SECRET` | `ADVISOR_PORTAL_SECRET` or `TRELLIS_PORTAL_SECRET` | `ADVISOR_PORTAL_SECRET` (fed to both) |
 | Login policy | `TRELLIS_REQUIRE_LOGIN` (default true), `TRELLIS_ANONYMOUS_READ` (dev only), `RE_PUBLIC_PATHS` | same, `TRELLIS_PUBLIC_PATHS` | defaults |
 | Egeria platform | `EGERIA_PLATFORM_URL`, `EGERIA_VIEW_SERVER`, `PYEGERIA_TIMEOUT_SECONDS`; service account `RE_DAEMON_USER_ID`, `RE_DAEMON_USER_PASSWORD` | `EGERIA_VIEW_SERVER_URL`, `EGERIA_VIEW_SERVER`; service account `EA_DAEMON_USER_ID`, `EA_DAEMON_USER_PASSWORD` | set in compose; service accounts from `RE_DAEMON_*` / `EA_DAEMON_*` in `trellis/.env` |
 | Ollama | `LLM__OLLAMA__BASE_URL`, `LLM__OLLAMA__MODEL` | `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OLLAMA_CODE_MODEL` | `TRELLIS_MODEL_GENERAL`, `TRELLIS_MODEL_CODE`, plus the overlay choice |
 | Model tier | `EXPLORER_MODEL_TIER` | `ADVISOR_MODEL_TIER` | `TRELLIS_MODEL_TIER` |
 | Postgres / pgvector | `PGVECTOR_*` or `REGISTRY_DATABASE_URL` | `PGVECTOR_*` | `PGVECTOR_PASSWORD` |
-| Prefect (RE only) | `PREFECT_ENABLED` (on by default), `PREFECT_API_URL`, `PREFECT_WORK_POOL` (default `resource-explorer-pool`, the pool the bundled workers serve), `PREFECT_DISPATCH_STEPS` (see §5.1) | | `PREFECT_ENABLED=false` |
+| Prefect (RE only) | `PREFECT_ENABLED` (on by default), `PREFECT_API_URL`, `PREFECT_WORK_POOL` (default `resource-explorer-pool`, the pool the bundled workers serve), `PREFECT_DISPATCH_STEPS`, `PREFECT_STEP_TIMEOUT_SECONDS` (see §5.1) | | `PREFECT_ENABLED=false` |
 | Kroki | `KROKI_URL` | `KROKI_URL` | set in compose |
 | GitHub | `GITHUB_TOKEN`, `GITHUB_WEBHOOK_SECRET` | | `GITHUB_TOKEN` |
 | Process roles | `EXPLORER_EMBED_WORKER`, `EXPLORER_SYNC_POOL_SIZE` | | `TRELLIS_RE_WEB_WORKERS`; `WORKERS` / `EMBED_WORKER` read by the image entrypoint |
@@ -459,6 +474,15 @@ definition marks `executes_at: prefect` always go to the worker; `executes_at: e
 Any other value stops RE at startup, saying why. `PREFECT_ROUTE_LOCAL_STEPS=true` is a deprecated alias for `all`.
 Each dispatched step costs about 10–15 s of hand-off on top of the step itself (9 s measured warm, 2026-11-18). Dispatch
 moves work off RE's process; it does not make a step faster. List only steps heavy enough to be worth moving.
+
+**A dispatched step is watched.** While it runs, RE writes a heartbeat line ("RE heartbeat · <phase> · <n> s into the
+step", every 30 s) to the flow run's own logs and reads the run's state. RE's deadline is `PREFECT_STEP_TIMEOUT_SECONDS`
+(default 1200, must be > 0). It is **environment-only**: there is no per-step or per-survey value, it applies to every
+dispatched step of that RE process, and the deadline counts from dispatch (so a run waiting for a worker uses it up).
+When it passes, or when someone cancels the run from Admin, RE asks Prefect to cancel (`CANCELLING`, unforced); the step
+stops and writes nothing, and the survey records an error step that names the run and, from the newest heartbeat, when it
+was last heard from. Each step's GitHub calls are bounded too (30 s per request, a rate-limit wait over 60 s fails at
+once with the reset time rather than sleeping).
 
 **Where each step ran** is recorded with the step: `worker`, `in-process`, or `in-process (fallback: <reason>)`
 when no worker on RE's own commit was online. A fallback never reads as dispatched. Signed in to RE,
