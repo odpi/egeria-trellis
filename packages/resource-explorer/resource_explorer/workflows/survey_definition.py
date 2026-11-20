@@ -95,24 +95,25 @@ def _status_and_summary_for_cancelled_steps(
     
     TR-93: A cancelled step must not read as an error. The rules:
     - Any real errors → status "error"
-    - No errors, at least one step completed + cancellations → status "ok", summary "Completed · N step(s) cancelled"
+    - No errors, at least one step completed (ok or triggered) + cancellations → status "ok", summary "Completed · N step(s) cancelled"
     - No errors, NO steps completed (all cancelled) → status "cancelled", summary "Cancelled · N step(s) cancelled, nothing measured"
     
     Args:
         errors: List of error messages from the run
         cancelled_count: Number of steps that were cancelled
-        steps: List of step entries (from result["steps"]), used to count completed steps
+        steps: List of step entries (from result["steps"]), used to count completed steps (status ok or triggered)
     
     Returns:
         Tuple of (status, summary)
     """
     has_errors = bool(errors)
     
-    # Count completed steps (those with status == "ok")
+    # Count completed steps: "ok", and "triggered" (an Egeria-engine step is stored as triggered); the same definition of
+    # "ran" that `steps_summary` uses.
     completed_count = 0
     if steps is not None:
         try:
-            completed_count = sum(1 for s in steps if isinstance(s, dict) and s.get("status") == "ok")
+            completed_count = sum(1 for s in steps if isinstance(s, dict) and s.get("status") in ("ok", "triggered"))
         except (TypeError, AttributeError):
             # If steps is malformed/unreadable, treat as 0 completed
             completed_count = 0
@@ -124,7 +125,7 @@ def _status_and_summary_for_cancelled_steps(
     # - No errors, NO steps completed (all cancelled) → status "cancelled"
     elif completed_count == 0 and cancelled_count > 0:
         status = "cancelled"
-    # - No errors, at least one step completed + cancellations → status "ok"
+    # - No errors, at least one step completed (ok or triggered) + cancellations → status "ok"
     else:
         status = "ok"
     

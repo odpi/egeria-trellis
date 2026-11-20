@@ -60,7 +60,7 @@ test('a run with only an error is unchanged: the error style and the old words',
   assert.doesNotMatch(r.text, /cancelled/);
 });
 
-test('the status filter treats a cancelled-only run as ok, so it is not found under "error"', async () => {
+test('a cancelled-only row and an error row keep their own tones side by side', async () => {
   const { of } = await render([row('c3', 'ok', 'Completed · 1 step cancelled'), row('e2', 'error', 'Completed with 1 error(s)')]);
   assert.match(of('c3').tone, /text-state-ok/);
   assert.match(of('e2').tone, /text-state-warn/);

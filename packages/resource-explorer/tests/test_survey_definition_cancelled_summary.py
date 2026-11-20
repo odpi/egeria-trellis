@@ -114,3 +114,12 @@ def test_executor_log_survey_with_all_cancelled_steps():
     # We need to test the executor's log_survey call path
     # This will be tested in test_survey_definition_executor.py
     pass
+
+
+def test_a_triggered_step_counts_as_completed_so_triggered_plus_cancelled_is_ok_not_nothing_measured():
+    """R2 of the second read-back: Egeria-engine steps are stored as status "triggered" (the executor's handler branch); the
+    helper counted only "ok", so triggered + cancelled read as "Cancelled · nothing measured". steps_summary counts
+    ("ok", "triggered") as ran; the helper must use the same definition."""
+    triggered = {"step": "Step::egeria", "re_analysis_step": "egeria", "status": "triggered"}
+    out, activity_id, status, kwargs = _record({"steps": [triggered, dict(CANCELLED)], "errors": [], "cancelled_count": 1})
+    assert status == "ok" and kwargs["summary"] == "Completed · 1 step cancelled" and out.status == "ok"

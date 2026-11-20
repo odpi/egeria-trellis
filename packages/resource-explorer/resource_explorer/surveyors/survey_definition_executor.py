@@ -1493,16 +1493,17 @@ class SurveyDefinitionExecutor:
         # The ref is what makes the row attributable to THIS definition rather
         # than to the repo generally.
         try:
-            # Status is "error" only if there are actual errors, not cancelled steps.
-            # A run with only cancelled steps is stored as "ok" (no errors).
+            # TR-93: the STATUS follows the cancelled-steps rule (a cancelled step is not an error; with no step completed the
+            # run is `cancelled`). The WORDS stay the step breakdown this row always carried ("3 steps: 2 ran, 1 skipped by
+            # design"); only a cancelled run adds that nothing was measured.
             from resource_explorer.workflows.survey_definition import (
                 _status_and_summary_for_cancelled_steps,
             )
-            
-            # Use helper to determine status and summary based on errors, cancellations, and completed steps
-            status, summary = _status_and_summary_for_cancelled_steps(errors, cancelled_count, steps_report)
-            # Prepend survey definition name to match existing format
-            summary = f"{survey_def.display_name}: {summary}"
+
+            status, _ = _status_and_summary_for_cancelled_steps(errors, cancelled_count, steps_report)
+            summary = f"{survey_def.display_name}: {steps_summary(steps_report, errors)}"
+            if status == "cancelled":
+                summary += ", nothing measured"
             survey_entry = log_survey(
                 self.registry, entity_type, slug,
                 getattr(entity, "display_name", "") or slug,
