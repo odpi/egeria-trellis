@@ -16372,7 +16372,22 @@ class ProjectRegistry:
             # C1: a completed Egeria Folder Survey (report read back) is a run of filesystem_inventory, where Egeria leads.
             found = sorted(found + [("filesystem_inventory", ts) for ts in self._completed_native_survey_times(slug)],
                            key=lambda kv: kv[1], reverse=True)
+            # TR-106: an RE-led walk keeps its totals on a stored survey row and writes no step run of its own: it is a run
+            # of filesystem_inventory too, or the inventory reads "not measured" over a file system RE has walked.
+            found = sorted(found + [("filesystem_inventory", ts) for ts in self._walk_survey_times(slug)],
+                           key=lambda kv: kv[1], reverse=True)
         return found
+
+    def _walk_survey_times(self, slug: str) -> list[str]:
+        """`surveyed_at` of this file system's stored survey rows that carry the walk's totals (`total_files`) and are not an
+        Egeria publish proof, newest first. Empty when it could not be read: nothing is credited on a guess."""
+        try:
+            return [str((r.get("survey_data") or {}).get("surveyed_at") or r.get("surveyed_at"))
+                    for r in self.list_filesystem_surveys(slug)
+                    if r.get("source") != "egeria-published" and isinstance(r.get("survey_data"), dict)
+                    and r["survey_data"].get("total_files") is not None and (r["survey_data"].get("surveyed_at") or r.get("surveyed_at"))]
+        except Exception:
+            return []
 
     def _completed_native_survey_times(self, slug: str) -> list[str]:
         """`surveyed_at` of the `egeria-native:*` rows of this file system whose engine action succeeded AND whose
