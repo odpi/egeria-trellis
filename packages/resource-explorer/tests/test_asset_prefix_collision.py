@@ -1,26 +1,23 @@
-"""A repo must not adopt a sibling's Egeria asset.
+"""A repo must not adopt a sibling's Egeria element.
 
-`_find_or_create_asset` searches Egeria by qualifiedName with
-`starts_with=True` and used to take `existing[0]`. Where one repo's URL is a
-prefix of another's — `docling-project/docling` against `docling-project/
-docling-eval` — the search matches both and the first result wins.
+Measured live 2026-08-25: `docling` and `docling_eval` shared one asset GUID, so one repo's survey reports were
+attaching to the other's catalog entry, when `_find_or_create_asset` took `existing[0]` of a starts_with search.
+Where one repo's URL is a prefix of another's (`docling-project/docling` against `.../docling-eval`) the search
+matches both.
 
-Measured live 2026-08-25: `docling` and `docling_eval` shared one asset GUID, so
-one repo's survey reports were attaching to the other's catalog entry. Nothing
-raised, nothing logged an error; the catalog was simply wrong about which
-project it was describing.
-
-The repository is a plain `Asset` (`find_assets`/`create_asset`), not a
-`SourceControlLibrary`, since the 2026-09-14 correction in
-`egeria_publisher.py`'s module docstring — this test's fake carries both that
-and the GitHub `SourceControlLibrary` singleton's own
-`find_software_capabilities`/`create_software_capability`/
-`add_capability_asset_use` calls, since `_find_or_create_asset`'s create path
-now touches all of them.
+Since TR-89 the repository is a SourceControlLibrary found by an EXACT qualifiedName read
+(`egeria_lookup.guid_by_qualified_name`), so a prefix cannot match at all; these tests keep the live case pinned
+on the fake that knows a capability is not an Asset.
 """
 from __future__ import annotations
 
-from resource_explorer.surveyors.egeria_publisher import EgeriaPublisher
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+from fake_egeria_catalogue import FakeRepoEgeria  # noqa: E402
+
+from resource_explorer.surveyors.egeria_publisher import EgeriaPublisher  # noqa: E402
 
 
 class _Result:
@@ -29,71 +26,39 @@ class _Result:
     github_url = "https://github.com/docling-project/docling"
 
 
-def _element(qname, guid):
-    return {"properties": {"qualifiedName": qname}, "elementHeader": {"guid": guid}}
+QN = "GitHubRepository::https://github.com/docling-project/docling"
 
 
-class _Maker:
-    """Returns what a prefix search really returns: siblings first."""
-
-    def __init__(self, elements):
-        self.elements = elements
-        self.created = False
-        self.linked = None
-
-    # Repository lookup/creation -- the Asset side of the 2026-09-14 fix.
-    def find_assets(self, **kw):
-        return self.elements
-
-    def create_asset(self, *a, **kw):
-        self.created = True
-        return "newly-created-guid"
-
-    # The GitHub SourceControlLibrary singleton -- genuinely a
-    # SoftwareCapability, untouched by the fix. No existing singleton in
-    # any of this file's scenarios, so it always creates one.
-    def find_software_capabilities(self, **kw):
-        return []
-
-    def create_software_capability(self, *a, **kw):
-        return "github-scl-guid"
-
-    def add_capability_asset_use(self, capability_guid, asset_guid, **kw):
-        self.linked = (capability_guid, asset_guid)
-
-
-def _publisher(maker):
+def _publisher(egeria):
     pub = EgeriaPublisher.__new__(EgeriaPublisher)
-    pub._asset_maker = maker
+    pub._asset_maker = egeria
+    pub._metadata_expert = egeria
     pub._registry = None
-    # Only what the create path reads; this test is about WHICH asset is
-    # chosen, not about how one is built.
+    # Only what the create path reads; this test is about WHICH element is chosen, not how one is built.
     pub.zone_names = None
     pub._zone_names = None
     return pub
 
 
 def test_a_sibling_prefix_match_is_not_adopted():
-    """docling must not take docling-eval's asset just because it sorted first."""
-    maker = _Maker([
-        _element("GitHubRepository::https://github.com/docling-project/docling-eval", "eval-guid"),
-        _element("GitHubRepository::https://github.com/docling-project/docling-core", "core-guid"),
-    ])
-    pub = _publisher(maker)
-    guid = pub._find_or_create_asset(_Result())
-    assert guid != "eval-guid", "adopted a sibling repo's asset — the live docling bug"
-    assert maker.created, "should have created its own asset instead"
-    assert maker.linked == ("github-scl-guid", "newly-created-guid"), \
-        "the new asset must be linked to the GitHub SourceControlLibrary"
+    """docling must not take docling-eval's element just because its name starts the same."""
+    egeria = FakeRepoEgeria()
+    eval_guid = egeria.seed("SourceControlLibrary", QN + "-eval")
+    core_guid = egeria.seed("SourceControlLibrary", QN + "-core")
+    guid = _publisher(egeria)._find_or_create_asset(_Result())
+    assert guid not in (eval_guid, core_guid), "adopted a sibling repo's element: the live docling bug"
+    assert egeria.elements[guid]["props"]["qualifiedName"] == QN
+    platform = egeria.by_qn("SoftwareServerPlatform::github.com")
+    assert [(r["end1"], r["end2"]) for r in egeria.relationships if r["type"] == "SupportedSoftwareCapability"] \
+        == [(platform, guid)], "the new repository must be linked from the GitHub platform"
 
 
 def test_the_exact_match_is_still_adopted():
-    """The reuse path must keep working — this is not 'always create'."""
-    maker = _Maker([
-        _element("GitHubRepository::https://github.com/docling-project/docling-eval", "eval-guid"),
-        _element("GitHubRepository::https://github.com/docling-project/docling", "mine"),
-    ])
-    pub = _publisher(maker)
-    assert pub._find_or_create_asset(_Result()) == "mine"
-    assert not maker.created, "created a duplicate instead of reusing the exact match"
-    assert maker.linked is None, "an already-existing asset must not be re-linked"
+    """The reuse path must keep working: this is not 'always create'."""
+    egeria = FakeRepoEgeria()
+    egeria.seed("SourceControlLibrary", QN + "-eval")
+    mine = egeria.seed("SourceControlLibrary", QN)
+    assert _publisher(egeria)._find_or_create_asset(_Result()) == mine
+    assert egeria.ops("create_software_capability") == [], "created a duplicate instead of reusing the exact match"
+    assert [r for r in egeria.relationships if r["type"] == "SupportedSoftwareCapability"] == [], \
+        "an already-existing repository must not be re-linked"

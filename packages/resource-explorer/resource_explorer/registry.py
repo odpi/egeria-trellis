@@ -10087,11 +10087,10 @@ class ProjectRegistry:
     # ── Egeria integration ────────────────────────────────────────────────────
 
     def get_egeria_asset_guid(self, slug: str) -> str | None:
-        """Return the cached GUID of this project's own Egeria Asset, or None.
+        """Return the cached GUID of this project's own Egeria element, or None.
 
-        Named for the repository's Asset since 2026-09-14 -- it cached a
-        SourceControlLibrary GUID before that was corrected (see
-        egeria_publisher.py's module docstring); the column name and this
+        Named for the repository's Asset since 2026-09-14; since TR-89 (2026-11-19) the element is a
+        SourceControlLibrary again (see egeria_publisher.py's module docstring). The column name and this
         method's name are unchanged, only what they point at."""
         slug = self._normalize_slug(slug)
         with self._conn() as conn:

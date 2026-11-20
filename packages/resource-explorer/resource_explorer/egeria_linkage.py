@@ -454,15 +454,10 @@ def recheck_all_linkages(registry, *, entity_types=None, progress=None,
     # damaging direction in three other places. Caught by republishing one
     # repo for real and watching the next sweep declare it gone.
     #
-    # A repo's own element IS a genuine Asset since the 2026-09-14
-    # SourceControlLibrary correction (egeria_publisher.py's module
-    # docstring), so `get_asset_by_guid` would work on it now — but
-    # `get_metadata_element_by_guid` is type-agnostic, got all four of the
-    # original probe cases right (three genuinely deleted, one that exists),
-    # and this sweep also checks investigation Projects and WorkingSet
-    # Collections, neither of which is an Asset either. Kept as the one
-    # client that is correct for everything this loop checks, rather than
-    # narrowed back to AssetMaker now that it would work for one of the three.
+    # TR-89 (2026-11-19) made a repo's element a SourceControlLibrary again, so `get_asset_by_guid` is NotFound
+    # for it once more, and this type-agnostic read is the one that is right. It also covers investigation
+    # Projects and WorkingSet Collections, neither of which is an Asset. Kept as the one client that is correct
+    # for everything this loop checks.
     #
     # Worth knowing while reading this file: the naming used to lie
     # throughout — the column `egeria_asset_guid` and the publisher method

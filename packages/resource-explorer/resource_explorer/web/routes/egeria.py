@@ -492,10 +492,15 @@ async def get_repo_egeria_surveys(slug: str) -> list[EgeriaSurveyReportRow]:
         return []  # not yet cataloged in Egeria — nothing to walk from
 
     publisher = EgeriaPublisher(registry=registry)
+    from resource_explorer.surveyors.egeria_survey_reader import RepoReportsUnreadable
+
     try:
         reports = await asyncio.to_thread(publisher.get_survey_reports_by_guid, project.egeria_asset_guid)
     except EgeriaConnectionError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
+    except RepoReportsUnreadable as exc:
+        # "Could not read" is not "no reports": a 502 the page says in words, never an empty list.
+        raise HTTPException(status_code=502, detail=str(exc))
     return [EgeriaSurveyReportRow(**r) for r in reports]
 
 

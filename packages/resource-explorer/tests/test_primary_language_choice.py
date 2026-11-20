@@ -6,10 +6,14 @@ Python in 839 of 983 source files.
 """
 from __future__ import annotations
 
-from unittest.mock import create_autospec
+import sys
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+
+sys.path.insert(0, str(Path(__file__).parent))
+from fake_egeria_catalogue import FakeRepoEgeria  # noqa: E402
 
 from resource_explorer.primary_language import (
     GITHUB_SOURCE_ID, MEASURED_SOURCE_ID, choose_primary_language_from, publish_properties,
@@ -96,30 +100,30 @@ class _Result:
     github_url = "https://github.com/data-prep-kit/data-prep-kit"
 
 
-def test_publish_carries_the_tiles_choice_and_its_source(registry, monkeypatch):
-    """Drive the real create path with an autospec'd AssetMaker: the asset's four additionalProperties are the
-    chooser's, and its primary_language equals the value the scouting overview (the tile's payload) shows."""
-    from pyegeria import AssetMaker
-
+def _publisher_on(egeria, registry):
     from resource_explorer.surveyors.egeria_publisher import EgeriaPublisher
 
-    maker = create_autospec(AssetMaker, instance=True, spec_set=True)
-    maker.find_assets.return_value = []
-    maker.find_software_capabilities.return_value = []
-    maker.create_software_capability.return_value = "github-scl-guid"
-    maker.create_asset.return_value = "new-asset-guid"
     pub = EgeriaPublisher.__new__(EgeriaPublisher)
-    pub._asset_maker = maker
+    pub._asset_maker = egeria
+    pub._metadata_expert = egeria
     pub._registry = registry
     pub.zone_names = None
     pub._zone_names = None
+    return pub
 
-    assert pub._find_or_create_asset(_Result()) == "new-asset-guid"
-    # The new-asset path is unchanged: the four properties ride on the create, nothing is read or updated after.
-    maker.get_asset_by_guid.assert_not_called()
-    maker.update_asset.assert_not_called()
-    body = maker.create_asset.call_args.kwargs["body"]
-    extra = body["properties"]["additionalProperties"]
+
+def test_publish_carries_the_tiles_choice_and_its_source(registry, monkeypatch):
+    """Drive the real create path against the fake that knows a repository is a SourceControlLibrary: its four
+    additionalProperties are the chooser's, and its primary_language equals the value the scouting overview (the
+    tile's payload) shows."""
+    egeria = FakeRepoEgeria()
+    pub = _publisher_on(egeria, registry)
+
+    guid = pub._find_or_create_asset(_Result())
+    assert egeria.elements[guid]["type"] == "SourceControlLibrary"
+    # The new-repository path: the four properties ride on the create, nothing is read or updated after.
+    assert egeria.ops("get_asset_by_guid") == [] and egeria.ops("update_software_capability") == []
+    extra = egeria.elements[guid]["props"]["additionalProperties"]
     assert extra["primary_language"] == "Python"
     assert extra["primary_language_source"] == "resource-explorer:language_file_classification"
     assert extra["primary_language_basis"] == "source files 839/983"
@@ -144,21 +148,11 @@ WANTED = {"primary_language": "Python", "primary_language_source": MEASURED_SOUR
 
 
 def _existing_publisher(registry, stored: dict):
-    from pyegeria import AssetMaker
-
-    from resource_explorer.surveyors.egeria_publisher import EgeriaPublisher
-
-    registry.set_egeria_asset_guid("data_prep_kit", "asset-guid")
-    maker = create_autospec(AssetMaker, instance=True, spec_set=True)
-    maker.find_assets.return_value = [{"elementHeader": {"guid": "asset-guid"}, "properties": {"qualifiedName": QN}}]
-    maker.get_asset_by_guid.return_value = {"elementHeader": {"guid": "asset-guid"},
-                                            "properties": {"qualifiedName": QN, "additionalProperties": stored}}
-    pub = EgeriaPublisher.__new__(EgeriaPublisher)
-    pub._asset_maker = maker
-    pub._registry = registry
-    pub.zone_names = None
-    pub._zone_names = None
-    return pub, maker
+    """A publisher over a fake Egeria that already holds this repository (a SourceControlLibrary) with `stored`."""
+    egeria = FakeRepoEgeria()
+    guid = egeria.seed("SourceControlLibrary", QN, additionalProperties=stored)
+    registry.set_egeria_asset_guid("data_prep_kit", guid)
+    return _publisher_on(egeria, registry), egeria, guid
 
 
 def _language_rows(registry):
@@ -169,14 +163,13 @@ def _language_rows(registry):
 def test_existing_asset_with_stale_values_gets_one_update_and_a_proof_row(registry):
     stale = {"github_url": "https://github.com/data-prep-kit/data-prep-kit", "license": "Apache-2.0",
              "primary_language": "HTML"}
-    pub, maker = _existing_publisher(registry, stale)
-    assert pub._find_or_create_asset(_Result()) == "asset-guid"
-    maker.create_asset.assert_not_called()
-    maker.get_asset_by_guid.assert_called_once()
-    maker.update_asset.assert_called_once()
-    guid, = maker.update_asset.call_args.args
-    body = maker.update_asset.call_args.kwargs["body"]
-    assert guid == "asset-guid" and body["mergeUpdate"] is True
+    pub, maker, guid = _existing_publisher(registry, stale)
+    assert pub._find_or_create_asset(_Result()) == guid
+    assert maker.ops("create_software_capability") == []
+    assert len(maker.ops("get_metadata_element_by_guid")) == 1 and maker.ops("get_asset_by_guid") == []
+    [(_, (updated, body))] = maker.ops("update_software_capability")
+    assert updated == guid and body["mergeUpdate"] is True
+    assert body["properties"]["class"] == "SourceControlLibraryProperties"
     extra = body["properties"]["additionalProperties"]
     assert {k: extra[k] for k in WANTED} == WANTED
     assert extra["license"] == "Apache-2.0" and extra["github_url"] == stale["github_url"]   # the rest is kept
@@ -186,10 +179,10 @@ def test_existing_asset_with_stale_values_gets_one_update_and_a_proof_row(regist
 
 
 def test_existing_asset_with_identical_values_is_not_written(registry):
-    pub, maker = _existing_publisher(registry, {"github_url": "x", **WANTED})
-    assert pub._find_or_create_asset(_Result()) == "asset-guid"
-    maker.get_asset_by_guid.assert_called_once()
-    maker.update_asset.assert_not_called()
+    pub, maker, guid = _existing_publisher(registry, {"github_url": "x", **WANTED})
+    assert pub._find_or_create_asset(_Result()) == guid
+    assert len(maker.ops("get_metadata_element_by_guid")) == 1
+    assert maker.ops("update_software_capability") == []
     assert _language_rows(registry) == []
 
 
@@ -197,9 +190,9 @@ def test_existing_asset_is_never_blanked_when_neither_source_exists(tmp_path):
     r = ProjectRegistry(db_path=str(tmp_path / "none.db"))
     r.add(Project(slug="data_prep_kit", display_name="data-prep-kit",
                   github_url="https://github.com/data-prep-kit/data-prep-kit", description=""))
-    pub, maker = _existing_publisher(r, {"primary_language": "Go"})
-    assert pub._find_or_create_asset(_Result()) == "asset-guid"
-    maker.update_asset.assert_not_called()
+    pub, maker, guid = _existing_publisher(r, {"primary_language": "Go"})
+    assert pub._find_or_create_asset(_Result()) == guid
+    assert maker.ops("update_software_capability") == []
     assert _language_rows(r) == []
 
 
@@ -207,10 +200,13 @@ def test_existing_asset_is_never_blanked_when_neither_source_exists(tmp_path):
 
 
 def test_a_read_that_raises_writes_nothing(registry):
-    pub, maker = _existing_publisher(registry, {"primary_language": "HTML"})
-    maker.get_asset_by_guid.side_effect = RuntimeError("Egeria timed out")
-    assert pub._find_or_create_asset(_Result()) == "asset-guid"
-    maker.update_asset.assert_not_called()
+    pub, maker, guid = _existing_publisher(registry, {"primary_language": "HTML"})
+    def _timeout(*a, **k):
+        raise RuntimeError("Egeria timed out")
+
+    maker.get_metadata_element_by_guid = _timeout
+    assert pub._find_or_create_asset(_Result()) == guid
+    assert maker.ops("update_software_capability") == []
     assert _language_rows(registry) == []
 
 
@@ -222,30 +218,30 @@ def test_a_read_that_raises_writes_nothing(registry):
     "not a dict",
 ])
 def test_an_unreadable_shape_writes_nothing(registry, answer):
-    pub, maker = _existing_publisher(registry, {})
-    maker.get_asset_by_guid.return_value = answer
-    assert pub._find_or_create_asset(_Result()) == "asset-guid"
-    maker.update_asset.assert_not_called()
+    pub, maker, guid = _existing_publisher(registry, {})
+    maker.get_metadata_element_by_guid = lambda *a, **k: answer
+    assert pub._find_or_create_asset(_Result()) == guid
+    assert maker.ops("update_software_capability") == []
     assert _language_rows(registry) == []
 
 
 def test_this_asset_read_with_no_additional_properties_gets_the_four_keys_only(registry):
-    pub, maker = _existing_publisher(registry, {})
-    maker.get_asset_by_guid.return_value = {"class": "AssetElement", "elementHeader": {"guid": "asset-guid"},
-                                            "properties": {"qualifiedName": QN}}
-    assert pub._find_or_create_asset(_Result()) == "asset-guid"
-    maker.update_asset.assert_called_once()
-    assert maker.update_asset.call_args.kwargs["body"]["properties"]["additionalProperties"] == WANTED
+    pub, maker, guid = _existing_publisher(registry, {})
+    maker.get_metadata_element_by_guid = lambda *a, **k: {
+        "class": "AssetElement", "elementHeader": {"guid": guid}, "properties": {"qualifiedName": QN}}
+    assert pub._find_or_create_asset(_Result()) == guid
+    [(_, (_, body))] = maker.ops("update_software_capability")
+    assert body["properties"]["additionalProperties"] == WANTED
 
 
 def test_a_stored_bare_as_of_reads_as_absent(registry):
     """A bare `as_of` from earlier branch commits is not one of the four keys: the new key is written, the old
     one is left as stored."""
     stored = {k: v for k, v in WANTED.items() if k != "primary_language_as_of"}
-    pub, maker = _existing_publisher(registry, {**stored, "as_of": CENSUS["surveyed_at"]})
-    assert pub._find_or_create_asset(_Result()) == "asset-guid"
-    maker.update_asset.assert_called_once()
-    extra = maker.update_asset.call_args.kwargs["body"]["properties"]["additionalProperties"]
+    pub, maker, guid = _existing_publisher(registry, {**stored, "as_of": CENSUS["surveyed_at"]})
+    assert pub._find_or_create_asset(_Result()) == guid
+    [(_, (_, body))] = maker.ops("update_software_capability")
+    extra = body["properties"]["additionalProperties"]
     assert extra["primary_language_as_of"] == CENSUS["surveyed_at"]
 
 
@@ -257,34 +253,21 @@ def test_an_empty_wanted_value_keeps_the_stored_one(tmp_path):
     with r._conn() as conn:
         conn.execute("INSERT INTO project_stats (project_slug, fetched_at, primary_language) VALUES (?, ?, ?)",
                      ("data_prep_kit", "", "HTML"))
-    pub, maker = _existing_publisher(r, {"primary_language": "Go", "primary_language_as_of": "2026-01-01T00:00:00",
+    pub, maker, guid = _existing_publisher(r, {"primary_language": "Go", "primary_language_as_of": "2026-01-01T00:00:00",
                                          "license": "MIT"})
-    assert pub._find_or_create_asset(_Result()) == "asset-guid"
-    maker.update_asset.assert_called_once()
-    extra = maker.update_asset.call_args.kwargs["body"]["properties"]["additionalProperties"]
+    assert pub._find_or_create_asset(_Result()) == guid
+    [(_, (_, body))] = maker.ops("update_software_capability")
+    extra = body["properties"]["additionalProperties"]
     assert extra["primary_language"] == "HTML" and extra["primary_language_source"] == GITHUB_SOURCE_ID
     assert extra["primary_language_as_of"] == "2026-01-01T00:00:00" and extra["license"] == "MIT"
 
 
 def test_a_failing_census_read_never_fails_the_create_and_says_github(registry, monkeypatch):
-    from pyegeria import AssetMaker
-
-    from resource_explorer.surveyors.egeria_publisher import EgeriaPublisher
-
     def boom(slug, kind, scope_locator=""):
         raise RuntimeError("metrics database is down")
     monkeypatch.setattr(registry, "query_metrics", boom)
-    maker = create_autospec(AssetMaker, instance=True, spec_set=True)
-    maker.find_assets.return_value = []
-    maker.find_software_capabilities.return_value = []
-    maker.create_software_capability.return_value = "github-scl-guid"
-    maker.create_asset.return_value = "new-asset-guid"
-    pub = EgeriaPublisher.__new__(EgeriaPublisher)
-    pub._asset_maker = maker
-    pub._registry = registry
-    pub.zone_names = None
-    pub._zone_names = None
-    assert pub._find_or_create_asset(_Result()) == "new-asset-guid"
-    extra = maker.create_asset.call_args.kwargs["body"]["properties"]["additionalProperties"]
+    egeria = FakeRepoEgeria()
+    guid = _publisher_on(egeria, registry)._find_or_create_asset(_Result())
+    extra = egeria.elements[guid]["props"]["additionalProperties"]
     assert extra["primary_language"] == "HTML" and extra["primary_language_source"] == GITHUB_SOURCE_ID
     assert extra["primary_language_basis"] == "bytes"
