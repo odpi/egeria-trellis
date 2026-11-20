@@ -174,6 +174,36 @@ class TestFloor:
         assert not out.sections
         assert out.manifest.dropped[0]["reason"].startswith("no rung at or above SUMMARY")
 
+    def test_a_group_never_packs_a_member_below_its_own_floor(self):
+        """The group's shared rung must respect every member's floor. Taking the
+        loosest one let a groupmate drag a SUMMARY-floored member down to
+        IDENTIFIERS; the group is dropped instead, which keeps it symmetric."""
+        s = spec(Section("left", group="cmp", floor=Rung.SUMMARY),
+                 Section("right", group="cmp"))
+        cands = {k: cand(k, 300, 100, 5) for k in ("left", "right")}
+        out = pack(s, cands, 50)
+        assert not out.sections
+        assert [d["key"] for d in out.manifest.dropped] == ["left", "right"]
+        assert all("at or above SUMMARY" in d["reason"] for d in out.manifest.dropped)
+
+    def test_a_group_packs_at_the_strictest_floor_when_it_fits(self):
+        """Respecting the strictest floor drops nothing that fits at it."""
+        s = spec(Section("left", group="cmp", floor=Rung.SUMMARY),
+                 Section("right", group="cmp"))
+        cands = {k: cand(k, 300, 100, 5) for k in ("left", "right")}
+        out = pack(s, cands, 200)
+        assert {p.key: p.rung for p in out.sections} == {
+            "left": Rung.SUMMARY, "right": Rung.SUMMARY}
+
+    def test_a_required_member_below_its_floor_fails_rather_than_degrades(self):
+        """Required and floored: if the group only fits below that member's
+        floor, the compile fails instead of packing it as noise."""
+        s = spec(Section("left", group="cmp", floor=Rung.SUMMARY, required=True),
+                 Section("right", group="cmp"))
+        cands = {k: cand(k, 300, 100, 5) for k in ("left", "right")}
+        with pytest.raises(BudgetError, match="group floor SUMMARY"):
+            pack(s, cands, 50)
+
 
 class TestSpecIdentity:
     def test_target_model_is_identity_bearing(self):

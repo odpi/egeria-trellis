@@ -235,9 +235,16 @@ def pack(
                 return rung
         return None
 
+    def _group_floor(members: list[Section]) -> Rung:
+        """The coarsest rung EVERY member allows: the strictest (richest) of
+        their floors. Taking the loosest instead packed a member below its own
+        floor whenever a groupmate allowed coarser -- the very "reduced to
+        noise" a floor exists to refuse."""
+        return min(m.floor for m in members)
+
     def _group_cheapest(members: list[Section], limit: int):
         """One rung all members share, cheapest that the group fits in total."""
-        floor = max(m.floor for m in members)
+        floor = _group_floor(members)
         common = set.intersection(*(set(candidates[m.key].rungs) for m in members))
         for rung in sorted(common, reverse=True):
             if rung > floor:
@@ -271,16 +278,19 @@ def pack(
             members = group_members[section.group]
             rung = _group_cheapest(members, remaining)
             if rung is None:
+                floor = _group_floor(members)
                 for m in members:
                     handled.add(m.key)
                     if m.required:
                         raise BudgetError(
                             f"{spec.spec_id}: required section {m.key!r} in group "
-                            f"{m.group!r} does not fit"
+                            f"{m.group!r} does not fit in {remaining} "
+                            f"(group floor {floor.name})"
                         )
                     dropped.append({"key": m.key, "reason":
                                     f"symmetric group {section.group!r} has no rung "
-                                    f"all members fit in the remaining budget"})
+                                    f"at or above {floor.name} all members fit in "
+                                    f"the remaining {remaining}"})
                 continue
             for m in members:
                 chosen[m.key] = rung
