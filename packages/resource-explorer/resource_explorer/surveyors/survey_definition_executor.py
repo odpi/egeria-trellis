@@ -1163,13 +1163,16 @@ class SurveyDefinitionExecutor:
                     if (resolution is not None and resolution.proposal is not None
                             and resolution.proposal.advisory):
                         ok_entry["capability"] = resolution.proposal.as_dict()
+                    if isinstance(output, dict) and output.get("words"):
+                        ok_entry["detail"] = str(output["words"])  # what the step did, in words (a step that found nothing says so)
                     steps_report.append(ok_entry)
                     produced_guard[_step_key(step)] = output.get("guard") if isinstance(output, dict) else None
                 except Exception as exc:
                     msg = f"RE step '{step.re_analysis_step}' failed: {exc}"
                     log.exception(msg)
                     errors.append(msg)
-                    steps_report.append({"step": step.qualified_name, "re_analysis_step": _step_key(step), "status": "error"})
+                    steps_report.append({"step": step.qualified_name, "re_analysis_step": _step_key(step), "status": "error",
+                                         "detail": str(exc)})
             elif step.executes_at in adapter.other_engine_handlers:
                 handler = adapter.other_engine_handlers[step.executes_at]
                 try:
