@@ -1,5 +1,7 @@
 # Portal integration — what the quickstart Portal needs to open Egeria Advisor and Resource Explorer
 
+> **Status (2026-11-19, 6.3 Tech Preview):** current. The contract holds for RE and EA, and Trellis Studio uses the same exchange (`POST /api/auth/portal`, `TRELLIS_PORTAL_SECRET` / `STUDIO_PORTAL_SECRET`). `EGERIA_RESOURCE_EXPLORER_URL` is no longer a proposal: the QuickStart carries it. The commit hashes below are from 2026-09.
+
 Answers for the session maintaining `egeria-workspaces` (PyegeriaWebHandler), 2026-09-04. Both apps are
 multi-user and require login as of today; the Portal's existing Advisor handoff uses a contract that no
 longer exists.
@@ -37,7 +39,7 @@ Identical mechanism, landed in c3f98e6:
 
 | | Egeria Advisor | Resource Explorer |
 |---|---|---|
-| URL env for the Portal | `EGERIA_ADVISOR_URL` (default `http://localhost:8880/`) | proposed `EGERIA_RESOURCE_EXPLORER_URL` (default `http://localhost:8810/`) |
+| URL env for the Portal | `EGERIA_ADVISOR_URL` (default `http://localhost:8880/`) | `EGERIA_RESOURCE_EXPLORER_URL` (default `http://localhost:8810/`) |
 | Handoff exchange route | `POST /api/auth/portal` | `POST /api/auth/portal` (same body, same payload) |
 | Secret the app verifies with | `ADVISOR_PORTAL_SECRET` | `RE_PORTAL_SECRET` or `TRELLIS_PORTAL_SECRET` |
 | Fragment | `#pt=<token>` | `#pt=<token>` |

@@ -1,5 +1,7 @@
 # Ingestion pipeline audit: what's shareable between RE and EA
 
+> **Status (2026-11-19, 6.3 Tech Preview):** a completed audit (August 2026), kept as the record of why RE and EA ingestion stayed separate. Its verdicts are not maintained.
+
 ## Why this doc exists
 
 Resource Explorer (RE) and Egeria Advisor (EA) each run their own repo → parse → chunk →

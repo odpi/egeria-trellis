@@ -1,5 +1,10 @@
 # Demo deployment runbook — trellis on a Linux box with a GPU
 
+> **Status (2026-11-19, 6.3 Tech Preview):** a dated record of the 2026-09-04 trevor bring-up, kept as the verbatim
+> sequence; the commands still apply to RE and EA. Where something has since changed it is corrected in place
+> (pyegeria floor, the Ollama check, the corpus build). It does not cover Trellis Studio (native only, no image; see
+> `QUICKSTART.md`). For the current reference use [deploying-trellis-with-quickstart.md](deploying-trellis-with-quickstart.md).
+
 > The general guide for all three configurations (demo, Mac developer, Linux developer) is
 > [deploying-trellis-with-quickstart.md](deploying-trellis-with-quickstart.md); this file is the
 > verbatim trevor sequence it refers to.
@@ -118,14 +123,14 @@ in place of the host overlay.
 curl -s localhost:8810/health/ready; curl -s localhost:8880/health          # both ok
 curl -s -o /dev/null -w '%{http_code}\n' localhost:8810/api/projects/         # 401: login is required
 docker logs trellis-re-worker | grep 'worker loop started'                     # three loops, leader=true
-docker logs trellis-ea-web | grep 'Initialized Ollama client'                  # host.docker.internal:11434
+docker logs trellis-ea-web | grep 'MCP agent pre-warmed'                       # MCP connected (EA creates its Ollama client lazily: see the deploy guide, §2.5, for an Ollama check)
 C='docker compose -p trellis -f docker-compose.yaml -f docker-compose.ollama-host.yaml --env-file .env'
 $C run --rm --no-deps trellis-re-web cli add https://github.com/odpi/egeria-python.git --yes   # slug egeria_python_git
 echo secret | $C run --rm --no-deps -T --entrypoint sh trellis-re-web -c \
   'resource-explorer login --user erinoverview; resource-explorer survey egeria_python_git --publish'
 $C run --rm --no-deps -T trellis-re-web cli ask "What does pyegeria provide?" --project egeria_python_git
-docker exec -w /app/packages/egeria-advisor trellis-ea-web python scripts/clone_repos.py --phase 1
-docker exec -w /app/packages/egeria-advisor trellis-ea-web python scripts/ingest_collections.py --phase 1
+docker exec -w /app/packages/egeria-advisor trellis-ea-web python scripts/clone_repos.py --phase all
+docker exec -w /app/packages/egeria-advisor trellis-ea-web python scripts/ingest_collections.py --phase all
 ```
 
 Verified on trevor 2026-09-04 21:19 (the zone shown was the then-default draft zone, retired 2026-10-08; RE now imposes none unless `EXPLORER_DRAFT_ZONE` is set): the asset (`SourceControlLibrary`) and the `SurveyReport` both read back
@@ -160,8 +165,8 @@ a plain CLI command dies.
 - TLS trust (2026-11-04): resource-explorer requires `certifi>=2026.10.18`. That release drops "emSign ECC Root CA - G3",
   distrusted after the October 2026 emSign G3 key compromise; RE's open-data, GitHub, DataCite and S3 reads verify through
   certifi. `tests/test_tls_trust_floor.py` checks both the floor and the bundle. An older venv needs `uv sync`.
-- pyegeria floor is 6.1.10 in all three packages (ISSUE-86 token support; report runs are attributed to
-  the signed-in user). Keep the quickstart's pyegeria-web/jupyter images on the same version.
+- pyegeria floor is **6.3.0** in RE, EA and Studio (it was 6.1.10 when this was written: ISSUE-86 token support, so
+  report runs are attributed to the signed-in user). Keep the quickstart's pyegeria-web/jupyter images on the same version.
 
 ## Docker Desktop variant (Linux or Mac), for visibility
 
@@ -211,5 +216,4 @@ Login is now required by both apps: sign in with a quickstart user in the browse
 `~/.config/trellis/<app>/session.json`, one hour). Set `RE_JWT_SECRET`/`ADVISOR_JWT_SECRET` (or one
 `TRELLIS_JWT_SECRET`) in the app `.env` files so sessions survive a restart; `TRELLIS_ANONYMOUS_READ=true`
 is the dev-only override that lets GETs through without a login. Model tier: `EXPLORER_MODEL_TIER` /
-`ADVISOR_MODEL_TIER=dev` (the default). A web server started before today's commits does not have any
-of this; restart it.
+`ADVISOR_MODEL_TIER=dev` (the default). `make up` also starts Trellis Studio on 8840.

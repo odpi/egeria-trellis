@@ -1,5 +1,7 @@
 # RE ↔ EA consolidation audit: beyond ingestion
 
+> **Status (2026-11-19, 6.3 Tech Preview):** a completed audit (August 2026). Its extractions that went ahead are `trellis-querycache`, `trellis-auth`, `trellis-feedback`, `trellis-ui` and `trellis-accel`; the verdicts themselves are not maintained.
+
 ## Why this doc exists
 
 `docs/ingestion-pipeline-audit.md` did the audit-before-extract pass for the ingestion

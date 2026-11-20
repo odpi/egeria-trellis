@@ -1,5 +1,10 @@
 # Container images
 
+> **Status (2026-11-19, 6.3 Tech Preview):** current for Resource Explorer and Egeria Advisor. The measurements and
+> "exact commands" were taken 2026-09-04 and are not re-run. **Trellis Studio has no image**: it runs natively
+> (`make up-studio`), and `./trellis-up --container` starts RE and EA only. RE's image also has a `prefect-worker`
+> role (below).
+
 Step 3 of `docs/runtime-architecture-plan.md`'s Sequencing: one Docker image per app, built for
 `linux/amd64` and `linux/arm64`, used **unchanged** by both profiles from §1 of that plan:
 
@@ -78,6 +83,7 @@ lets the demo profile compose overlay run "the same image" as several different 
 | `cli` | `resource-explorer <args>` | Full Typer CLI, pass-through |
 | `tui` | `resource-explorer tui` | Textual TUI |
 | `a2a` | `resource-explorer serve --host $HOST --port $PORT` | AgentStack A2A server (`--all` for all 6 specialist agents) |
+| `prefect-worker` | `prefect worker start --pool $PREFECT_WORK_POOL` | Registers a per-commit deployment (`re-survey-step-<sha12>`, keeps the newest 3) and serves the pool dispatched steps run in (`PREFECT_WORK_POOL`, default `resource-explorer-pool`). Refuses to start if library steps are missing from the image |
 
 ### `trellis/egeria-advisor` (`docker/entrypoint-egeria-advisor.sh`)
 

@@ -1,5 +1,7 @@
 # Extending context compilation to Egeria Advisor
 
+> **Status (2026-11-19, 6.3 Tech Preview):** design agreed 2026-09-06; **not built**. Egeria Advisor does not import `trellis-context` in 6.3.
+
 **Written:** 2026-09-06. **Status:** design agreed, nothing built. The six questions this
 document opened were ruled on the same day — see §9. Two of them were answered by rejecting
 the options as posed rather than choosing among them.

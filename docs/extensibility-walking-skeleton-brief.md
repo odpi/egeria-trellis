@@ -1,5 +1,7 @@
 # BRIEF — Analytic extensibility: the walking skeleton (2026-10-07)
 
+> **Status (2026-11-19, 6.3 Tech Preview):** **implemented, in a different shape.** The walking skeleton became the Analytic Library (`egeria-trellis-analytics`, with RE's readers in `packages/trellis-analytics` and ten reference steps under `examples/steps/`); see `packages/resource-explorer/docs/design-notes/DESIGN-ANALYTIC-LIBRARY-SPLIT-2026-10-30.md`. The Q2(b) note below already records what superseded this brief on discovery and registration.
+
 > Superseded in part by Q2(b), 2026-10-31: analytics are found through the `pyegeria.analytics` entry point (`trellis.analytics` is only an alias), installing the package registers it, and report specs name functions by registered name, not dotted path or `PYEGERIA_REPORT_SPEC_MODULES`. See `packages/trellis-analytics/README.md`, "How analytics are found".
 
 Design session brief for the coordinator and one builder, at the owner's

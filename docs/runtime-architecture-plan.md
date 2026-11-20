@@ -1,5 +1,7 @@
 # Runtime architecture plan — topology, process roles, CLI, multi-user, LLM backend
 
+> **Status (2026-11-19, 6.3 Tech Preview):** **largely implemented**, with one reversal. Built: process roles (`web`, `worker`, embedded worker), the images and the trellis compose overlay, the login model and per-user attribution, and model tiers; see [deploying-trellis-with-quickstart.md](deploying-trellis-with-quickstart.md) and [packaging.md](packaging.md). Reversed: Sequencing step 1 turned `PREFECT_ENABLED` off by default; it is **on** by default again (TR-45). The measurements are 2026-09 figures.
+
 **Status: planned, not yet built. Revision 2, 2026-09-04.** Revision 1 (Opus design pass,
 grounded by a Sonnet research pass, same day) settled threading, containerization, multi-user
 and the vLLM question against one machine. Revision 2 (Fable, same day, with the project owner)

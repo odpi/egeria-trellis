@@ -1,5 +1,7 @@
 # Shared `trellis-vectorstore` package — extraction design
 
+> **Status (2026-11-19, 6.3 Tech Preview):** **implemented.** `packages/trellis-vectorstore` exists and both RE and EA depend on it. Read this as the design record.
+
 **Status: designed, not built.** README.md's "Notes for contributors" already names vector store
 access as the first candidate for extraction into a shared workspace member — this doc is the
 scoping pass for actually doing it, deliberately stopped short of execution. Rationale for

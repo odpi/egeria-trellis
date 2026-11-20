@@ -1,5 +1,7 @@
 # Trellis-level login — where it should live, and what it costs
 
+> **Status (2026-11-19, 6.3 Tech Preview):** **implemented.** `trellis-auth` is used by RE, EA and Studio. Studio adds short-lived session JWTs with a rotating refresh (`STUDIO_JWT_TTL_MINUTES`, `STUDIO_SESSION_MAX_HOURS`); RE and EA still use `RE_JWT_TTL_HOURS` / the shared TTL.
+
 **Status:** design note, 2026-08-29; extracted and adopted by EA **and RE**, both 2026-09-04.
 **Corrected 2026-09-07** (`packages/egeria-advisor/BACKLOG.md` TC-8): this doc's §5 item 4, §6
 "Still to do", and §7 "Still to do" all still described work as open that had already landed —

@@ -1,5 +1,7 @@
 # The first context pack, worked: coco_pharma for a data scientist (2026-10-07)
 
+> **Status (2026-11-19, 6.3 Tech Preview):** a worked design example; **not built**. Its experiment is in [experiments/](experiments/p12-results.md) (a notebook, not shipped code).
+
 Design session note, the first instance the product requirements
 (`docs/context-as-product-requirements.md`, P1–P13) are checked against.
 Nothing built; every value below is read from evidence notes on main
