@@ -401,6 +401,18 @@ def batch_refusal(registry, entity_type: str, slug: str, *, reader=None) -> str:
     return words(d)
 
 
+def definition_batch_refusal(registry, entity_type: str, slug: str, *, reader=None) -> str:
+    """One member of a batch that queues Survey Definition runs (TR-95): "" when the caller may start the run
+    (`start_action`, what the individual Run routes and the definition run route check) and make its Egeria write
+    (`batch_refusal`), else "not permitted · <reason>"."""
+    wc = _curate()
+    try:
+        d = wc.resource_access(registry, entity_type, slug, "start_action", reader=reader)
+    except Exception as exc:  # noqa: BLE001
+        return f"{NOT_PERMITTED} · could not check access ({type(exc).__name__}: {exc})"[:300]
+    return words(d) or batch_refusal(registry, entity_type, slug, reader=reader)
+
+
 # ── RFA ToDos ───────────────────────────────────────────────────────────────────────────────────────────
 
 def todo_writes(rfa_row: Optional[dict]) -> list[ElementWrite]:

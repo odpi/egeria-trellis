@@ -54,6 +54,14 @@ def _quality_run(reg, slug: str, at: str, inv: dict) -> None:
     reg.write_detail_rows("database_value_profiles", slug, at, rows=rows)
 
 
+@pytest.fixture(autouse=True)
+def _may_start_actions(monkeypatch):
+    """TR-95: a batch member is also checked for `start_action`; these tests are about queueing, not access."""
+    from tests.zone_fakes import open_access
+
+    open_access(monkeypatch, caller_if_none="q3-tester")
+
+
 @pytest.fixture
 def registry(tmp_path):
     reg = ProjectRegistry(db_path=str(tmp_path / "q3.db"))

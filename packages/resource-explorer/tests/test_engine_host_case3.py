@@ -344,6 +344,9 @@ def test_a_definition_started_in_re_creates_no_engine_action_and_its_row_says_re
     _factory.RUN_STATES = ProjectRegistry.RUN_STATES
     _factory.RUN_KINDS = ProjectRegistry.RUN_KINDS
     monkeypatch.setattr("resource_explorer.registry.ProjectRegistry", _factory)
+    from tests.zone_fakes import open_access
+
+    open_access(monkeypatch, caller_if_none="case3-tester")  # TR-95: the run route checks start_action; these tests are about something else
     res = TestClient(app).post("/api/survey-definitions/database/coco_pharma/run",
                                json={"survey_definition_ref": ANALYSIS})
     assert res.status_code == 200, res.text
