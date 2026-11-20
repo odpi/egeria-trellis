@@ -1,5 +1,7 @@
 # Using the context-compilation tooling
 
+> **Status (2026-11-19, 6.3 Tech Preview):** current for the shipped flags (`ARTIFACT_TREE_ENABLED` is still off by default, checked against `config.py`); other flag names in this guide were not re-checked for 6.3.
+
 Practical guide to what shipped. Architecture and rationale are in
 `context-compilation-architecture.md`; this is what to type.
 

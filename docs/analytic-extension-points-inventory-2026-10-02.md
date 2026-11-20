@@ -1,5 +1,7 @@
 # Analytic extension points across Trellis and the Portal: inventory (2026-10-02)
 
+> **Status (2026-11-19, 6.3 Tech Preview):** historical snapshot of the code at `afe9bd28` (2026-10-02); not updated. Since then the analytic library moved to `odpi/egeria-trellis-analytics` (`packages/trellis-analytics` holds RE's readers), and analytics are found through the `pyegeria.analytics` entry point. Read it as a record of what existed, not of what exists.
+
 **Kind of document:** a read-only inventory for the project owner and the design session. It states what exists. It makes no recommendation, ranks nothing and proposes no fix. Format and method follow `packages/resource-explorer/docs/design-notes/CLASSIC-VS-NEXT-PARITY-2026-09-30.md`.
 
 **Names used** are those of `DESIGN-ANALYTIC-EXTENSIBILITY-WORKING-ASSUMPTIONS.md`: the eight points (Declaration, Execution, Results, Binding, Presentation, Storage, Publication, Curation) and the **step** (measures a resource, emits annotations) versus **routine** (computes over collected data for a presentation) distinction. **Version of that note read:** the branch `origin/re/design-analytic-extensibility-assumptions` at `715b89c7` (it adds A12 and A13 and R17/R18 over the merged #435 text). Also read, on the coordinator's instruction: `docs/context-spec-requirements.md` on `origin/re/design-context-spec-requirements` (`bc077fcb`), requirements C1-C20.

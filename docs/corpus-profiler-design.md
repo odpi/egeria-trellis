@@ -1,5 +1,7 @@
 # The shared corpus profiler
 
+> **Status (2026-11-19, 6.3 Tech Preview):** **partly built.** The profiler exists (`trellis_artifact_tree.profile`, run by `packages/resource-explorer/scripts/profile_corpus.py`), but nothing re-derives EA's or RE's chunk sizes from it at ingest; the tunings in "What it replaces" are still hand-set. The experiment in §7 is not recorded here.
+
 **Status: design, unmeasured (2026-08-28).** Nothing here is built. §7 names the one
 experiment that would falsify it, and that experiment should run before the code does.
 

@@ -2607,7 +2607,7 @@ genuinely unverified because it is 100% Rust and the marker languages are Go, Ja
 Python. **Those figures are theirs, not reproduced here**: I verified the headline
 independently and got a different denominator (all repos, not gate=run), which is enough
 to retire "a third of the corpus" but not enough to restate their breakdown as mine. See
-`docs/task-list-2026-08-28.md` for that measurement.
+`docs/archive/task-list-2026-08-28.md` for that measurement.
 
 So the remaining work in this entry is **precision, not coverage**. The note below about
 the measuring instrument still stands and is why the original number was wrong twice.

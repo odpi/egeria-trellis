@@ -1,5 +1,7 @@
 # Context intelligence in Trellis — a brief for a broader audience
 
+> **Status (2026-11-19, 6.3 Tech Preview):** a September 2026 presentation source (restructured 2026-09-08), not updated. Its numbers and the "two applications" framing are of that date; Trellis 6.3 has three apps (Studio is an emerging preview) and ten libraries: [trellis-architecture.md](trellis-architecture.md).
+
 *Presentation source, September 2026 (restructured 2026-09-08). Renders with Mermaid on GitHub and
 in Obsidian; the slide version is the "Context Intelligence in Trellis" artifact and the matching
 PowerPoint. Sources are named per section; every number is checkable against the repository, the

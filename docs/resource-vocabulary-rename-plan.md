@@ -1,5 +1,7 @@
 # Renaming `project` → `resource`, and `group` → `org`
 
+> **Status (2026-11-19, 6.3 Tech Preview):** **not done.** The code and CLI still use `Project`, `ProjectRegistry` and `project_slug` (the `projects` table); no rename of `project` → `resource` or `group` → `org` has landed in 6.3.
+
 **Status: plan, not started (2026-08-28).** Sequenced behind in-flight work — see §5.
 
 ## 1. The vocabulary, as it now stands

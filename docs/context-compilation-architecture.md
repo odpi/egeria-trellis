@@ -1,5 +1,7 @@
 # Context compilation in Trellis — what was built
 
+> **Status (2026-11-19, 6.3 Tech Preview):** describes what shipped as of 2026-08-29 and is still the best account of the context-compilation packages (`trellis-artifact-tree`, `trellis-context`, RE's bridge `context_compile.py`; all present in 6.3). Not extended to Egeria Advisor: EA does not import `trellis-context` (see [ea-context-compilation-design.md](ea-context-compilation-design.md)). The ten-library map is in [trellis-architecture.md](trellis-architecture.md).
+
 **Status: describes shipped code as of 2026-08-29.** The design that preceded it
 is `context-compilation-design.md`; where the two disagree, this one is what
 exists. Several of the design's claims were falsified during construction and

@@ -1,5 +1,7 @@
 # Standards and practices for the analytic envelope and readers: adopt, study, or decline (R20, 2026-10-07)
 
+> **Status (2026-11-19, 6.3 Tech Preview):** recommendations to the project owner (R20), not rulings. Implemented from it: OpenLineage run events in RE (`resource_explorer/observability/openlineage.py` cites this note). The owner's decisions are in `packages/resource-explorer/docs/design-notes/DESIGN-ANALYTIC-EXTENSIBILITY-WORKING-ASSUMPTIONS.md` §6; other items here are not tracked as built.
+
 Design session note, the deliverable R20 named in
 `packages/resource-explorer/docs/design-notes/DESIGN-ANALYTIC-EXTENSIBILITY-WORKING-ASSUMPTIONS.md`
 §6 (owner's comment 13). Written from the design session's working knowledge

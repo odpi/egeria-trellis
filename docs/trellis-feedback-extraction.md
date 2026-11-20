@@ -1,5 +1,7 @@
 # Trellis-level feedback — one store and one triage workflow for both apps
 
+> **Status (2026-11-19, 6.3 Tech Preview):** **implemented.** `packages/trellis-feedback` exists and both RE and EA depend on it. The closed-loop work that followed is in [feedback-closed-loop-design.md](feedback-closed-loop-design.md).
+
 **Status: proposal, 2026-11-09. Not built. All seven open questions in §7 were decided by the project owner on 2026-11-09.** It was written because the project owner asked
 for egeria-advisor-style feedback status in Resource Explorer's Admin → Feedback, and then
 asked that it be done at the Trellis level, since Egeria Advisor has the same needs. Each

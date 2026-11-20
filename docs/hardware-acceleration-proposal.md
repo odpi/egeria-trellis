@@ -1,5 +1,7 @@
 # Hardware acceleration: detect what a machine has, and install only what it can use
 
+> **Status (2026-11-19, 6.3 Tech Preview):** **Proposal A is built**: `packages/trellis-accel` (`pick_device`, `TRELLIS_DEVICE`, the start-up hardware report), used by RE and EA. Proposal B (installing the PyTorch build each machine can use) was not found built: the images still install the CPU wheel after `uv sync` (`docker/Dockerfile.*`).
+
 Proposal, 2026-11-11. Status: decided in principle by the project owner (§7), with conditions; rollout §6. Scope: Resource Explorer, Egeria Advisor and
 the shared packages that run PyTorch models: Docling's PDF layout and table models, and sentence-transformers
 embeddings.
