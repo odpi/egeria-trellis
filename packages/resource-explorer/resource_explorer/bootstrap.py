@@ -1117,7 +1117,11 @@ def _run_post_heal_checks(batch: Batch) -> list[str]:
             continue
 
         if proc.returncode == 0:
-            details.append(f"{script}: reconciled")
+            tail = (proc.stdout or "").strip().splitlines()
+            if tail:
+                details.append(f"{script}: reconciled — {tail[-1]}")
+            else:
+                details.append(f"{script}: reconciled")
         else:
             tail = (proc.stdout or proc.stderr or "").strip().splitlines()
             details.append(
@@ -1737,6 +1741,12 @@ def _check_and_heal_locked(docs_dir: Path, force: bool, *, only: str = "", reque
                     else heal_batch(batch)
             finally:
                 _healing_batch = ""
+            n_files = len(batch.files)
+            files_word = f"{n_files} file" if n_files == 1 else f"{n_files} files"
+            if ok:
+                log.info("bootstrap: %s healed · %s · checks: %s", batch.batch_id, files_word, detail)
+            else:
+                log.warning("bootstrap: %s heal failed · %s", batch.batch_id, detail)
             # Re-check rather than assuming the heal worked: a canary that never
             # resolves is exactly how an infinite heal loop starts.
             recheck = canary_present(batch) if ok else False
