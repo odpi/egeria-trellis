@@ -41,7 +41,7 @@ def _canary_sequence(monkeypatch, answers):
     monkeypatch.setattr(bs, "canary_present", lambda b, client=None: seq.pop(0) if len(seq) > 1 else seq[0])
 
 
-def test_a_good_heal_logs_one_healed_line_with_the_file_count_and_the_check_words(tmp_path, monkeypatch, caplog):
+def test_a_verified_heal_logs_one_line_with_the_file_count_the_words_and_canary_verified(tmp_path, monkeypatch, caplog):
     _batch(tmp_path, files=("a.md", "b.md", "c.md"))
     _canary_sequence(monkeypatch, [False, True])
     words = "post_heal ok; scripts/reconcile_executor_links.py: reconciled — 10 declared · 10 ok · drift 0"
@@ -50,18 +50,45 @@ def test_a_good_heal_logs_one_healed_line_with_the_file_count_and_the_check_word
         bs.check_and_heal(tmp_path)
     lines = _lines(caplog, "healed ·")
     assert len(lines) == 1, [r.getMessage() for r in caplog.records]
-    assert lines[0].getMessage() == f"bootstrap: b healed · 3 files · checks: {words}"
+    assert lines[0].getMessage() == f"bootstrap: b healed · 3 files · {words} · canary verified"
     assert lines[0].levelno == logging.INFO
-    assert _lines(caplog, "heal failed") == []
+    assert "checks:" not in lines[0].getMessage()
+    assert _lines(caplog, "heal failed") == [] and _lines(caplog, "canary is still missing") == []
 
 
-def test_one_file_is_singular(tmp_path, monkeypatch, caplog):
+def test_a_heal_with_nothing_to_say_does_not_log_ok_as_an_answer(tmp_path, monkeypatch, caplog):
+    """A batch with no declared checks and no post-heal words has heal_batch answer "ok": that is not a finding."""
     _batch(tmp_path)
     _canary_sequence(monkeypatch, [False, True])
     monkeypatch.setattr(bs, "heal_batch", lambda b: (True, "ok"))
     with caplog.at_level(logging.INFO, logger=LOGGER):
         bs.check_and_heal(tmp_path)
-    assert _lines(caplog, "healed ·")[0].getMessage() == "bootstrap: b healed · 1 file · checks: ok"
+    assert [r.getMessage() for r in _lines(caplog, "healed ·")] == ["bootstrap: b healed · 1 file · canary verified"]
+
+
+def test_a_heal_that_ran_but_whose_canary_is_still_missing_is_a_warning_and_never_says_healed(tmp_path, monkeypatch, caplog):
+    _batch(tmp_path)
+    _canary_sequence(monkeypatch, [False, False])
+    monkeypatch.setattr(bs, "heal_batch", lambda b: (True, "post_heal ok"))
+    with caplog.at_level(logging.INFO, logger=LOGGER):
+        res = bs.check_and_heal(tmp_path)
+    lines = _lines(caplog, "canary is still missing")
+    assert len(lines) == 1 and lines[0].levelno == logging.WARNING
+    assert lines[0].getMessage() == "bootstrap: b heal ran but the canary is still missing · post_heal ok"
+    assert _lines(caplog, "healed ·") == [] and _lines(caplog, "heal failed") == []
+    assert res["batches"]["b"]["action"] == "healed"          # the result map is unchanged by this task
+
+
+def test_a_heal_whose_canary_could_not_be_read_says_not_verified(tmp_path, monkeypatch, caplog):
+    _batch(tmp_path)
+    _canary_sequence(monkeypatch, [False, None])
+    monkeypatch.setattr(bs, "heal_batch", lambda b: (True, "post_heal ok"))
+    with caplog.at_level(logging.INFO, logger=LOGGER):
+        bs.check_and_heal(tmp_path)
+    lines = _lines(caplog, "not verified")
+    assert len(lines) == 1
+    assert lines[0].getMessage() == "bootstrap: b healed · 1 file · not verified (could not reach Egeria) · post_heal ok"
+    assert "canary verified" not in lines[0].getMessage()
 
 
 def test_a_failed_heal_logs_heal_failed_with_why_as_a_warning_and_no_healed_line(tmp_path, monkeypatch, caplog):
@@ -74,7 +101,7 @@ def test_a_failed_heal_logs_heal_failed_with_why_as_a_warning_and_no_healed_line
     lines = _lines(caplog, "heal failed")
     assert len(lines) == 1 and lines[0].getMessage() == "bootstrap: b heal failed · a.md: Dr.Egeria exited 2"
     assert lines[0].levelno == logging.WARNING
-    assert _lines(caplog, "healed ·") == []
+    assert _lines(caplog, "healed ·") == [] and _lines(caplog, "canary is still missing") == []
 
 
 def test_the_missing_line_that_says_healing_is_kept(tmp_path, monkeypatch, caplog):
