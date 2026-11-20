@@ -81,10 +81,74 @@ class SurveyDefinitionRunParams:
 
 @dataclass
 class SurveyDefinitionRunResult:
-    status: str  # "ok" | "error"
+    status: str  # "ok" | "error" | "cancelled"
     summary: str = ""
     errors: list[str] = field(default_factory=list)
+    cancelled_count: int = 0
     result: dict = field(default_factory=dict)
+
+
+def _status_and_summary_for_cancelled_steps(
+    errors: list[str], cancelled_count: int, steps: list[dict] | None = None
+) -> tuple[str, str]:
+    """Decide status and summary for a Survey Definition run based on errors and cancellations.
+    
+    TR-93: A cancelled step must not read as an error. The rules:
+    - Any real errors → status "error"
+    - No errors, at least one step completed (ok or triggered) + cancellations → status "ok", summary "Completed · N step(s) cancelled"
+    - No errors, NO steps completed (all cancelled) → status "cancelled", summary "Cancelled · N step(s) cancelled, nothing measured"
+    
+    Args:
+        errors: List of error messages from the run
+        cancelled_count: Number of steps that were cancelled
+        steps: List of step entries (from result["steps"]), used to count completed steps (status ok or triggered)
+    
+    Returns:
+        Tuple of (status, summary)
+    """
+    has_errors = bool(errors)
+    
+    # Count completed steps: "ok", and "triggered" (an Egeria-engine step is stored as triggered); the same definition of
+    # "ran" that `steps_summary` uses.
+    completed_count = 0
+    if steps is not None:
+        try:
+            completed_count = sum(1 for s in steps if isinstance(s, dict) and s.get("status") in ("ok", "triggered"))
+        except (TypeError, AttributeError):
+            # If steps is malformed/unreadable, treat as 0 completed
+            completed_count = 0
+    
+    # Status rules:
+    # - Any real errors → status "error"
+    if has_errors:
+        status = "error"
+    # - No errors, NO steps completed (all cancelled) → status "cancelled"
+    elif completed_count == 0 and cancelled_count > 0:
+        status = "cancelled"
+    # - No errors, at least one step completed (ok or triggered) + cancellations → status "ok"
+    else:
+        status = "ok"
+    
+    # Summary wording:
+    if has_errors and cancelled_count:
+        error_word = "error" if len(errors) == 1 else "errors"
+        cancelled_words = f"{cancelled_count} step{'' if cancelled_count == 1 else 's'} cancelled"
+        summary = f"Completed with {len(errors)} {error_word} · {cancelled_words}"
+    elif has_errors:
+        summary = f"Completed with {len(errors)} error(s)"
+    elif cancelled_count:
+        if completed_count == 0:
+            # All steps were cancelled, nothing measured
+            cancelled_words = f"{cancelled_count} step{'' if cancelled_count == 1 else 's'} cancelled"
+            summary = f"Cancelled · {cancelled_words}, nothing measured"
+        else:
+            # Some steps completed, some cancelled
+            cancelled_words = f"{cancelled_count} step{'' if cancelled_count == 1 else 's'} cancelled"
+            summary = f"Completed · {cancelled_words}"
+    else:
+        summary = "Survey Definition run complete"
+    
+    return (status, summary)
 
 
 def run_definition(entity_type: str, slug: str, params: SurveyDefinitionRunParams,
@@ -196,18 +260,22 @@ def execute_and_record_definition(entity_type: str, slug: str,
         )
 
     errors = result.get("errors") or []
-    summary = (f"Completed with {len(errors)} error(s)" if errors
-               else "Survey Definition run complete")
+    cancelled_count = result.get("cancelled_count", 0)
+    steps = result.get("steps")
+    
+    # Use helper to determine status and summary based on errors, cancellations, and completed steps
+    status, summary = _status_and_summary_for_cancelled_steps(errors, cancelled_count, steps)
     result["survey_definition_ref"] = ref
     registry.update_activity_status(
-        activity_id, "error" if errors else "ok", summary=summary,
+        activity_id, status, summary=summary,
         detail=_detail(result),
     )
     from resource_explorer.secret_redaction import scrub
 
     return SurveyDefinitionRunResult(
-        status="error" if errors else "ok", summary=summary,
-        errors=scrub(errors, secret), result=scrub(result, secret),
+        status=status, summary=summary,
+        errors=scrub(errors, secret), cancelled_count=cancelled_count,
+        result=scrub(result, secret),
     )
 
 
