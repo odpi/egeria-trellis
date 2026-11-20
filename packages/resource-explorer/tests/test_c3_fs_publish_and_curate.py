@@ -453,3 +453,9 @@ def test_confirmed_match_confidence_is_sent_as_int(api, registry, tmp_path, monk
     ann = next(iter(egeria.annotations.values()))["body"]["properties"]
     assert "confidence" in ann
     assert ann["confidence"] == 87, f"Expected confidence 87, got {ann['confidence']}"
+
+
+def test_the_review_line_says_data_classes_go_to_egeria_only_when_sent():
+    """TR-86 W1: the band must not read as if confirmed data classes are sent automatically."""
+    assert "only when you press Send" in fs_review.STAYS_WORDS
+    assert "are sent to Egeria" not in fs_review.STAYS_WORDS

@@ -37,7 +37,7 @@ VERDICTS = (CONFIRM, REJECT)
 #: What the band says about the verdict whose proposal a later run did not make again.
 GONE_WORDS = "no longer proposed"
 #: One line under the band: where a confirmed proposal goes (TR-71: this is the only explanation).
-STAYS_WORDS = "Confirmed descriptions stay in Resource Explorer; confirmed data classes are sent to Egeria."
+STAYS_WORDS = "Confirmed descriptions stay in Resource Explorer; confirmed data classes go to Egeria only when you press Send."
 
 
 class ReviewRefused(ValueError):

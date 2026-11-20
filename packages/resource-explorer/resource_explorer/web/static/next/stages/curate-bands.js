@@ -244,9 +244,10 @@ export function filesystemReviewHtml(review, shownBy, signedIn, open = false) {
   const r = review || {};
   const held = REVIEW_LISTS.some((l) => ((r[l.key] || {}).items || []).length || ((r[l.key] || {}).gone || []).length);
   if (!held) return filesystemWorkHtml();
-  const confirmed = r.confirmed || 0;
-  const sendButton = signedIn && confirmed > 0
-    ? `<button type="button" data-fs-send-classes class="cursor-pointer rounded-sm border border-accent bg-transparent px-2 py-[1px] text-caveat text-accent-ink" title="Sends the ${esc(confirmed)} confirmed data-class matches to Egeria, one DataClassAnnotation each">Send confirmed data classes</button>`
+  // Only data-class matches are sent to Egeria; folder descriptions stay in RE
+  const confirmedClasses = (r.classes || {}).confirmed || 0;
+  const sendButton = signedIn && confirmedClasses > 0
+    ? `<button type="button" data-fs-send-classes class="cursor-pointer rounded-sm border border-accent bg-transparent px-2 py-[1px] text-caveat text-accent-ink" title="Sends the ${esc(confirmedClasses)} confirmed data-class matches to Egeria, one DataClassAnnotation each">Send confirmed data classes</button>`
     : '';
   const sendFeedback = `<span class="text-provenance text-state-warn" data-fs-send-feedback></span>`;
   const staysLine = `<div class="mt-s1 text-provenance text-ink-muted" data-fs-review-stays>${esc(r.stays || '')}</div>`;
