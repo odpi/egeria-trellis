@@ -36,10 +36,10 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from resource_explorer.egeria_timing import time_egeria_call
-from resource_explorer.surveyors.survey_report import AnnotationType, SurveyResult
+from resource_explorer.surveyors.survey_report import SurveyResult
 from resource_explorer.config import egeria_platform_url, egeria_view_server  # noqa: E402,F401
 
 if TYPE_CHECKING:
@@ -2004,31 +2004,29 @@ class EgeriaPublisher:
 
     @staticmethod
     def _current_display_name(element) -> str | None:
-        """displayName from a get_asset_by_guid answer, whichever shape it has; None if not found."""
+        """displayName (a string) from a by-GUID answer, whichever shape it has; None when it cannot be read.
+
+        Two shapes: the Asset answer (`properties.displayName`, what `get_asset_by_guid` gives the sub-resources
+        this is used for) and the type-agnostic `get_metadata_element_by_guid` answer (TR-89: how a repository
+        is read), whose attributes sit under `elementProperties` (`propertiesAsStrings`, else the typed
+        `propertyValueMap`)."""
         if not isinstance(element, dict):
             return None
-        # LIVE shape of `MetadataExpert.get_metadata_element_by_guid` (recorded: tests/fixtures/egeria_6_2/
-        # metadata_expert_by_guid__survey_report_ownership_anchor_guid.json): `elementProperties.propertyValueMap`,
-        # a map attribute a MapTypePropertyValue whose strings are under `mapValues.propertiesAsStrings`. The
-        # repository is read with this call since TR-89 (`get_asset_by_guid` is NotFound for a capability); read as
-        # the Asset shape below, every answer was "unreadable" and no language was ever written.
-        ep = element.get("elementProperties")
-        pvm = ep.get("propertyValueMap") if isinstance(ep, dict) else None
-        if isinstance(pvm, dict):
-            entry = pvm.get("additionalProperties")
-            if entry is not None:
-                mapped = entry.get("mapValues") if isinstance(entry, dict) else None
-                strings = mapped.get("propertiesAsStrings") if isinstance(mapped, dict) else None
-                return dict(strings) if isinstance(strings, dict) else None   # a shape we do not know: unreadable
-            have = pvm.get("qualifiedName")
-            have = have.get("primitiveValue") if isinstance(have, dict) else (ep.get("propertiesAsStrings") or {}).get("qualifiedName")
-            if qualified_name and have == qualified_name:
-                return {}                  # this element, read, with no additionalProperties at all
-            return None
         props = element.get("properties")
-        for src in (props if isinstance(props, dict) else {}, element.get("elementProperties") or {}, element):
-            if isinstance(src, dict) and isinstance(src.get("displayName"), str):
-                return src["displayName"]
+        if isinstance(props, dict) and isinstance(props.get("displayName"), str):
+            return props["displayName"]
+        ep = element.get("elementProperties")
+        if isinstance(ep, dict):
+            strings = ep.get("propertiesAsStrings")
+            if isinstance(strings, dict) and isinstance(strings.get("displayName"), str):
+                return strings["displayName"]
+            typed = (ep.get("propertyValueMap") or {}).get("displayName")
+            if isinstance(typed, dict) and isinstance(typed.get("primitiveValue"), str):
+                return typed["primitiveValue"]
+            if isinstance(ep.get("displayName"), str):
+                return ep["displayName"]
+        if isinstance(element.get("displayName"), str):
+            return element["displayName"]
         return None
 
     def _rename_forward(self, guid: str, display_name: str) -> None:

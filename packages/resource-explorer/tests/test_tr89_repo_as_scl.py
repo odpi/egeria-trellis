@@ -487,3 +487,28 @@ def test_the_fake_knows_a_capability_is_not_an_asset():
                  lambda: egeria.link_software_capability_to_asset(scl, platform)):
         with pytest.raises(FakeNotFound):
             call()
+
+
+# ── _current_display_name reads a NAME, in the SCL (by-GUID) shape and the old Asset shape ──────────────────────
+
+
+def test_the_display_name_is_read_from_the_by_guid_shape_of_a_source_control_library():
+    egeria = FakeRepoEgeria()
+    guid = egeria.seed("SourceControlLibrary", QN, displayName="docling")
+    assert EgeriaPublisher._current_display_name(egeria.get_metadata_element_by_guid(guid)) == "docling"
+
+
+def test_the_display_name_is_read_from_the_recorded_by_guid_fixture():
+    answer = json.loads(FIXTURE.read_text())["answer"]
+    name = answer["elementProperties"]["propertiesAsStrings"]["displayName"]
+    assert EgeriaPublisher._current_display_name(answer) == name and isinstance(name, str)
+
+
+def test_the_display_name_is_read_from_the_asset_shape_and_absent_or_odd_answers_are_none():
+    asset = {"elementHeader": {"guid": "g"}, "properties": {"qualifiedName": "x", "displayName": "folder"}}
+    assert EgeriaPublisher._current_display_name(asset) == "folder"
+    assert EgeriaPublisher._current_display_name({"properties": {"qualifiedName": "x"}}) is None
+    assert EgeriaPublisher._current_display_name("No elements found") is None
+    egeria = FakeRepoEgeria()
+    nameless = egeria.seed("SourceControlLibrary", QN)
+    assert EgeriaPublisher._current_display_name(egeria.get_metadata_element_by_guid(nameless)) is None

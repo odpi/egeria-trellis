@@ -844,7 +844,7 @@ class EgeriaResync:
                 "publishing is refused (428) until one is set")
         return Finding(
             key="unpublishable",
-            title=f"Repos with no Egeria asset and no Project to publish under",
+            title="Repos with no Egeria asset and no Project to publish under",
             detail=("Assign an Egeria Project to these, or add them to the working "
                     "set of an investigation that has one — membership of a bound "
                     "investigation supplies the binding by inheritance, which is why "

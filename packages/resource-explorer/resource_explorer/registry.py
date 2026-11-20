@@ -14,6 +14,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
+from collections.abc import Callable, Collection
 from typing import Any, ClassVar, NamedTuple
 from sqlalchemy import create_engine
 from resource_explorer.survey_time import now_utc_iso
