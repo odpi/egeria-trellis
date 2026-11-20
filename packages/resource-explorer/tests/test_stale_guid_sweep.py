@@ -19,18 +19,16 @@ PUBLISHER = (Path(__file__).resolve().parents[1] / "resource_explorer" / "survey
              / "egeria_publisher.py")
 
 
-def test_the_sweep_verifies_the_way_the_publisher_verifies():
-    """`projects.egeria_asset_guid` is a repository's own Asset GUID (since
-    the 2026-09-14 SourceControlLibrary correction -- egeria_publisher.py's
-    module docstring), so both the sweep and `_find_or_create_asset` must
-    verify it the same way: `find_assets`, not `find_software_capabilities`
-    (that method still exists in the publisher, but only for the separate
-    GitHub SourceControlLibrary singleton, a different kind of GUID this
-    sweep never caches)."""
+def test_the_sweep_verifies_a_repository_by_guid_type_agnostically():
+    """`projects.egeria_asset_guid` is a repository's own SourceControlLibrary GUID (TR-89), which is not an Asset:
+    `find_assets` / `get_asset_by_guid` cannot see it, and a sweep built on either would call every repository
+    stale and `--apply` would delete its survey records. The sweep reads each GUID with the type-agnostic
+    `ClassificationExplorer.get_element_by_guid`, the same read egeria_resync's scan uses."""
     src = SCRIPT.read_text()
-    assert "find_assets" in src, \
-        "the sweep no longer uses the publisher's verification"
-    assert "find_assets" in PUBLISHER.read_text()
+    calls = [ln for ln in src.splitlines() if ".find_assets(" in ln and not ln.lstrip().startswith("#")]
+    assert calls == [], f"the sweep still decides by an Asset-only search: {calls}"
+    assert "classifier.get_element_by_guid(" in src
+    assert "classifier.get_element_by_guid(" not in PUBLISHER.read_text()   # the publisher has its own verification
 
 
 def test_the_sweep_does_not_decide_staleness_by_asset_guid_lookup():
@@ -90,7 +88,9 @@ class TestResolverHonesty:
         assert "get_project_by_guid" in src
         assert "get_collection_by_guid" in src
         # The call that does not exist on AssetMaker.
-        calls = [ln for ln in src.splitlines()
+        # (The repository check, `_check_cached`, uses a ClassificationExplorer, which has it: TR-89.)
+        investigations = src.split("def _sweep_investigations(")[1]
+        calls = [ln for ln in investigations.splitlines()
                  if ".get_element_by_guid(" in ln and not ln.lstrip().startswith("#")]
         assert calls == [], f"resolver still calls a method AssetMaker lacks: {calls}"
 

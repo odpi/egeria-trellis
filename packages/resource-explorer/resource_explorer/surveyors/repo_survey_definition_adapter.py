@@ -5433,8 +5433,9 @@ def _trigger_egeria_native_survey(project, registry, step, **_) -> dict:
     Raises on: no stored Egeria asset guid (RuntimeError, this function);
     no matching Egeria survey process found (RuntimeError, propagated from
     EgeriaPublisher.trigger_survey_by_guid -> EgeriaPublisherError, which
-    wraps _initiate_survey's "No native survey process configured" message
-    — expected until Egeria's side exists, not a bug); poll timeout
+    refuses in words: Egeria's survey engine takes only an Asset, and a repository
+    is a SourceControlLibrary (TR-89), so a repository survey waits for the branch
+    folder, TR-89 Part D); poll timeout
     (EgeriaEngineActionTimeoutError); or an unresolvable report attribution
     (SurveyReportAttributionError). All propagate to the executor's own
     per-step except clause, which reports them as a specific error rather

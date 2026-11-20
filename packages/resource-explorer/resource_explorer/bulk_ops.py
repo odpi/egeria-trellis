@@ -292,15 +292,18 @@ def delete_in_egeria(registry, targets: list[dict], *, dry_run: bool = False,
     if not targets:
         return result
 
-    asset_maker = None
+    asset_maker = metadata_expert = None
     if not dry_run:
-        from pyegeria import AssetMaker
+        from pyegeria import AssetMaker, MetadataExpert
 
         from resource_explorer.egeria_clients import Caller, egeria_client
 
         # The signed-in person, never the service account (Brief I): Egeria authorizes the
         # delete per person, and a refusal is reported as Egeria's, not retried as anyone else.
-        asset_maker = egeria_client(Caller(), purpose="bulk delete in Egeria").of(AssetMaker)
+        clients = egeria_client(Caller(), purpose="bulk delete in Egeria")
+        asset_maker = clients.of(AssetMaker)
+        # A repository is a SourceControlLibrary (TR-89): `delete_asset` is Asset-only and answers NotFound for it.
+        metadata_expert = clients.of(MetadataExpert)
 
     for t in _each(targets, progress, total):
         entity_type, slug = t.get("entity_type", "repo"), t.get("slug", "")
@@ -315,7 +318,11 @@ def delete_in_egeria(registry, targets: list[dict], *, dry_run: bool = False,
             result.record(entity_type, slug, "ok", f"would delete Egeria asset {guid}")
             continue
         try:
-            asset_maker.delete_asset(guid)
+            if entity_type == "repo":
+                # After the delete permission check above (`_refused(..., "delete")`), one element, never a cascade.
+                metadata_expert.delete_metadata_element(guid)
+            else:
+                asset_maker.delete_asset(guid)
             # The local GUID goes too: leaving it would point at something that
             # no longer exists, which is precisely the divergence this codebase
             # spent the day learning to detect.

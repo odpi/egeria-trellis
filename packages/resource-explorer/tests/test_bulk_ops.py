@@ -128,30 +128,43 @@ class TestDeleteInEgeriaIsNarrow:
         created — so it must not go looking for something by name to delete."""
         registry.add(Project(slug="nolink", display_name="N",
                              github_url="https://github.com/o/n", description=""))
-        with patch("pyegeria.AssetMaker") as AM:
-            AM.return_value.delete_asset.return_value = None
+        with patch("pyegeria.AssetMaker") as AM, patch("pyegeria.MetadataExpert") as ME:
             r = delete_in_egeria(registry, _targets("nolink"), dry_run=False)
 
         AM.return_value.delete_asset.assert_not_called()
+        ME.return_value.delete_metadata_element.assert_not_called()
         assert r.skipped == 1
         assert "nothing RE recorded" in r.details[0]["message"]
 
-    def test_it_deletes_exactly_the_recorded_guid(self, registry):
-        with patch("pyegeria.AssetMaker") as AM:
+    def test_a_repository_is_deleted_through_the_element_delete_by_exactly_the_recorded_guid(self, registry):
+        """TR-89: a repository is a SourceControlLibrary, not an Asset, so `delete_asset` (Asset-only) answers
+        NotFound for it. The type-agnostic element delete is the one that works."""
+        with patch("pyegeria.AssetMaker") as AM, patch("pyegeria.MetadataExpert") as ME:
             delete_in_egeria(registry, _targets("p0"), dry_run=False)
-        AM.return_value.delete_asset.assert_called_once_with("guid-0")
+        ME.return_value.delete_metadata_element.assert_called_once_with("guid-0")
+        AM.return_value.delete_asset.assert_not_called()
+
+    def test_a_database_is_still_deleted_as_an_asset(self, registry):
+        from resource_explorer import bulk_ops
+
+        with patch("pyegeria.AssetMaker") as AM, patch("pyegeria.MetadataExpert") as ME, \
+                patch.object(bulk_ops, "_cached_guid", return_value="db-guid"), \
+                patch.object(bulk_ops, "_clear_guid"), patch.object(bulk_ops, "_refused", return_value=""):
+            delete_in_egeria(registry, [{"entity_type": "database", "slug": "db0"}], dry_run=False)
+        AM.return_value.delete_asset.assert_called_once_with("db-guid")
+        ME.return_value.delete_metadata_element.assert_not_called()
 
     def test_the_local_guid_is_cleared_after_deleting(self, registry):
         """Leaving it would point at something that no longer exists — precisely
         the divergence this codebase spent the day learning to detect."""
-        with patch("pyegeria.AssetMaker"):
+        with patch("pyegeria.AssetMaker"), patch("pyegeria.MetadataExpert"):
             delete_in_egeria(registry, _targets("p0"), dry_run=False)
         assert not registry.get_egeria_asset_guid("p0")
         assert registry.get_egeria_linkage("repo", "p0") is None
 
     def test_res_own_data_survives(self, registry):
         """Deleting the catalog element must not delete the resource."""
-        with patch("pyegeria.AssetMaker"):
+        with patch("pyegeria.AssetMaker"), patch("pyegeria.MetadataExpert"):
             delete_in_egeria(registry, _targets("p0"), dry_run=False)
         assert registry.get("p0") is not None
 

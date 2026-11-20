@@ -1,44 +1,34 @@
 """
 Publishes a SurveyResult to Egeria via pyegeria.
 
-**Element type, corrected 2026-09-14** (docs/Backlog.md, "Catalogue in
-layers" — the repository-as-SourceControlLibrary misreading of 0056 Resource
-Managers): a repository is not a resource MANAGER, it is what one manages.
-Since August, `_find_or_create_asset` created one `SourceControlLibrary` per
-repository — a SoftwareCapability, not an Asset, and a type naming the
-*service* (GitHub) rather than the thing the service holds. It is now:
+**Element type, reversed by TR-89 (project owner, 2026-11-19; the model confirmed with Mandy).** The history,
+newest last:
 
-- **One `SourceControlLibrary` for GitHub itself** — a singleton, found or
-  created once per Egeria instance (`_find_or_create_github_scl`), cached
-  under `app_settings` (there is exactly one, so a per-project column would
-  be the wrong shape).
-- **Each repository is its own `Asset`** (generic — CapabilityAssetUse's own
-  type definition declares its asset end as `Asset`, not a specific
-  subtype; nothing in the open metadata types names a narrower "repository"
-  concept), qualifiedName `GitHubRepository::<github_url>`, linked to the
-  GitHub SourceControlLibrary via `CapabilityAssetUse` (`useType: OWNS`) at
-  creation. SurveyReports still attach to THIS element exactly as before —
-  `_create_survey_report`'s `parentGUID` is type-agnostic, so nothing
-  downstream of `_find_or_create_asset` needed to change.
+- Until 2026-09-14 each repository was its own `SourceControlLibrary`.
+- 2026-09-14 (d514c884) a repository became a plain `Asset`, owned (CapabilityAssetUse OWNS) by ONE GitHub
+  `SourceControlLibrary` singleton: "a repository is what GitHub manages".
+- **TR-89 reverses it.** The repository IS a library again, and GitHub is the platform that serves it:
 
-The repository being a genuine Asset now, rather than a SoftwareCapability,
-also resolves the bug named in `egeria_linkage.py`'s comment history:
-`AssetMaker.get_asset_by_guid` will actually work on it. That file still
-uses the type-agnostic `get_metadata_element_by_guid` rather than switching
-to `get_asset_by_guid` — safer regardless of an element's declared type, and
-not worth touching in the same change as the type correction itself.
+  - **A repository is a `SourceControlLibrary`** (a SoftwareCapability, not an Asset), qualifiedName
+    `GitHubRepository::<github_url>` (unchanged), `url`, `libraryType` "git", `deployedImplementationType`
+    "GitHub Repository". Made by `AssetMaker.create_software_capability` with `class:
+    SourceControlLibraryProperties` (any other class drops `libraryType`).
+  - **GitHub is a `SoftwareServerPlatform` classified `CloudPlatform`**, a singleton
+    (`_find_or_create_github_platform`, cached under `egeria.github_platform_guid`), linked platform -> repository
+    by `SupportedSoftwareCapability`, once per repository.
+  - The repository's folder tree hangs off it by `CapabilityAssetUse` (valid now; it was broken while the
+    repository was an Asset). SurveyReports attach by `ReportSubject`, unchanged.
 
-No migration for already-published elements: this is a dev environment, and
-the project owner's 2026-09-14 decision is to wipe and redeploy Egeria fresh
-rather than re-parent or re-type what is already there (docs/Backlog.md).
-This fix has to land *before* that redeploy, or the fresh database is
-repopulated with the same wrong structure — which is what makes it worth
-fixing now rather than folding into "schedule, do not hot-fix".
+Because a repository is no longer an Asset, every Asset-only call on its GUID answers NotFound or drops it:
+`find_assets`, `get_asset_by_guid`, `update_asset`, `delete_asset`, and a native survey's action target (Egeria's
+survey engine accepts only an Asset). Those sites now use the type-agnostic reads and the SoftwareCapability
+calls (TR-89 Part B covers the readers: resync, the sweep script, bulk delete). **Part A (this module) and
+Part B ship as one unit**: with A alone, resync would call every repository stale and clear its survey records.
 
-The method below is still called _find_or_create_asset and the registry
-column is still egeria_asset_guid; both names are now accurate rather than
-inherited-and-misleading, which is a nice side effect of the fix rather than
-its point.
+No migration: the deploy comes with an Egeria reset (project owner, 2026-11-19).
+
+The method is still called `_find_or_create_asset` and the registry column is still `egeria_asset_guid`: renaming
+is out of scope for the type change and must not ride with it.
 """
 from __future__ import annotations
 
@@ -46,16 +36,26 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from resource_explorer.egeria_timing import time_egeria_call
-from resource_explorer.surveyors.survey_report import AnnotationType, SurveyResult
+from resource_explorer.surveyors.survey_report import SurveyResult
 from resource_explorer.config import egeria_platform_url, egeria_view_server  # noqa: E402,F401
 
 if TYPE_CHECKING:
     from resource_explorer.registry import ProjectRegistry
 
 log = logging.getLogger(__name__)
+
+#: A repository's `deployedImplementationType`. A real SoftwareCapability property now (it was
+#: `additionalProperties.deployed_implementation_type` while the repository was an Asset), and the string the
+#: native-survey process discovery (`_REPO_TECH_TYPE`) keys on: ONE constant, both read it.
+REPO_DEPLOYED_IMPLEMENTATION_TYPE = "GitHub Repository"
+
+#: The `deployedImplementationType` of the GitHub SoftwareServerPlatform AND of its CloudPlatform classification
+#: (the same fact), from this ONE constant. "GitHub" is the project owner's ruling (2026-11-20, relayed by the
+#: Architect). Change it HERE and nowhere else (`tests/test_tr89_repo_as_scl.py` fails if the literal is scattered).
+GITHUB_PLATFORM_DEPLOYED_IMPLEMENTATION_TYPE = "GitHub"
 
 # ── Egeria connection defaults (standard pyegeria env vars) ──────────────────
 _DEFAULT_PLATFORM_URL = "https://localhost:9443"
@@ -176,8 +176,8 @@ def _analyses_for_steps(step_keys) -> set:
 class EgeriaPublisher:
     """
     Converts a SurveyResult into Egeria API calls:
-      1. Find or create the repository's Asset (and the GitHub
-         SourceControlLibrary it belongs to, via CapabilityAssetUse)
+      1. Find or create the repository's SourceControlLibrary (and link the GitHub
+         SoftwareServerPlatform that serves it, via SupportedSoftwareCapability)
       2. Create a SurveyReport linked via ReportSubject
       3. Create one Annotation per SurveyResult.annotation
 
@@ -560,14 +560,18 @@ class EgeriaPublisher:
         return report_guid
 
     def get_survey_reports_by_guid(self, project_guid: str) -> list[dict]:
-        """All SurveyReports linked to this repo's asset GUID via the real
-        ReportSubject relationship — regardless of which engine created them.
-        Thin wrapper over the engine-agnostic reader shared with
-        EgeriaDatabaseSurveyor/EgeriaFileSystemSurveyor (egeria_survey_reader.py)."""
-        from resource_explorer.surveyors.egeria_survey_reader import get_survey_reports_by_guid
+        """All SurveyReports linked to this repository's GUID via the real ReportSubject relationship, regardless
+        of which engine created them.
+
+        A repository is a SourceControlLibrary (TR-89), so this reads through the type-agnostic ReportSubject
+        relationship list (`egeria_survey_reader.get_repo_survey_reports_by_guid`), NOT the Asset-only
+        `get_asset_by_guid` that databases and file systems still use. RAISES
+        `egeria_survey_reader.RepoReportsUnreadable` when the list cannot be read: `[]` means no reports, never
+        "could not read"."""
+        from resource_explorer.surveyors.egeria_survey_reader import get_repo_survey_reports_by_guid
 
         self._connect()
-        return get_survey_reports_by_guid(self._asset_maker, project_guid)
+        return get_repo_survey_reports_by_guid(self._metadata_expert, project_guid)
 
     def get_annotations_by_report_guid(self, report_guid: str) -> list[dict]:
         """All annotations attached to a specific SurveyReport via the real
@@ -580,115 +584,39 @@ class EgeriaPublisher:
 
     # ── Egeria-native survey triggering (Backlog "Path B3") ─────────────────
     #
-    # Repos, unlike databases and filesystems, are cataloged in Egeria as a
-    # plain generic `Asset` (see this module's own docstring, "Element type,
-    # corrected 2026-09-14") — there is no registered Egeria Technology Type
-    # for "repository" the way there is "PostgreSQL Relational Database" or
-    # "File System Directory". The one repo-specific string this codebase
-    # already uses when talking to Egeria about a repository is
-    # `additionalProperties.deployed_implementation_type = "GitHub Repository"`
-    # (set in `_find_or_create_asset` above) — that is the string used here,
-    # rather than `_ADAPTER.technology_type` ("Git Repository") in
-    # repo_survey_definition_adapter.py, which is a *different*, RE-internal
-    # convention (see ResourceTypeAdapter's own docstring in
-    # survey_definition_executor.py for why the two are deliberately not the
-    # same value and are not guaranteed to match).
-    _REPO_TECH_TYPE = "GitHub Repository"
+    # A repository is a SourceControlLibrary (TR-89), not an Asset, and Egeria's survey engine takes only an
+    # ASSET as its target (SurveyActionEngineHandler keeps action targets that are Assets and silently drops the
+    # rest). So a native survey of a repository cannot be started: `trigger_survey_by_guid` refuses in words.
+    # The repository-survey design targets the repository's BRANCH FOLDER (a FileFolder, an Asset): TR-89 Part D,
+    # which waits for EG-19 (the Branch classification).
+    #
+    # The one repo-specific string used when talking to Egeria about a repository is its
+    # `deployedImplementationType`, now a real property (REPO_DEPLOYED_IMPLEMENTATION_TYPE). It is read from that
+    # property's constant, not from `additionalProperties`, and is deliberately not `_ADAPTER.technology_type`
+    # ("Git Repository") in repo_survey_definition_adapter.py, an RE-internal convention.
+    _REPO_TECH_TYPE = REPO_DEPLOYED_IMPLEMENTATION_TYPE
+
+    #: What a repository survey is refused with. Egeria's survey engine keeps only an Asset action target
+    #: (SurveyActionEngineHandler.getAssetGUIDFromActionTargets); a SourceControlLibrary target is silently
+    #: dropped and the survey never runs, so nothing is sent.
+    _REPO_SURVEY_REFUSAL = (
+        "Egeria's survey engine takes only an Asset as its target; a repository survey will target its "
+        "branch folder (TR-89 D)")
 
     def trigger_survey_by_guid(self, repo_guid: str, start_time: "datetime | None" = None) -> str:
-        """Initiate Egeria's own native repository survey using a stored
-        Asset GUID — the repo equivalent of
-        EgeriaDatabaseSurveyor.trigger_survey_by_guid /
-        EgeriaFileSystemSurveyor.trigger_survey_by_guid.
+        """Refused (TR-89): a repository is a SourceControlLibrary, not an Asset, and Egeria's survey engine takes
+        only an Asset as its target. Raises `EgeriaPublisherError` saying so, before any call to Egeria; no action
+        target is sent for Egeria to drop silently.
 
-        Use this when the repository is already cataloged in Egeria
-        (repo_guid known) — Egeria surveys the already-cataloged Asset, it
-        does not create one as a side effect.
-
-        Unlike EgeriaFileSystemSurveyor's version (which triggers a single,
-        confirmed-live GovernanceActionType by a hardcoded qualifiedName),
-        this mirrors EgeriaDatabaseSurveyor's *dynamic* discovery mechanism
-        (`_initiate_survey`/`_find_survey_process_name`, generic over a
-        `tech_type` string) rather than a repo-specific one — added
-        2026-09-20 on an explicit project-owner decision to build this
-        plumbing now even though no live repo survey action service may
-        exist in Egeria yet ("we will probably have some surveys that
-        execute there at some point"). Until such a service is authored and
-        registered in Egeria (or configured in
-        configdata/technology_type_processes.yaml), `_initiate_survey` below
-        will legitimately find zero candidates and raise a clear,
-        specific error — that is the correct, expected behavior for now,
-        not a bug (see docs/Backlog.md).
-        """
-        self._connect()
-        try:
-            action_guid = self._initiate_survey(self._REPO_TECH_TYPE, repo_guid, start_time=start_time)
-            log.info(f"Egeria repository survey initiated: {action_guid}")
-            return action_guid
-        except Exception as exc:
-            raise EgeriaPublisherError(
-                f"Failed to initiate Egeria survey for repo_guid={repo_guid}: {exc}"
-            ) from exc
+        Unreachable today in any case (no repository survey process is configured). The repository survey will
+        target the repository's branch FileFolder, an Asset (TR-89 Part D, after EG-19)."""
+        raise EgeriaPublisherError(self._REPO_SURVEY_REFUSAL)
 
     def _initiate_survey(self, tech_type: str, target_guid: str, start_time: "datetime | None" = None) -> str:
-        """Dynamically find a user-authored Survey Definition process for
-        tech_type and initiate it as a GovernanceActionProcess; if none is
-        found (or it fails to initiate), fall back to the native survey
-        GovernanceActionType configured for this tech_type in
-        config/technology_type_processes.yaml (entity_type="repo").
-
-        Copied from EgeriaDatabaseSurveyor._initiate_survey rather than
-        shared via a common base class — see that method's docstring for the
-        two-step discover-then-fallback shape this mirrors exactly, generic
-        over tech_type/entity_type rather than PostgreSQL-specific.
-        """
-        process_name = self._find_survey_process_name(tech_type)
-        if process_name:
-            try:
-                targets = [
-                    {
-                        "class": "NewActionTarget",
-                        "actionTargetName": "serverToSurvey",
-                        "actionTargetGUID": target_guid,
-                    }
-                ]
-                guid = self._automated_curation.initiate_gov_action_process(
-                    action_type_qualified_name=process_name,
-                    action_targets=targets,
-                    start_time=start_time,
-                )
-                log.info(f"Initiated dynamically discovered survey process {process_name} on {target_guid}: {guid}"
-                         + (f" (start_time={start_time.isoformat()})" if start_time else ""))
-                return guid
-            except Exception as exc:
-                log.warning(f"Failed to initiate dynamically discovered survey process {process_name}: {exc}. Trying fallback...")
-
-        from resource_explorer.surveyors.technology_type_processes import (
-            KIND_SURVEY_EXISTING,
-            get_process_by_kind,
-        )
-
-        native = get_process_by_kind("repo", tech_type, KIND_SURVEY_EXISTING)
-        if not native:
-            raise RuntimeError(
-                f"No native survey process configured for technology_type={tech_type!r} "
-                "(entity_type='repo') — add an entry to "
-                "config/technology_type_processes.yaml once a repo survey action "
-                "service exists and is confirmed live against Egeria; until then "
-                "this is the expected, correct outcome, not a bug."
-            )
-        if start_time:
-            log.info(
-                f"start_time={start_time.isoformat()} requested but the native-survey fallback path "
-                f"has no start_time parameter — firing immediately."
-            )
-        # pyegeria has no public initiate method that takes a qualifiedName; its run_sync (6.2.16) is
-        # what the public ones use, and is safe on a loopless worker thread or inside a running loop.
-        from pyegeria.core.async_runner import run_sync
-
-        return run_sync(
-            self._automated_curation._async_initiate_survey(native.qualified_name, target_guid)
-        )
+        """Refused for the same reason as `trigger_survey_by_guid`: the target would be a repository, which
+        Egeria's survey engine would drop. The discover-then-fallback initiation this method used to hold went
+        with it; Part D re-adds one aimed at the branch folder."""
+        raise EgeriaPublisherError(self._REPO_SURVEY_REFUSAL)
 
     def _find_survey_process_name(self, tech_type: str) -> str | None:
         """Query for a user-authored Survey Definition process supporting
@@ -772,182 +700,177 @@ class EgeriaPublisher:
 
     # ── asset registration ────────────────────────────────────────────────────
 
-    #: The singleton's qualifiedName. Freely changeable at will — nothing
-    #: keys on the string itself, only on the GUID `app_settings` caches
-    #: under `_GITHUB_SCL_SETTING_KEY`.
-    _GITHUB_SCL_QUALIFIED_NAME = "SourceControlLibrary::github.com"
-    _GITHUB_SCL_SETTING_KEY = "egeria.github_source_control_library_guid"
+    #: The GitHub platform singleton's qualifiedName and its settings key. The key is NEW (TR-89): the old model's
+    #: `egeria.github_source_control_library_guid` held a SourceControlLibrary, and its GUID must never be reused.
+    _GITHUB_PLATFORM_QUALIFIED_NAME = "SoftwareServerPlatform::github.com"
+    _GITHUB_PLATFORM_SETTING_KEY = "egeria.github_platform_guid"
 
-    def _find_or_create_github_scl(self) -> str:
-        """Return the GUID of the one `SourceControlLibrary` representing
-        GitHub itself — genuinely a SoftwareCapability, unlike a repository.
+    def _find_or_create_github_platform(self) -> str:
+        """Return the GUID of the one `SoftwareServerPlatform` (classified `CloudPlatform`) representing GitHub.
 
-        Same verify-then-search-then-create shape as `_find_or_create_asset`,
-        but keyed on a fixed qualifiedName and cached as a single global
-        setting (`app_settings`) rather than a per-project column: there is
-        exactly one of these across the whole catalog.
-        """
-        qualified_name = self._GITHUB_SCL_QUALIFIED_NAME
+        Cache first (`app_settings`, one global row: there is exactly one across the catalog), verified with a
+        type-agnostic by-GUID read, never `find_software_capabilities` (a platform is not a SoftwareCapability).
+        Then an exact qualifiedName lookup, then create. A lookup that cannot be made raises: it never licenses a
+        create."""
+        from resource_explorer.egeria_absence import lookup_could_not_be_made, lookup_exception_is_absent
+        from resource_explorer.egeria_lookup import guid_by_qualified_name
+
+        qualified_name = self._GITHUB_PLATFORM_QUALIFIED_NAME
 
         if self._registry:
-            cached = self._registry.get_setting(self._GITHUB_SCL_SETTING_KEY)
+            cached = self._registry.get_setting(self._GITHUB_PLATFORM_SETTING_KEY)
             if cached:
                 try:
-                    with time_egeria_call(self._registry, "find_software_capabilities", "query"):
-                        check = self._asset_maker.find_software_capabilities(
-                            search_string=qualified_name, starts_with=True,
-                            ignore_case=False, output_format="JSON",
-                        )
-                    if isinstance(check, list) and any(
-                        e.get("elementHeader", {}).get("guid") == cached for e in check
-                    ):
-                        return cached
-                    log.warning("Cached GitHub SourceControlLibrary GUID %s no longer in "
-                                "Egeria — will re-register", cached)
-                except Exception as exc:
-                    log.debug("GitHub SCL cache verification failed (will proceed): %s", exc)
-                    return cached  # network error — trust the cache rather than re-create
+                    with time_egeria_call(self._registry, "get_metadata_element_by_guid", "query"):
+                        self._metadata_expert.get_metadata_element_by_guid(cached, graph_query_depth=0,
+                                                                          output_format="JSON")
+                    return cached
+                except Exception as exc:  # noqa: BLE001
+                    if not lookup_exception_is_absent(exc):
+                        log.debug("GitHub platform cache verification failed (will proceed): %s", exc)
+                        return cached  # could not tell: trust the cache rather than re-create
+                    log.warning("Cached GitHub platform GUID %s no longer in Egeria - will re-register", cached)
 
         try:
-            with time_egeria_call(self._registry, "find_software_capabilities", "query"):
-                existing = self._asset_maker.find_software_capabilities(
-                    search_string=qualified_name, starts_with=True,
-                    ignore_case=False, output_format="JSON",
-                )
-            match = next(
-                (e for e in (existing or [])
-                 if (e.get("properties") or {}).get("qualifiedName") == qualified_name),
-                None,
-            ) if isinstance(existing, list) else None
-            guid = (match or {}).get("elementHeader", {}).get("guid") if match else None
-            if guid:
-                if self._registry:
-                    self._registry.set_setting(self._GITHUB_SCL_SETTING_KEY, guid)
-                return guid
-        except Exception as exc:
-            log.debug("GitHub SCL search failed (will create): %s", exc)
+            with time_egeria_call(self._registry, "get_metadata_element_by_unique_name", "query"):
+                guid = guid_by_qualified_name(self._metadata_expert, qualified_name,
+                                              type_name="SoftwareServerPlatform")
+        except Exception as exc:  # noqa: BLE001
+            if not lookup_exception_is_absent(exc):
+                raise EgeriaPublisherError(lookup_could_not_be_made(qualified_name, exc)) from exc
+            guid = None
+        if guid:
+            if self._registry:
+                self._registry.set_setting(self._GITHUB_PLATFORM_SETTING_KEY, guid)
+            return guid
 
         props = {
-            "class": "SoftwareCapabilityProperties",
-            "typeName": "SourceControlLibrary",
+            "class": "SoftwareServerPlatformProperties",
+            "typeName": "SoftwareServerPlatform",
             "qualifiedName": qualified_name,
             "displayName": "GitHub",
-            "description": "GitHub — the source control service every repository asset "
-                            "this catalog holds is an asset of.",
+            "description": "GitHub - the cloud platform that serves every source control repository "
+                           "this catalog holds.",
             "url": "https://github.com",
+            "deployedImplementationType": GITHUB_PLATFORM_DEPLOYED_IMPLEMENTATION_TYPE,
         }
-        # A REFERENCED element, deployment-wide (§3.6): never this publish's zones, which are the
-        # private ones when the resource belongs to a private investigation.
+        body = {
+            "class": "NewElementRequestBody",
+            "properties": props,
+            "initialClassifications": {
+                "CloudPlatform": {
+                    "class": "CloudPlatformProperties",
+                    "deployedImplementationType": GITHUB_PLATFORM_DEPLOYED_IMPLEMENTATION_TYPE,
+                },
+            },
+        }
+        # A REFERENCED element, deployment-wide (§3.6): never this publish's zones, which are the private ones
+        # when the resource belongs to a private investigation. Zones are a classification at create time:
+        # inside `properties` Egeria ignores them (the pre-TR-89 singleton sent them there, to no effect).
         zones = self._referenced_zones()
         if zones:
-            props["zoneMembership"] = zones
-        with time_egeria_call(self._registry, "create_software_capability", "write"):
-            guid = self._asset_maker.create_software_capability(
-                body={"class": "NewElementRequestBody", "properties": props})
-        log.info("Created the GitHub SourceControlLibrary, GUID %s", guid)
+            from resource_explorer.egeria_identity import zone_membership_initial_classification
+
+            body["initialClassifications"].update(zone_membership_initial_classification(zones))
+        with time_egeria_call(self._registry, "create_asset", "write", params={"typeName": "SoftwareServerPlatform"}):
+            guid = self._asset_maker.create_asset(body=body)
+        log.info("Created the GitHub SoftwareServerPlatform (CloudPlatform), GUID %s", guid)
         if self._registry:
-            self._registry.set_setting(self._GITHUB_SCL_SETTING_KEY, guid)
+            self._registry.set_setting(self._GITHUB_PLATFORM_SETTING_KEY, guid)
         return guid
 
-    def _find_or_create_asset(self, result: SurveyResult) -> str:
-        """Return the GUID of the Asset representing this GitHub repository.
+    def _link_platform_to_repository(self, repo_guid: str) -> None:
+        """GitHub (the platform) -> this repository, by SupportedSoftwareCapability: once per repository.
 
-        Checks the registry cache first to avoid an unnecessary search call on
-        repeated --publish runs. Creates the asset — and links it to the
-        GitHub SourceControlLibrary via CapabilityAssetUse — when not already
-        registered.
-        """
+        Idempotent: an existing link between exactly these two is found first (`egeria_link_once`), never
+        duplicated. Best-effort, as the CapabilityAssetUse OWNS link it replaces was: the repository is real and
+        usable without it, and a missing edge is logged, not a reason to fail the publish."""
+        from resource_explorer.egeria_link_once import link_once
+
+        try:
+            platform_guid = self._find_or_create_github_platform()
+            outcome = link_once(
+                self._metadata_expert, relationship_type="SupportedSoftwareCapability",
+                read_guid=platform_guid, read_end=1, far_guid=repo_guid,
+                what=f"GitHub platform {platform_guid} -> repository {repo_guid}",
+                create=lambda: self._asset_maker.link_software_capability_to_asset(
+                    platform_guid, repo_guid,
+                    body={"class": "NewRelationshipRequestBody",
+                          "properties": {"class": "SupportedSoftwareCapabilityProperties"}}))
+            if not outcome.linked:
+                log.warning("The repository %s is not linked to the GitHub platform: %s", repo_guid, outcome.error)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Could not link %s to the GitHub platform: %s", repo_guid, exc)
+
+    def _find_or_create_asset(self, result: SurveyResult) -> str:
+        """Return the GUID of the SourceControlLibrary representing this GitHub repository.
+
+        (The name is the pre-TR-89 one: the repository was an Asset, and renaming is out of scope.)
+
+        The cached GUID is verified, and an existing element adopted, by an EXACT qualifiedName read of type
+        SourceControlLibrary (`egeria_lookup.guid_by_qualified_name`): type-agnostic, so it sees a capability,
+        and exact, so a sibling whose URL this one prefixes is never adopted. A lookup that cannot be made is not
+        "absent": it raises, and nothing is created. A new repository is created and linked from the GitHub
+        platform."""
+        from resource_explorer.egeria_absence import lookup_exception_is_absent
+        from resource_explorer.egeria_lookup import guid_by_qualified_name
+
         qualified_name = f"GitHubRepository::{result.github_url}"
 
+        def lookup() -> str | None:
+            try:
+                with time_egeria_call(self._registry, "get_metadata_element_by_unique_name", "query"):
+                    return guid_by_qualified_name(self._metadata_expert, qualified_name,
+                                                  type_name="SourceControlLibrary")
+            except Exception as exc:  # noqa: BLE001
+                if lookup_exception_is_absent(exc):
+                    return None
+                raise
+
         # Check local cache first, but verify the GUID still exists in Egeria.
-        # If the Egeria database was reset, the cached GUID is stale — clear it
-        # and fall through to the search/create path rather than failing later.
+        # If the Egeria database was reset, the cached GUID is stale: clear it
+        # and fall through to the adopt/create path rather than failing later.
+        found: str | None = None
         if self._registry:
             cached = self._registry.get_egeria_asset_guid(result.resource_slug)
             if cached:
                 try:
-                    with time_egeria_call(self._registry, "find_assets", "query"):
-                        check = self._asset_maker.find_assets(
-                            search_string=qualified_name,
-                            starts_with=True,
-                            ignore_case=False,
-                            output_format="JSON",
-                        )
-                    if isinstance(check, list) and any(
-                        e.get("elementHeader", {}).get("guid") == cached for e in check
-                    ):
-                        log.info("Using cached Egeria asset GUID %s for %s", cached, result.resource_slug)
-                        self._language_forward(cached, result)
-                        return cached
-                    # GUID not found — Egeria DB may have been reset; clear the stale cache
-                    log.warning(
-                        "Cached GUID %s no longer in Egeria for %s — will re-register",
-                        cached, result.resource_slug,
-                    )
-                    self._registry.clear_egeria_registration(result.resource_slug)
-                except Exception as exc:
+                    found = lookup()
+                except Exception as exc:  # noqa: BLE001
                     log.debug("Cache verification failed (will proceed): %s", exc)
-                    return cached  # network error — trust the cache rather than re-create
+                    return cached  # could not tell: trust the cache rather than re-create
+                if found == cached:
+                    log.info("Using cached Egeria repository GUID %s for %s", cached, result.resource_slug)
+                    self._language_forward(cached, result)
+                    return cached
+                if found is None:
+                    log.warning("Cached GUID %s no longer in Egeria for %s - will re-register",
+                                cached, result.resource_slug)
+                    self._registry.clear_egeria_registration(result.resource_slug)
+                # else: the cached GUID is not the element that holds the name; the element that does is adopted
+            else:
+                found = self._lookup_or_raise(lookup, qualified_name)
+        else:
+            found = self._lookup_or_raise(lookup, qualified_name)
 
-        # Search Egeria for an existing asset with this qualifiedName
-        try:
-            with time_egeria_call(self._registry, "find_assets", "query"):
-                existing = self._asset_maker.find_assets(
-                    search_string=qualified_name,
-                    starts_with=True,
-                    ignore_case=False,
-                    output_format="JSON",
-                )
-            if isinstance(existing, list) and existing:
-                # EXACT qualifiedName only. The search is starts_with=True, so
-                # a repo whose URL is a PREFIX of another's matches both — and
-                # taking existing[0] adopted the wrong asset. Measured live
-                # 2026-08-25: docling (.../docling) matched docling-eval and
-                # docling-core, and docling + docling_eval ended up sharing one
-                # asset GUID, so one repo's survey reports were attaching to the
-                # other's catalog entry. Nothing errored; the catalog was just
-                # wrong.
-                #
-                # starts_with is kept rather than narrowed, because the search
-                # is also how a legitimately-renamed asset is still found; the
-                # filtering belongs here, on the result.
-                match = next(
-                    (e for e in existing
-                     if (e.get("properties") or {}).get("qualifiedName") == qualified_name),
-                    None,
-                )
-                guid = (match or {}).get("elementHeader", {}).get("guid") if match else None
-                if guid:
-                    # Brief Z2 round 2: an asset ADOPTED by qualifiedName was never checked (the route checked
-                    # the repository as not in Egeria, or a stale GUID). Check THIS element before any write.
-                    from resource_explorer.workflows.curate import WriteNotPermitted, person_write_refusal
+        if found:
+            # Brief Z2 round 2: an element ADOPTED by qualifiedName was never checked. Check THIS element
+            # before any write.
+            from resource_explorer.workflows.curate import WriteNotPermitted, person_write_refusal
 
-                    if self._registry is not None:
-                        why = person_write_refusal(self._registry, "repo", result.resource_slug, "publish",
-                                                   element_guid=guid)
-                        if why:
-                            raise WriteNotPermitted(why)
-                    log.info("Found existing Egeria asset GUID %s for %s", guid, result.resource_slug)
-                    self._cache_asset_guid(result.resource_slug, guid)
-                    self._language_forward(guid, result)
-                    return guid
-                if existing:
-                    # Prefix matches that are not this asset are the normal case
-                    # for sibling repos; say so rather than silently creating.
-                    log.info(
-                        "%d prefix match(es) for %s but none with an exact qualifiedName — creating",
-                        len(existing), result.resource_slug,
-                    )
-        except Exception as exc:
-            from resource_explorer.workflows.curate import WriteNotPermitted
-
-            if isinstance(exc, WriteNotPermitted):
-                raise                      # a refusal, never "search failed, create one"
-            log.debug("Asset search failed (will create): %s", exc)
+            if self._registry is not None:
+                why = person_write_refusal(self._registry, "repo", result.resource_slug, "publish",
+                                           element_guid=found)
+                if why:
+                    raise WriteNotPermitted(why)
+            log.info("Found existing Egeria repository GUID %s for %s", found, result.resource_slug)
+            self._cache_asset_guid(result.resource_slug, found)
+            self._language_forward(found, result)
+            return found
 
         # Gather project stats for additional metadata
         # The primary language is the ONE choice the header's LANGUAGE tile shows (measured beats GitHub's
-        # by-bytes value), and the asset carries which source it is and on what basis (2026-10-23).
+        # by-bytes value), and the repository carries which source it is and on what basis (2026-10-23).
         from resource_explorer.primary_language import (
             choose_primary_language, choose_primary_language_from, publish_properties,
         )
@@ -960,8 +883,8 @@ class EgeriaPublisher:
             try:
                 choice = choose_primary_language(self._registry, result.resource_slug)
             except Exception as exc:  # noqa: BLE001
-                # The census read failing never fails the asset creation (fix round 2): the same chooser with the
-                # measurement treated as unavailable, so the asset says GitHub, never "measured".
+                # The census read failing never fails the creation (fix round 2): the same chooser with the
+                # measurement treated as unavailable, so the element says GitHub, never "measured".
                 log.warning("Could not read the measured primary language for %s (GitHub's value used): %s",
                             result.resource_slug, exc)
                 choice = choose_primary_language_from({}, stats or {})
@@ -971,67 +894,58 @@ class EgeriaPublisher:
                 topics_csv = stats.get("topics") or ""
 
         props: dict = {
-            "class": "AssetProperties",
-            "typeName": "Asset",
+            # SourceControlLibraryProperties, not SoftwareCapabilityProperties: any other class silently drops
+            # `libraryType` (the type's own property).
+            "class": "SourceControlLibraryProperties",
+            "typeName": "SourceControlLibrary",
             "qualifiedName": qualified_name,
             "displayName": result.project_display_name,
             "description": f"GitHub repository: {result.github_url}",
-            # The repo's own location, in the attribute Egeria defines for it.
-            # `url` is inherited from Referenceable (Asset -> Referenceable,
-            # same base SourceControlLibrary's chain went through). Previously
-            # the git URL existed only inside additionalProperties and
-            # interpolated into the description text, so nothing generic could
-            # find it: anything walking the catalog for "where does this live"
-            # looks at `url`, not at a private extension key.
-            #
-            # additionalProperties["github_url"] is kept rather than moved —
-            # existing consumers read it, and the duplication is cheap.
+            # The repo's own location, in the attribute Egeria defines for it (Referenceable.url).
+            # additionalProperties["github_url"] is kept: existing consumers read it, and the duplication is cheap.
             "url": result.github_url,
+            "libraryType": "git",
+            "deployedImplementationType": REPO_DEPLOYED_IMPLEMENTATION_TYPE,
             "additionalProperties": {
                 "github_url": result.github_url,
                 "project_slug": result.resource_slug,
                 **language_props,
                 "license": license_name,
                 "topics": topics_csv,
-                # Descriptive, not a type constraint — `deployedImplementationType`
-                # and `libraryType` belong to SoftwareCapability/ResourceManager,
-                # not to a generic Asset, so they moved here rather than staying
-                # top-level properties a strict server-side schema might reject.
-                "deployed_implementation_type": "GitHub Repository",
             },
         }
-        # The repository's Asset is REFERENCED by every investigation that names it, never produced
-        # by one (§3.6), so it is created with the referenced-element zones whatever `zone_names`
-        # this publish carries. Until 2026-10-13 this sent `self.zone_names`, which for a member of
-        # a private investigation is `[private, owner]`. It never reached Egeria only because
-        # `AssetProperties` has no `zoneMembership` field (unknown keys are ignored); the zones that
-        # take effect are the referenced-element stamp below, `_stamp_governance(produced=False)`.
+        body: dict = {"class": "NewElementRequestBody", "properties": props}
+        # The repository is REFERENCED by every investigation that names it, never produced by one (§3.6), so it
+        # is created with the referenced-element zones whatever `zone_names` this publish carries, as a
+        # ZoneMembership classification (a `zoneMembership` inside `properties` never reaches Egeria).
         zones = self._referenced_zones()
         if zones:
-            props["zoneMembership"] = zones
-        body = {"class": "NewElementRequestBody", "properties": props}
-        with time_egeria_call(self._registry, "create_asset", "write", params={"typeName": "Asset"}):
-            guid = self._asset_maker.create_asset(body=body)
-        log.info("Created GitHub repository asset GUID %s for %s", guid, result.resource_slug)
-        # Own it: GitHub is the service the repository asset belongs to,
-        # exactly once, at creation — a cache hit or a found-existing match
-        # above means this link already exists from a prior run.
-        try:
-            scl_guid = self._find_or_create_github_scl()
-            with time_egeria_call(self._registry, "add_capability_asset_use", "write"):
-                self._asset_maker.add_capability_asset_use(
-                    scl_guid, guid,
-                    body={"class": "NewRelationshipRequestBody",
-                          "properties": {"class": "CapabilityAssetUseProperties", "useType": "OWNS"}},
-                )
-        except Exception as exc:
-            # Best-effort: the repository asset is real and usable either way
-            # (the report attaches to IT, not to the SCL) -- a missing
-            # CapabilityAssetUse edge is a fact worth logging, not a reason to
-            # fail the publish over.
-            log.warning("Could not link %s to the GitHub SourceControlLibrary: %s", guid, exc)
+            from resource_explorer.egeria_identity import zone_membership_initial_classification
+
+            body["initialClassifications"] = zone_membership_initial_classification(zones)
+        with time_egeria_call(self._registry, "create_software_capability", "write",
+                              params={"typeName": "SourceControlLibrary"}):
+            guid = self._asset_maker.create_software_capability(body=body)
+        log.info("Created GitHub repository SourceControlLibrary GUID %s for %s", guid, result.resource_slug)
+        # GitHub (the platform) serves the repository: once, at creation. A cache hit or a found-existing match
+        # above means the link exists from a prior run (and the link itself is idempotent).
+        self._link_platform_to_repository(guid)
         self._cache_asset_guid(result.resource_slug, guid)
         return guid
+
+    @staticmethod
+    def _lookup_or_raise(lookup, qualified_name: str) -> str | None:
+        """`lookup()`, with a failure turned into the one "could not look up" error: it never licenses a create."""
+        from resource_explorer.egeria_absence import lookup_could_not_be_made
+
+        try:
+            return lookup()
+        except Exception as exc:  # noqa: BLE001
+            from resource_explorer.workflows.curate import WriteNotPermitted
+
+            if isinstance(exc, WriteNotPermitted):
+                raise
+            raise EgeriaPublisherError(lookup_could_not_be_made(qualified_name, exc)) from exc
 
     # ── ownership and zones ───────────────────────────────────────────────────
 
@@ -1303,7 +1217,8 @@ class EgeriaPublisher:
 
     @staticmethod
     def _current_additional_properties(element, qualified_name: str) -> dict | None:
-        """additionalProperties from a get_asset_by_guid answer; None when the answer cannot be trusted as a read.
+        """additionalProperties from a by-GUID answer (`get_metadata_element_by_guid`); None when the answer cannot
+        be trusted as a read.
 
         Live shape (probe): {class, elementHeader, properties}, additionalProperties under `properties`. A map
         found there (or in the older elementProperties / top-level shapes) is returned as stored. `{}` (the asset
@@ -1311,6 +1226,24 @@ class EgeriaPublisher:
         read. Anything else is None, so the caller writes nothing: a merge update REPLACES additionalProperties, and
         treating an unreadable answer as empty would wipe github_url, license, topics ... (fix round 2)."""
         if not isinstance(element, dict):
+            return None
+        # LIVE shape of `MetadataExpert.get_metadata_element_by_guid` (recorded: tests/fixtures/egeria_6_2/
+        # metadata_expert_by_guid__survey_report_ownership_anchor_guid.json): `elementProperties.propertyValueMap`,
+        # a map attribute a MapTypePropertyValue whose strings are under `mapValues.propertiesAsStrings`. The
+        # repository is read with this call since TR-89 (`get_asset_by_guid` is NotFound for a capability); read as
+        # the Asset shape below, every answer was "unreadable" and no language was ever written.
+        ep = element.get("elementProperties")
+        pvm = ep.get("propertyValueMap") if isinstance(ep, dict) else None
+        if isinstance(pvm, dict):
+            entry = pvm.get("additionalProperties")
+            if entry is not None:
+                mapped = entry.get("mapValues") if isinstance(entry, dict) else None
+                strings = mapped.get("propertiesAsStrings") if isinstance(mapped, dict) else None
+                return dict(strings) if isinstance(strings, dict) else None   # a shape we do not know: unreadable
+            have = pvm.get("qualifiedName")
+            have = have.get("primitiveValue") if isinstance(have, dict) else (ep.get("propertiesAsStrings") or {}).get("qualifiedName")
+            if qualified_name and have == qualified_name:
+                return {}                  # this element, read, with no additionalProperties at all
             return None
         props = element.get("properties")
         for src in (props if isinstance(props, dict) else {}, element.get("elementProperties") or {}, element):
@@ -1325,7 +1258,7 @@ class EgeriaPublisher:
         return None
 
     def _language_forward(self, guid: str, result: SurveyResult) -> bool:
-        """An EXISTING repository asset gets the tile's primary-language choice on its next publish (fix round 1,
+        """An EXISTING repository gets the tile's primary-language choice on its next publish (fix round 1,
         2026-10-23). ONE read of the stored additionalProperties; a merge update only when a stored value differs
         from the chooser's (the same `choose_primary_language` the LANGUAGE tile calls), then ONE proof row,
         "primary_language updated", written after Egeria accepted the update. Unchanged: no write and no row.
@@ -1348,8 +1281,10 @@ class EgeriaPublisher:
         # stored: an empty string is never written over a stored value (fix round 2).
         wanted = {k: v for k, v in publish_properties(choice).items() if v}
         try:
-            with time_egeria_call(self._registry, "get_asset_by_guid", "query"):
-                current = self._asset_maker.get_asset_by_guid(guid, graph_query_depth=0, output_format="JSON")
+            # The type-agnostic read: `get_asset_by_guid` answers NotFound for a SourceControlLibrary (TR-89).
+            with time_egeria_call(self._registry, "get_metadata_element_by_guid", "query"):
+                current = self._metadata_expert.get_metadata_element_by_guid(
+                    guid, graph_query_depth=0, output_format="JSON")
         except Exception as exc:  # noqa: BLE001
             log.warning("Could not read %s before updating its primary language (left as it was): %s", guid, exc)
             return False
@@ -1364,10 +1299,10 @@ class EgeriaPublisher:
         if not changed:
             return False
         try:
-            with time_egeria_call(self._registry, "update_asset", "write"):
-                self._asset_maker.update_asset(
+            with time_egeria_call(self._registry, "update_software_capability", "write"):
+                self._asset_maker.update_software_capability(
                     guid, body={"class": "UpdateElementRequestBody", "mergeUpdate": True,
-                                "properties": {"class": "AssetProperties",
+                                "properties": {"class": "SourceControlLibraryProperties",
                                                # the whole map: a merge update replaces additionalProperties
                                                "additionalProperties": self._to_string_map({**stored, **wanted})}})
         except Exception as exc:  # noqa: BLE001
@@ -1848,24 +1783,13 @@ class EgeriaPublisher:
         assets, parented under the repo's Asset (or an already-catalogued
         ancestor folder).
 
-        **Known gap, not fixed here (2026-09-14 SourceControlLibrary
-        correction):** the root-level-folder case below still requests
-        `parentRelationshipTypeName: "CapabilityAssetUse"` against
-        `asset_guid`, which was type-valid when the repo's own element was a
-        SoftwareCapability (CapabilityAssetUse's end1) and is NOT valid now
-        that it is a generic Asset — model 0220's Files-and-Folders
-        relationships (FolderHierarchy, NestedFile) are strictly
-        FileFolder-to-FileFolder/DataFile, and neither is a documented
-        Asset-to-FileFolder edge. Left as a TODO rather than guessed at: the
-        right relationship needs checking against a live Egeria server, not
-        invented here. The failure mode is soft — `_create_sub_resource`'s
-        caller catches and logs, so a wrong relationship type here skips that
-        one root folder rather than failing the publish — but the read is
-        real and worth fixing before this path sees real use.
+        **The root-level folder** attaches to the repository's SourceControlLibrary by
+        `parentRelationshipTypeName: "CapabilityAssetUse"` (SoftwareCapability end 1, Asset end 2). That is type-valid
+        since TR-89 made the repository a SourceControlLibrary: while it was an Asset the edge failed soft and root
+        folders had no parent. Who the folder is ANCHORED to under an SCL parent is checked live (TR-89 brief,
+        "live proof"); the branch folder (Part D, after EG-19) becomes the root and the anchor.
 
-        This replaces the old auto-publish behavior (finding "worthy" ->
-        immediately create in Egeria, with every publish() call). Egeria
-        publish is now always an explicit, separate action from local
+                publish is now always an explicit, separate action from local
         cataloging (registry.catalog_sub_resource) — see
         docs/repo-scope-narrowing-funnel.md D2/D3. Only locators that are
         already rows in the local `sub_resources` table are published;
@@ -1952,11 +1876,8 @@ class EgeriaPublisher:
                 relationship_type = "NestedFile"
             elif path == "" or parent_path == "":
                 # A root-level (or the synthetic root itself) folder attaches
-                # directly to the repo's Asset. "CapabilityAssetUse" is
-                # STALE here since the 2026-09-14 SourceControlLibrary fix
-                # (see this method's docstring) -- kept rather than guessed
-                # at a replacement; expect this specific create to fail soft
-                # (caught and logged by the caller) until it is.
+                # directly to the repo's SourceControlLibrary by "CapabilityAssetUse"
+                # (valid since TR-89; see this method's docstring).
                 parent_guid = asset_guid
                 relationship_type = "CapabilityAssetUse"
             else:
@@ -2083,13 +2004,29 @@ class EgeriaPublisher:
 
     @staticmethod
     def _current_display_name(element) -> str | None:
-        """displayName from a get_asset_by_guid answer, whichever shape it has; None if not found."""
+        """displayName (a string) from a by-GUID answer, whichever shape it has; None when it cannot be read.
+
+        Two shapes: the Asset answer (`properties.displayName`, what `get_asset_by_guid` gives the sub-resources
+        this is used for) and the type-agnostic `get_metadata_element_by_guid` answer (TR-89: how a repository
+        is read), whose attributes sit under `elementProperties` (`propertiesAsStrings`, else the typed
+        `propertyValueMap`)."""
         if not isinstance(element, dict):
             return None
         props = element.get("properties")
-        for src in (props if isinstance(props, dict) else {}, element.get("elementProperties") or {}, element):
-            if isinstance(src, dict) and isinstance(src.get("displayName"), str):
-                return src["displayName"]
+        if isinstance(props, dict) and isinstance(props.get("displayName"), str):
+            return props["displayName"]
+        ep = element.get("elementProperties")
+        if isinstance(ep, dict):
+            strings = ep.get("propertiesAsStrings")
+            if isinstance(strings, dict) and isinstance(strings.get("displayName"), str):
+                return strings["displayName"]
+            typed = (ep.get("propertyValueMap") or {}).get("displayName")
+            if isinstance(typed, dict) and isinstance(typed.get("primitiveValue"), str):
+                return typed["primitiveValue"]
+            if isinstance(ep.get("displayName"), str):
+                return ep["displayName"]
+        if isinstance(element.get("displayName"), str):
+            return element["displayName"]
         return None
 
     def _rename_forward(self, guid: str, display_name: str) -> None:

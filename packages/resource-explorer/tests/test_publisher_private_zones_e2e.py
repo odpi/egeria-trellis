@@ -2,7 +2,7 @@
 
 `docs/investigation-classification-and-zoning-design.md` §3.6. For a member of a private investigation:
 
-* the repository's Asset and the GitHub SourceControlLibrary are REFERENCED: never private, readable by everyone;
+* the repository's SourceControlLibrary and the GitHub platform are REFERENCED: never private, readable by everyone;
 * the SurveyReport is PRODUCED: born in `[private, owner]` (no window), refused to anyone else;
 * the annotations go beneath the report only once Egeria SHOWS the report private; otherwise the publish
   raises, records why, and writes no finding.
@@ -169,6 +169,17 @@ class Store:
             (g for g, e in store.elements.items() if e["qn"] == qn and store.visible(user, g)),
             "No elements found")
         expert_from_legacy(ac, me)         # the unique-name read answers what `ac` is scripted with
+        from tests.qn_lookup_bridge import NO_ELEMENTS_FOUND, element_answer
+
+        def _by_unique_name(name=None, property_name="qualifiedName", body=None, **kw):
+            """Type-aware (TR-89): the answer carries the element's own type, so a lookup that asks for a
+            SourceControlLibrary finds one and never mistakes an Asset for it."""
+            for g, e in store.elements.items():
+                if e["qn"] == name and store.visible(user, g):
+                    return element_answer(g, e["kind"], supers=[e["kind"], "Referenceable", "OpenMetadataRoot"])
+            return NO_ELEMENTS_FOUND
+
+        me.get_metadata_element_by_unique_name.side_effect = _by_unique_name
         by_class = {AssetMaker: am, ClassificationExplorer: cx, MetadataExpert: me, DataDiscovery: dd,
                     AutomatedCuration: ac, ExternalReferences: fake(ExternalReferences),
                     CollectionManager: fake(CollectionManager)}
@@ -257,7 +268,7 @@ def test_a_private_members_publish_zones_the_report_and_never_the_asset(world):
     with _signed_in(OWNER):
         report_guid = _publisher(reg).publish(_result(), defer_drain=False)
 
-    [asset] = [g for g in _of(store, "Asset")]
+    [asset] = [g for g in _of(store, "SourceControlLibrary")]
     asset_props = store.elements[asset]["props"]
     assert private_zone() not in str(asset_props) and OWNER not in asset_props.get("zoneMembership", []), (
         f"the shared repo asset was created with a private zone: {asset_props}")
@@ -288,24 +299,28 @@ def test_the_report_create_body_carries_the_private_zones(world):
     with _signed_in(OWNER):
         pub = _publisher(reg)
         pub.publish(_result(), defer_drain=False)
-    bodies = [c.kwargs["body"] for c in pub._asset_maker.create_asset.call_args_list]
-    report_body = next(b for b in bodies if b["properties"]["typeName"] == "SurveyReport")
-    asset_body = next(b for b in bodies if b["properties"]["typeName"] == "Asset")
+    report_body = next(c.kwargs["body"] for c in pub._asset_maker.create_asset.call_args_list
+                       if c.kwargs["body"]["properties"]["typeName"] == "SurveyReport")
+    [asset_body] = [c.kwargs["body"] for c in pub._asset_maker.create_software_capability.call_args_list]
+    assert asset_body["properties"]["typeName"] == "SourceControlLibrary"
     assert report_body["initialClassifications"] == {
         "ZoneMembership": {"class": "ZoneMembershipProperties", "zoneMembership": [private_zone(), OWNER]}}
     assert "initialClassifications" not in asset_body
     assert "zoneMembership" not in asset_body["properties"]
 
 
-def test_the_github_library_is_created_unzoned(world):
+def test_the_github_platform_is_created_unzoned(world):
     store, reg = world
     with _signed_in(OWNER):
         pub = _publisher(reg)
         pub.publish(_result(), defer_drain=False)
-    [scl_body] = [c.kwargs["body"] for c in pub._asset_maker.create_software_capability.call_args_list]
-    assert "zoneMembership" not in scl_body["properties"] and "initialClassifications" not in scl_body
-    [scl] = _of(store, "SourceControlLibrary")
-    assert store.elements[scl]["zones"] == [] and _reads(store, OTHER, scl)
+    [platform_body] = [c.kwargs["body"] for c in pub._asset_maker.create_asset.call_args_list
+                       if c.kwargs["body"]["properties"]["typeName"] == "SoftwareServerPlatform"]
+    assert "zoneMembership" not in platform_body["properties"]
+    assert "ZoneMembership" not in platform_body["initialClassifications"]
+    assert "CloudPlatform" in platform_body["initialClassifications"]
+    [platform] = _of(store, "SoftwareServerPlatform")
+    assert store.elements[platform]["zones"] == [] and _reads(store, OTHER, platform)
 
 
 def _activity(reg, status):
@@ -391,7 +406,7 @@ def test_an_existing_public_asset_keeps_its_zones_when_its_repo_goes_private(wor
 
     open_access(monkeypatch)      # the adopt-by-name curation check (Brief Z2) is not what this test is about
     store, reg = world
-    asset = store._new(OTHER, "Asset", "GitHubRepository::https://github.com/o/r", zones=["team-zone"])
+    asset = store._new(OTHER, "SourceControlLibrary", "GitHubRepository::https://github.com/o/r", zones=["team-zone"])
     with _signed_in(OWNER):
         _publisher(reg).publish(_result(), defer_drain=False)
     assert store.elements[asset]["zones"] == ["team-zone"]

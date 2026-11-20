@@ -300,14 +300,15 @@ def bulk_reg(tmp_path, monkeypatch):
 
 
 def _bulk_delete(monkeypatch, bulk_reg, cause):
-    from pyegeria import AssetMaker
+    from pyegeria import AssetMaker, MetadataExpert
 
     from resource_explorer.bulk_ops import delete_in_egeria
 
-    am = _fake(AssetMaker)
-    am.delete_asset.side_effect = lambda *a, **k: (_ for _ in ()).throw(_wrapped(cause))
+    am, mx = _fake(AssetMaker), _fake(MetadataExpert)
+    # TR-89: a repository is deleted through the element delete (it is not an Asset).
+    mx.delete_metadata_element.side_effect = lambda *a, **k: (_ for _ in ()).throw(_wrapped(cause))
     monkeypatch.setattr("resource_explorer.egeria_clients.egeria_client",
-                        lambda *a, **k: _Clients({AssetMaker: am}))
+                        lambda *a, **k: _Clients({AssetMaker: am, MetadataExpert: mx}))
     return delete_in_egeria(bulk_reg, [{"entity_type": "repo", "slug": "p0"}], dry_run=False)
 
 

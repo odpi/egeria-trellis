@@ -142,13 +142,16 @@ class TestCataloguedRepoTriggersAndPolls:
         fake_publisher.trigger_survey_by_guid.assert_called_once_with("asset-guid-123")
 
 
-class TestNoMatchingSurveyProcess:
-    """The expected, honest state until a real repo survey action service
-    exists in Egeria: dynamic discovery finds no user-authored Survey
-    Definition for repos, and the static fallback
-    (configdata/technology_type_processes.yaml) has no entry for
-    (entity_type='repo', 'GitHub Repository') either — both legitimately
-    return nothing, and the handler surfaces one clear, specific error."""
+REFUSAL = ("Egeria's survey engine takes only an Asset as its target; a repository survey will target its "
+           "branch folder")
+
+
+class TestRepositorySurveyIsRefused:
+    """TR-89: a repository is a SourceControlLibrary, not an Asset, and Egeria's survey engine keeps only an
+    Asset action target (SurveyActionEngineHandler drops the rest, silently). So the native repository survey
+    is refused in words, before any call to Egeria, and the handler surfaces that one clear, specific error.
+    (Until TR-89 the same path ended in "No native survey process configured": nothing had been authored.)
+    The repository survey will target the branch FileFolder, an Asset (TR-89 Part D, after EG-19)."""
 
     def _publisher_with_no_candidates(self) -> EgeriaPublisher:
         publisher = EgeriaPublisher(platform_url="https://example.test:9443")
@@ -157,23 +160,22 @@ class TestNoMatchingSurveyProcess:
         publisher._find_survey_process_name = MagicMock(return_value=None)
         return publisher
 
-    def test_no_config_entry_and_no_dynamic_candidate_raises_a_specific_error(self):
+    def test_a_repository_survey_is_refused_in_words_and_nothing_is_sent(self):
         publisher = self._publisher_with_no_candidates()
 
-        with pytest.raises(EgeriaPublisherError, match="No native survey process configured"):
+        with pytest.raises(EgeriaPublisherError, match=REFUSAL):
             publisher.trigger_survey_by_guid("repo-guid-999")
 
-        publisher._find_survey_process_name.assert_called_once_with("GitHub Repository")
+        publisher._automated_curation.initiate_gov_action_process.assert_not_called()
+        publisher._connect.assert_not_called()
 
-    def test_the_error_names_the_repo_entity_type_and_tech_type(self):
+    def test_the_error_says_why_and_what_comes_next(self):
         publisher = self._publisher_with_no_candidates()
 
         with pytest.raises(EgeriaPublisherError) as excinfo:
             publisher.trigger_survey_by_guid("repo-guid-999")
 
-        message = str(excinfo.value)
-        assert "GitHub Repository" in message
-        assert "repo" in message
+        assert "Asset" in str(excinfo.value) and "branch folder" in str(excinfo.value)
 
     def test_through_the_full_handler_this_is_a_reported_error_not_a_crash(self):
         project = _fake_project(egeria_asset_guid="asset-guid-456")
@@ -182,7 +184,7 @@ class TestNoMatchingSurveyProcess:
             "resource_explorer.surveyors.egeria_publisher.EgeriaPublisher",
             return_value=self._publisher_with_no_candidates(),
         ):
-            with pytest.raises(EgeriaPublisherError, match="No native survey process configured"):
+            with pytest.raises(EgeriaPublisherError, match=REFUSAL):
                 repo_adapter._trigger_egeria_native_survey(project, MagicMock(), step=MagicMock())
 
     def test_through_the_full_executor_it_becomes_an_error_step_not_a_crash(self):
@@ -217,4 +219,4 @@ class TestNoMatchingSurveyProcess:
         statuses = {s["step"]: s["status"] for s in result["steps"]}
         assert statuses["Step::EgeriaNative"] == "error"
         assert len(result["errors"]) == 1
-        assert "No native survey process configured" in result["errors"][0]
+        assert "survey engine takes only an Asset" in result["errors"][0]

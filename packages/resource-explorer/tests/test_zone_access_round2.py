@@ -222,14 +222,18 @@ def test_the_publisher_refuses_an_adopted_asset_and_creates_nothing(registry, ac
     from resource_explorer.workflows.curate import WriteNotPermitted
 
     registry.clear_egeria_registration("p")
-    _secure(access, "g-adopted", {"DEFAULT": ["dbas"]})
+    _secure(access, "00000000-0000-4000-8000-0000000000aa", {"DEFAULT": ["dbas"]})
     pub = EgeriaPublisher.__new__(EgeriaPublisher)
     pub._registry = registry
     pub.zone_names = None
     maker = MagicMock()
-    maker.find_assets.return_value = [{"elementHeader": {"guid": "g-adopted"},
-                                       "properties": {"qualifiedName": "GitHubRepository::https://github.com/x/p"}}]
+    # TR-89: the repository is a SourceControlLibrary, found by an exact qualifiedName read of that type.
+    from tests.qn_lookup_bridge import element_answer
+    expert = MagicMock()
+    expert.get_metadata_element_by_unique_name.return_value = element_answer(
+        "00000000-0000-4000-8000-0000000000aa", "SourceControlLibrary", supers=["SourceControlLibrary"])
     pub._asset_maker = maker
+    pub._metadata_expert = expert
     result = MagicMock(github_url="https://github.com/x/p", resource_slug="p")
     with pytest.raises(WriteNotPermitted) as exc:
         pub._find_or_create_asset(result)

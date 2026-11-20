@@ -70,51 +70,14 @@ def main() -> int:
     if maker is None:
         return 2
 
-    # Verified the same way EgeriaPublisher._find_or_create_asset verifies before
-    # reusing a cached GUID: search by qualifiedName and check the GUID is among
-    # the results.
-    #
-    # NOT get_asset_by_guid. That was the original test here and it is wrong:
-    # against a live catalog it raises PyegeriaNotFoundException/400 for GUIDs
-    # that plainly exist -- measured 2026-08-26, when it declared all 23 cached
-    # GUIDs stale while find_asset_guid returned those exact GUIDs for the same
-    # repos. Running --apply on that verdict would have cleared every valid
-    # registration in the catalog, with their survey records and publish claims.
-    #
-    # Two systems disagreeing about whether the same asset exists is worse than
-    # either answer, so this now asks the question the publisher asks.
-    with registry._conn() as conn:
-        urls = {
-            r["slug"]: r["github_url"]
-            for r in conn.execute("SELECT slug, github_url FROM projects").fetchall()
-        }
+    # Verified by GUID, type-agnostically (TR-89): a repository is a SourceControlLibrary, not an Asset, so
+    # `find_assets` / `get_asset_by_guid` cannot see it and would call every repository stale. The same read
+    # egeria_resync's scan uses (ClassificationExplorer.get_element_by_guid). A read that fails is never "stale".
+    classifier = _connect_classifier(get_config)
+    if classifier is None:
+        return 2
 
-    stale, live, unknown = [], [], []
-    for slug, guid in cached:
-        url = urls.get(slug, "")
-        if not url:
-            unknown.append((slug, guid, "no github_url on the project row"))
-            continue
-        try:
-            # find_assets, not find_software_capabilities: the repository is
-            # a plain Asset since the 2026-09-14 SourceControlLibrary
-            # correction (egeria_publisher.py's module docstring).
-            check = maker.find_assets(
-                search_string=f"GitHubRepository::{url}",
-                starts_with=True, ignore_case=False, output_format="JSON",
-            )
-            if not isinstance(check, list):
-                # pyegeria returns a string when nothing matched -- a real
-                # "not there", distinct from an exception.
-                stale.append((slug, guid))
-            elif any(e.get("elementHeader", {}).get("guid") == guid for e in check):
-                live.append((slug, guid))
-            else:
-                stale.append((slug, guid))
-        except Exception as exc:
-            # An error is never read as stale. The publisher trusts the cache on
-            # a failed verification for exactly this reason.
-            unknown.append((slug, guid, f"{type(exc).__name__}: {str(exc)[:60]}"))
+    stale, live, unknown = _check_cached(classifier, cached)
 
     print(f"  resolves in Egeria : {len(live)}")
     print(f"  STALE (dangling)   : {len(stale)}")
@@ -162,6 +125,35 @@ def main() -> int:
     return 0
 
 
+def _check_cached(classifier, cached):
+    """(stale, live, unknown) for `cached` [(slug, guid)], each read by GUID type-agnostically (TR-89).
+
+    A read that fails is `unknown`, never `stale`: only Egeria's own NotFound or "No elements found" is stale."""
+    stale, live, unknown = [], [], []
+    for slug, guid in cached:
+        try:
+            found = classifier.get_element_by_guid(guid, graph_query_depth=0)
+            if found is None:
+                # No answer is not "not there" (pyegeria ISSUE-134).
+                unknown.append((slug, guid, "Egeria gave no answer"))
+            elif isinstance(found, str):
+                if "No elements" in found or not found.strip():
+                    stale.append((slug, guid))
+                else:
+                    live.append((slug, guid))
+            elif found:
+                live.append((slug, guid))
+            else:
+                stale.append((slug, guid))
+        except Exception as exc:
+            name = type(exc).__name__
+            if "NotFound" in name or "404" in str(exc):
+                stale.append((slug, guid))
+            else:
+                unknown.append((slug, guid, f"{type(exc).__name__}: {str(exc)[:60]}"))
+    return stale, live, unknown
+
+
 def _connect(get_config):
     """AssetMaker, or None with the reason printed. Never raises."""
     try:
@@ -170,6 +162,20 @@ def _connect(get_config):
         maker = AssetMaker(cfg.view_server, cfg.platform_url, cfg.user_id, cfg.user_password)
         maker.create_egeria_bearer_token()
         return maker
+    except Exception as exc:
+        print(f"Could not reach Egeria ({type(exc).__name__}: {exc}).")
+        print("Refusing to sweep: unreachable is not the same as stale.")
+        return None
+
+
+def _connect_classifier(get_config):
+    """ClassificationExplorer (the type-agnostic by-GUID read), or None with the reason printed. Never raises."""
+    try:
+        from pyegeria import ClassificationExplorer
+        cfg = get_config().egeria
+        explorer = ClassificationExplorer(cfg.view_server, cfg.platform_url, cfg.user_id, cfg.user_password)
+        explorer.create_egeria_bearer_token()
+        return explorer
     except Exception as exc:
         print(f"Could not reach Egeria ({type(exc).__name__}: {exc}).")
         print("Refusing to sweep: unreachable is not the same as stale.")
