@@ -1117,7 +1117,11 @@ def _run_post_heal_checks(batch: Batch) -> list[str]:
             continue
 
         if proc.returncode == 0:
-            details.append(f"{script}: reconciled")
+            tail = (proc.stdout or "").strip().splitlines()
+            if tail:
+                details.append(f"{script}: reconciled — {tail[-1]}")
+            else:
+                details.append(f"{script}: reconciled")
         else:
             tail = (proc.stdout or proc.stderr or "").strip().splitlines()
             details.append(
@@ -1737,9 +1741,23 @@ def _check_and_heal_locked(docs_dir: Path, force: bool, *, only: str = "", reque
                     else heal_batch(batch)
             finally:
                 _healing_batch = ""
+            n_files = len(batch.files)
+            files_word = f"{n_files} file" if n_files == 1 else f"{n_files} files"
             # Re-check rather than assuming the heal worked: a canary that never
             # resolves is exactly how an infinite heal loop starts.
             recheck = canary_present(batch) if ok else False
+            words = detail if detail and detail != "ok" else ""
+            if not ok:
+                log.warning("bootstrap: %s heal failed · %s", batch.batch_id, detail)
+            elif recheck is True:
+                log.info("bootstrap: %s healed · %s%s · canary verified", batch.batch_id, files_word,
+                         f" · {words}" if words else "")
+            elif recheck is False:
+                log.warning("bootstrap: %s heal ran but the canary is still missing%s",
+                            batch.batch_id, f" · {words}" if words else "")
+            else:
+                log.info("bootstrap: %s healed · %s · not verified (could not reach Egeria)%s",
+                         batch.batch_id, files_word, f" · {words}" if words else "")
             with _status_lock:
                 st.last_healed_at = _now()
                 st.last_heal_result = "ok" if ok else detail
