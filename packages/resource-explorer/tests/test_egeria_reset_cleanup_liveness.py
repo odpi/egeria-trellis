@@ -230,6 +230,20 @@ def test_a_dead_library_guid_is_removed(env):
     assert "egeria.github_source_control_library_guid" in [r["key"] for r in a["rows"]] and not a["kept"]
 
 
+def test_a_dead_github_platform_guid_is_removed_and_a_live_one_kept(env):
+    """TR-89: the GitHub platform's GUID (`egeria.github_platform_guid`) is a pointer into the Egeria a reset
+    replaces, so the clear checks it like the pre-TR-89 library key."""
+    env["reg"].set_setting("egeria.github_platform_guid", LIB_G)
+    rc, cap, h, f = dry(env, FakeEgeria())
+    a = action(plan_of(f), "delete:app_settings")
+    assert "egeria.github_platform_guid" in [r["key"] for r in a["rows"]] and not a["kept"]
+    egeria = FakeEgeria({LIB_G: element("SoftwareServerPlatform", "SoftwareServerPlatform::github.com", AFTER)})
+    rc, cap, h, f = dry(env, egeria)
+    a = action(plan_of(f), "delete:app_settings")
+    assert "egeria.github_platform_guid" not in [r["key"] for r in a["rows"]]
+    assert [k["row"]["key"] for k in a["kept"]] == ["egeria.github_platform_guid"]
+
+
 def test_a_live_cache_row_is_kept_but_linkage_status_is_not_a_pointer(env):
     sql(env, "UPDATE survey_definition_cache SET process_guid = ? WHERE entity_slug = 'repo1'", (LIVE_G,))
     sql(env, "UPDATE egeria_linkage_status SET stale_guid = ? WHERE entity_slug = 'repo1'", (LIVE_G,))
