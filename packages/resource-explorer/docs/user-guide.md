@@ -436,6 +436,19 @@ A file system is registered with a **host** and a **container path** (remote mec
 
 How a file system's root folder is published from Curate was not opened on 2026-10-28 (not re-verified).
 
+#### The file-system survey definitions
+
+Two survey definitions are written for a file system, and both appear on its **Survey & analyses** tab (technology type "File System Directory"):
+
+| Definition | What it does | What it costs |
+|---|---|---|
+| **Filesystem Scouting Survey** (scouting) | Walks the folder and records counts, sizes, hidden files, links and timestamps. Then, from what that walk stored, says whether the folder has a recognisable structure (a project, a dataset layout, an archive, backups) and how much changed since the previous walk. | Cheap. No file is opened and nothing is written into the folder. |
+| **Filesystem Analysis Survey** (analysis) | Walks the folder, then profiles the columns of the data files, reads the narrative files (README and similar) in full into Resource Explorer's search index, proposes matches to Egeria's data classes, and reports which files are cold, which are duplicates, and who can read what. | Opens data and narrative files and hashes files to find duplicates. Nothing is written into the folder, and nothing is created in Egeria: the data-class matches are proposals. |
+
+**Resource Explorer leads both.** Egeria's Folder Survey is not part of them. When the reach line says Egeria can read the folder, run Egeria's Folder Survey from the **Folder survey** card; the definition's walk step then stops and says "Egeria's Folder Survey leads; run it from the file system's folder survey card", and the steps after it report why they could not run. The reach line itself and the survey price are stored states, not steps, so they are in neither definition.
+
+What you see afterwards is the same cards the presses fill, with the same words. A step that has not run shows "Not yet run", never an empty answer. A step that ran and found nothing to read says so in its own words, for example "0 files read in full", so it is not mistaken for a success. The five derived analyses (**File Activity**, **File System Change**, **Duplicate Files**, **File System Layout Signals** and **File Permissions**) need the Analytic Library installed; the generator refuses to write a definition that names one that is not.
+
 **Not built yet in this section:** remote reach for file systems; see section 10.
 
 
