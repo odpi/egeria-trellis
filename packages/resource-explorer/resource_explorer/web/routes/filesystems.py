@@ -1168,6 +1168,76 @@ def publish_filesystem_data_classes(slug: str) -> dict:
     return proof
 
 
+# ── TR-87: "Request action" on a file-system finding (a person's press; nothing files one by itself) ────────────────
+
+class FindingRequestBody(BaseModel):
+    step: str = ""
+    finding: str = ""
+    run_id: str = ""
+
+
+def _request_action_words(r: dict) -> str:
+    return "already requested · nothing new" if r.get("nothing_new") else f"requested · RFA {str(r.get('annotation_guid') or '')[:8]}"
+
+
+def _local_rfa_row_exists(registry: ProjectRegistry, slug: str, key: str) -> bool:
+    """Whether a local RFA row for this finding key is already in the Activity log (deduped by key, never by summary)."""
+    for entry in registry.list_activity(entity_slug=slug, operation="rfa", limit=500):
+        for ann in entry.get("annotations") or []:
+            if ann.get("finding_key") == key:
+                return True
+    return False
+
+
+@router.post("/{slug}/findings/request-action")
+@_logged_press("Request action", publish=True, outcome=lambda r: _request_action_words(r))
+def request_action_for_finding(slug: str, body: FindingRequestBody) -> dict:
+    """File ONE RequestForActionAnnotation for ONE finding of ONE step run (`request_action_for_finding`), once.
+    Its own endpoint: it never reads or writes the publish table's Publish / Keep in RE choice. Order: the permission
+    check; the allowlist (400); the re-read of the stored result (409); the file system must be in Egeria (409); then the
+    Egeria write and, only after it, the local row. Identity is always the caller's."""
+    from resource_explorer import fs_findings
+    from resource_explorer.activity_logger import log_rfa
+    from resource_explorer.egeria_clients import Caller
+    from resource_explorer.egeria_clients import refusal as egeria_refusal
+    from resource_explorer.run_queue import requested_by
+    from resource_explorer.surveyors.filesystem.egeria_filesystem_surveyor import EgeriaFileSystemSurveyor
+    from resource_explorer.web.routes.curate import require_resource_write
+
+    registry = ProjectRegistry()
+    fs = registry.get_filesystem(slug)
+    if not fs:
+        raise HTTPException(status_code=404, detail=f"FileSystem '{slug}' not found.")
+    require_resource_write(registry, "filesystem", slug, "publish")
+    try:
+        fs_findings.spec_for(body.step, body.finding)
+        found = fs_findings.reread(registry, slug, body.step, body.finding, body.run_id)
+    except fs_findings.FindingRefused as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.words) from exc
+    if not fs.egeria_asset_guid:
+        raise HTTPException(status_code=409, detail="publish the file system to Egeria first")
+    surveyor = EgeriaFileSystemSurveyor(platform_url=fs.egeria_url or None, view_server=fs.egeria_server or None,
+                                        identity=Caller())
+    who = requested_by() or ""
+    try:
+        proof = surveyor.request_action_for_finding(fs, found, who, registry)
+    except PermissionError:
+        raise
+    except Exception as exc:  # noqa: BLE001 -- nothing local is written; the failure is said
+        refused = egeria_refusal(exc)
+        if refused is not None:
+            raise refused from exc
+        log.exception("Request action failed for %s (%s)", slug, found["key"])
+        raise HTTPException(status_code=502, detail=f"not sent · {exc}")
+    if not _local_rfa_row_exists(registry, slug, found["key"]):
+        spec = found["spec"]
+        log_rfa(registry, "filesystem", slug, fs.display_name or slug, "local", proof["summary"],
+                detail=f"{spec.action} · requested by {who} from {spec.step} run {found['run_id']}",
+                analysis_name=spec.step_name, items=[{"type": "filesystem", "slug": slug}],
+                extra={"finding_key": found["key"], "egeria_annotation_guid": proof["annotation_guid"]})
+    return {**{k: v for k, v in proof.items() if k != "summary"}, "words": _request_action_words(proof)}
+
+
 # ── Files build step 6: the derived steps (Analytic Library steps over the walk's kept per-file rows) ───────────────
 
 @router.post("/{slug}/analyses/{analysis_id}/run")

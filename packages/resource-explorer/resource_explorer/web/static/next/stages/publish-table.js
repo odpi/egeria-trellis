@@ -15,7 +15,7 @@
  * across surveys, and its line says so (`r.choice.standing`).
  */
 import { stateEntry } from '/static/next/glyphs.js';
-import { getPublishTable, setPublishChoice, getFilesystemReach, publishChosenMeasures } from '/static/re-api.js';
+import { getPublishTable, setPublishChoice, getFilesystemReach, publishChosenMeasures, requestFilesystemFindingAction } from '/static/re-api.js';
 import { state, esc, openCurate } from '/static/next/app.js';
 import { fmtBytes } from '/static/next/stages/native-report.js';
 
@@ -27,6 +27,15 @@ export const SIGN_IN_WORDS = 'sign in to choose — a choice needs an author';
 /** C3: a file system's one publish of its chosen measures (the same call the Survey card's Publish makes). */
 export const PUBLISH_CHOSEN = 'Publish chosen measures';
 export const PUBLISH_CHOSEN_NONE = 'choose a measure to Publish first';
+/** TR-87: "Request action" on a finding row: its own button and endpoint, apart from the Publish | Keep in RE choice. */
+export const REQUEST_ACTION = 'Request action';
+export const REQUEST_ACTION_TITLE = 'Files a Request For Action in Egeria for this finding, once';
+export const REQUEST_ACTION_NOTE = 'A request goes to Egeria only when you press it; no finding files one by itself.';
+/** What a request ended with, from the server's own answer (never from the click). */
+export function requestActionWords(out) {
+  if (out && out.nothing_new) return 'already requested · nothing new';
+  return `requested · RFA ${String((out && out.annotation_guid) || '').slice(0, 8)}`;
+}
 const lastPress = new Map();                                   // slug -> the words the last press ended with, kept across redraws
 
 /** What a publish press ended with, from its own answer (never from the click): one line. */
@@ -117,6 +126,19 @@ function measuredHtml(r) {
   return r.measured_at ? `<span class="block text-provenance text-ink-muted" data-measured-at>measured ${esc(when(r.measured_at))}</span>` : '';
 }
 
+/** The finding's own button, only for a signed-in person on an offered finding (the server offers it from the stored
+ *  result: allowlisted, measured, count > 0). Shown even on a row that reads "Keep in RE only": a different write. */
+function requestActionHtml(r, signedIn, entityType) {
+  const o = r.request_action;
+  if (entityType !== 'filesystem' || !o || !signedIn) return '';
+  return `<span class="mt-s1 block" data-request-action-wrap>
+    <button type="button" data-request-action data-ra-step="${esc(o.step)}" data-ra-finding="${esc(o.finding)}" data-ra-run="${esc(o.run_id)}"
+      title="${esc(REQUEST_ACTION_TITLE)}"
+      class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent disabled:cursor-default disabled:opacity-60">${REQUEST_ACTION}</button>
+    <span class="block text-provenance text-ink-muted">${esc(REQUEST_ACTION_NOTE)}</span>
+    <span class="block text-provenance text-ink-muted" data-request-action-feedback></span></span>`;
+}
+
 /** One row; the reason a row cannot publish sits under it, in words. */
 export function rowHtml(r, signedIn, entityType = 'database') {
   return `<tr class="border-b border-rule align-top" data-publish-row="${esc(r.locator)}">
@@ -131,7 +153,7 @@ export function rowHtml(r, signedIn, entityType = 'database') {
     <td class="py-[4px] pr-s2 text-left">${selectorHtml(r, signedIn, entityType)}
       <span class="block">${choiceLineHtml(r)}</span>
       ${!r.publishable && r.why_not ? `<span class="block max-w-[40ch] text-provenance text-ink-muted" data-why-not>${esc(r.why_not)}</span>` : ''}
-      <span class="block text-provenance text-state-warn" data-choice-feedback></span></td>
+      <span class="block text-provenance text-state-warn" data-choice-feedback></span>${requestActionHtml(r, signedIn, entityType)}</td>
     <td class="py-[4px] text-left">${stateHtml(r)}</td>
   </tr>`;
 }
@@ -219,6 +241,20 @@ function bindPublishChosen(el, slug) {
 
 function bindRow(el, tr, slug, entityType, table, signedIn) {
   const row = table.rows.find((r) => r.locator === tr.getAttribute('data-publish-row'));
+  const ra = tr.querySelector('[data-request-action]');
+  if (ra) ra.addEventListener('click', async () => {
+    if (ra.dataset.pending) return;                              // a second press is ignored
+    ra.dataset.pending = '1';
+    const said = tr.querySelector('[data-request-action-feedback]');
+    said.textContent = 'Requesting…';
+    try {
+      said.textContent = requestActionWords(await requestFilesystemFindingAction(slug, ra.dataset.raStep, ra.dataset.raFinding, ra.dataset.raRun));
+    } catch (err) {
+      said.textContent = `not sent · ${err.message || 'the request was refused'}`;
+    } finally {
+      delete ra.dataset.pending;
+    }
+  });
   tr.querySelectorAll('[data-publish-choice]').forEach((b) => b.addEventListener('click', async () => {
     if (b.disabled || b.dataset.pending) return;                 // a second press is ignored
     b.dataset.pending = '1';
