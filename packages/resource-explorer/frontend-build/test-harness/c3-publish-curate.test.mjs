@@ -198,7 +198,7 @@ const proposals = (n, over = {}) => Array.from({ length: n }, (_, i) => ({ key: 
 const REVIEW = (over = {}) => {
   const folders = { kind: 'fs_folder_description', run: 'r1', items: proposals(45), gone: [], not_kept: 0, proposed: 45, confirmed: 0, rejected: 0, to_review: 45 };
   const classes = { kind: 'fs_data_class', run: 'm1', items: [], gone: [], not_kept: 0, proposed: 0, confirmed: 0, rejected: 0, to_review: 0 };
-  return { folders, classes, to_review: 45, confirmed: 0, proposed: 45, stays: 'Confirmed descriptions stay in Resource Explorer; confirmed data classes are not sent to Egeria yet.', ...over };
+  return { folders, classes, to_review: 45, confirmed: 0, proposed: 45, stays: 'Confirmed descriptions stay in Resource Explorer; confirmed data classes are sent to Egeria.', ...over };
 };
 
 /** The band's visible lines: leaf blocks, a closed <details> counting only its summary. */
@@ -257,7 +257,7 @@ test('open, a list shows 20 and pages by "more"; a data-class match names the fi
   assert.match(text(host.querySelector('[data-review-list="classes"]')), /a\.csv › email matches Email Address · privacy-relevant/);
   const labels = [...host.querySelector('[data-review-item]').querySelectorAll('button')].map(text);
   assert.deepEqual(labels, ['Confirm', 'Reject']);
-  assert.match(text(host.querySelector('[data-fs-review-stays]')), /stay in Resource Explorer; confirmed data classes are not sent to Egeria yet\./);
+  assert.match(text(host.querySelector('[data-fs-review-stays]')), /stay in Resource Explorer; confirmed data classes are sent to Egeria\./);
 });
 
 test('Confirm saves one signed verdict and the band redraws from the server answer, count and all', async () => {
@@ -297,4 +297,115 @@ test('nobody signed in: Confirm and Reject are off, with the reason', async () =
   const b = env.host.querySelector('[data-review-verdict="confirm"]');
   assert.equal(b.disabled, true);
   assert.match(b.title, /sign in to give a verdict/);
+});
+
+test('the send button is absent when nothing is confirmed or user is signed out', async () => {
+  // No confirmed items
+  const r = REVIEW();
+  r.confirmed = 0;
+  const { host } = await reviewBand(r);
+  assert.equal(host.querySelector('[data-fs-send-classes]'), null, 'no button when confirmed=0');
+
+  // Signed out
+  const calls = [];
+  const env = await setUp(async (url, o = {}) => { calls.push(String(url)); return ok(r); }, null);
+  const bands = await import('/static/next/stages/curate-bands.js');
+  await bands.renderFilesystemReview(env.host, 'loading_bay');
+  assert.equal(env.host.querySelector('[data-fs-send-classes]'), null, 'no button when signed out');
+
+  // Confirmed > 0 and signed in: button present
+  const r2 = REVIEW();
+  r2.confirmed = 1;
+  const env2 = await setUp(async (url, o = {}) => { calls.push(String(url)); return ok(r2); });
+  const bands2 = await import('/static/next/stages/curate-bands.js');
+  await bands2.renderFilesystemReview(env2.host, 'loading_bay');
+  const btn = env2.host.querySelector('[data-fs-send-classes]');
+  assert.ok(btn, 'button present when confirmed > 0 and signed in');
+  assert.match(text(btn), /Send confirmed data classes/);
+});
+
+test('a press of the send button POSTs to the right URL once and shows sent N', async () => {
+  const calls = [];
+  const env = await setUp(async (url, o = {}) => {
+    const u = String(url); const m = (o.method || 'GET').toUpperCase();
+    calls.push({ m, u });
+    if (m === 'GET' && /\/review$/.test(u)) return ok(REVIEW({ confirmed: 1 }));
+    if (m === 'POST' && /\/review\/publish-data-classes$/.test(u)) return ok({ sent: 1, added: 1, nothing_new: false, words: 'published 1 confirmed data-class matches' });
+    return ok({});
+  });
+  const bands = await import('/static/next/stages/curate-bands.js');
+  await bands.renderFilesystemReview(env.host, 'loading_bay');
+  env.host.querySelector('[data-fs-review-details]').open = true;
+  const btn = env.host.querySelector('[data-fs-send-classes]');
+  assert.ok(btn);
+  btn.click();
+  await tick(60);
+  const posts = calls.filter((c) => c.m === 'POST');
+  assert.equal(posts.length, 1);
+  assert.match(posts[0].u, /\/review\/publish-data-classes$/);
+  const fb = env.host.querySelector('[data-fs-send-feedback]');
+  assert.equal(text(fb), 'sent 1 confirmed data classes');
+});
+
+test('a press answered nothing_new shows "nothing new to send"', async () => {
+  const calls = [];
+  const env = await setUp(async (url, o = {}) => {
+    const u = String(url); const m = (o.method || 'GET').toUpperCase();
+    calls.push({ m, u });
+    if (m === 'GET' && /\/review$/.test(u)) return ok(REVIEW({ confirmed: 1 }));
+    if (m === 'POST' && /\/review\/publish-data-classes$/.test(u)) return ok({ sent: 0, added: 0, nothing_new: true, words: 'already published · nothing new to send' });
+    return ok({});
+  });
+  const bands = await import('/static/next/stages/curate-bands.js');
+  await bands.renderFilesystemReview(env.host, 'loading_bay');
+  env.host.querySelector('[data-fs-review-details]').open = true;
+  const btn = env.host.querySelector('[data-fs-send-classes]');
+  btn.click();
+  await tick(60);
+  const fb = env.host.querySelector('[data-fs-send-feedback]');
+  assert.equal(text(fb), 'nothing new to send');
+});
+
+test('a press answered with an error shows "not sent · …"', async () => {
+  const calls = [];
+  const env = await setUp(async (url, o = {}) => {
+    const u = String(url); const m = (o.method || 'GET').toUpperCase();
+    calls.push({ m, u });
+    if (m === 'GET' && /\/review$/.test(u)) return ok(REVIEW({ confirmed: 1 }));
+    if (m === 'POST' && /\/review\/publish-data-classes$/.test(u)) {
+      return { status: 502, ok: false, json: async () => ({ detail: 'Egeria not reachable' }) };
+    }
+    return ok({});
+  });
+  const bands = await import('/static/next/stages/curate-bands.js');
+  await bands.renderFilesystemReview(env.host, 'loading_bay');
+  env.host.querySelector('[data-fs-review-details]').open = true;
+  const btn = env.host.querySelector('[data-fs-send-classes]');
+  btn.click();
+  await tick(60);
+  const fb = env.host.querySelector('[data-fs-send-feedback]');
+  assert.match(text(fb), /not sent · Egeria not reachable/);
+});
+
+test('a second press while one is pending is ignored', async () => {
+  const calls = [];
+  let resolve;
+  const promise = new Promise((r) => { resolve = r; });
+  const env = await setUp(async (url, o = {}) => {
+    const u = String(url); const m = (o.method || 'GET').toUpperCase();
+    calls.push({ m, u });
+    if (m === 'GET' && /\/review$/.test(u)) return ok(REVIEW({ confirmed: 1 }));
+    if (m === 'POST' && /\/review\/publish-data-classes$/.test(u)) return promise;
+    return ok({});
+  });
+  const bands = await import('/static/next/stages/curate-bands.js');
+  await bands.renderFilesystemReview(env.host, 'loading_bay');
+  env.host.querySelector('[data-fs-review-details]').open = true;
+  const btn = env.host.querySelector('[data-fs-send-classes]');
+  btn.click();
+  // Click again while pending
+  btn.click();
+  await tick(60);
+  const posts = calls.filter((c) => c.m === 'POST');
+  assert.equal(posts.length, 1, 'only one POST despite two clicks');
 });

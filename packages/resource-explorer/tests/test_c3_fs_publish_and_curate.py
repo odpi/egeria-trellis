@@ -10,6 +10,7 @@ import pytest
 
 from resource_explorer import fs_review
 from resource_explorer import publish_table as pt
+from resource_explorer.web.routes.filesystems import NOTHING_NEW_WORDS
 from tests.fs_egeria_fake import FakeEgeria, install
 from tests.library_step_install import install_steps  # noqa: F401 - the fixture; CI syncs only RE, so the steps are installed per test
 from tests.test_files_walk_extensions import _probe_row, _register, _tree, api, registry  # noqa: F401 - fixtures reused
@@ -380,14 +381,75 @@ def test_a_confirmed_match_with_no_class_guid_is_not_sent_and_says_so(registry, 
 
 
 @pytest.mark.usefixtures("signed_in_caller")
-def test_the_data_class_route_is_off_until_the_shape_is_ruled(api, registry, tmp_path, monkeypatch):
+def test_the_data_class_route_works_without_env_var(api, registry, tmp_path, monkeypatch):
+    """The route is now always on: no env var gate."""
     client, headers = api
     _confirmed_setup(registry, tmp_path)
     egeria = install(monkeypatch, FakeEgeria())
-    monkeypatch.delenv("RE_FS_DATA_CLASS_PUBLISH", raising=False)
-    refused = client.post("/api/filesystems/walkme/review/publish-data-classes", headers=headers)
-    assert refused.status_code == 409 and "Architect's ruling" in refused.json()["detail"]
-    assert egeria.annotation_creates == [] and egeria.report_creates == []
-    monkeypatch.setenv("RE_FS_DATA_CLASS_PUBLISH", "1")
+    # No env var set - the route should work now
     ok = client.post("/api/filesystems/walkme/review/publish-data-classes", headers=headers)
-    assert ok.status_code == 200 and ok.json()["sent"] == 1 and len(egeria.annotation_creates) == 1
+    assert ok.status_code == 200 and ok.json()["sent"] == 1
+    assert len(egeria.annotation_creates) == 1
+
+
+@pytest.mark.usefixtures("signed_in_caller")
+def test_a_second_data_class_press_returns_nothing_new(api, registry, tmp_path, monkeypatch):
+    """A second press after the first should return nothing_new=True."""
+    client, headers = api
+    _confirmed_setup(registry, tmp_path)
+    egeria = install(monkeypatch, FakeEgeria())
+    # First press
+    first = client.post("/api/filesystems/walkme/review/publish-data-classes", headers=headers)
+    assert first.status_code == 200 and first.json()["sent"] == 1
+    made = len(egeria.annotation_creates)
+    # Second press - nothing new to send
+    second = client.post("/api/filesystems/walkme/review/publish-data-classes", headers=headers)
+    assert second.status_code == 200
+    body = second.json()
+    assert body["nothing_new"] is True and body["added"] == 0
+    assert len(egeria.annotation_creates) == made
+
+
+def test_a_caller_without_publish_permission_is_refused(api, registry, tmp_path, monkeypatch):
+    """A caller without publish permission gets 403."""
+    from resource_explorer.workflows.curate import AccessDecision
+    client, headers = api
+    _confirmed_setup(registry, tmp_path)
+    # Mock resource_access to refuse with 403
+    def deny(*a, **k):
+        return AccessDecision(False, "not authorized to publish this filesystem", "anonymous")
+    monkeypatch.setattr("resource_explorer.workflows.curate.resource_access", deny)
+    egeria = install(monkeypatch, FakeEgeria())
+    refused = client.post("/api/filesystems/walkme/review/publish-data-classes", headers=headers)
+    assert refused.status_code == 403
+    assert "publish" in refused.json()["detail"].lower() or "curate" in refused.json()["detail"].lower()
+    assert egeria.annotation_creates == []
+
+
+@pytest.mark.usefixtures("signed_in_caller")
+def test_confirmed_match_confidence_is_sent_as_int(api, registry, tmp_path, monkeypatch):
+    """The confidence value stored as an int should be sent as the same int."""
+    client, headers = api
+    # Set up with a match that has confidence 87
+    _walk_with_narratives(registry, tmp_path, [])
+    registry.record_step_run("walkme", "file_data_class_match", "2026-11-19T03:00:00",
+                             entity_type="filesystem", source="resource-explorer",
+                             executor="local", metrics={
+        "ran_at": "2026-11-19T03:00:00",
+        "matches": [{"file_path": "a.csv", "column": "email", "established": True,
+                     "matched_qualified_name": "DataClass::Email Address",
+                     "matched_display_name": "Email Address", "matched_guid": "dc-1",
+                     "confidence": 87, "privacy_relevant": True}],
+        "matches_not_kept": 0
+    })
+    key = "a.csv::email::DataClass::Email Address"
+    fs_review.save_verdict(registry, "walkme", kind=fs_review.KIND_CLASS, key=key,
+                           verdict="confirm", author="dan")
+    egeria = install(monkeypatch, FakeEgeria())
+    # Publish
+    ok = client.post("/api/filesystems/walkme/review/publish-data-classes", headers=headers)
+    assert ok.status_code == 200 and ok.json()["sent"] == 1
+    # Check the annotation has confidence 87, not 0
+    ann = next(iter(egeria.annotations.values()))["body"]["properties"]
+    assert "confidence" in ann
+    assert ann["confidence"] == 87, f"Expected confidence 87, got {ann['confidence']}"
