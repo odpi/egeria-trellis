@@ -178,7 +178,7 @@ test('PI-036: the ranked table gives rows, size, last analyzed, pending changes,
   assert.ok(t);
   const orders = t.querySelector('[data-ranked-row="sales.orders"]');
   const items = t.querySelector('[data-ranked-row="sales.items"]');
-  assert.match(cells(orders), /^sales\.orders 500 2\.0 MB 2026-10-02 01:00 42 in both runs$/);
+  assert.match(cells(orders), /^sales\.orders 500 2\.1 MB 2026-10-02 01:00 42 in both runs$/);
   assert.match(cells(items), /^sales\.items 20 1\.0 MB not collected not collected new$/);
 });
 

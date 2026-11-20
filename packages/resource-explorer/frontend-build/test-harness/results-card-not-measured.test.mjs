@@ -24,7 +24,7 @@ test('a known size on the evidence card is a size, not a raw byte count', async 
   document.body.innerHTML = '<div id="host"></div>';
   const host = document.getElementById('host');
   host.innerHTML = app.measureHtml('total_size_bytes', 131072);
-  assert.match(host.textContent, /total size bytes\s*128\.0 KB/);
+  assert.match(host.textContent, /total size bytes\s*131\.1 KB/);
 });
 
 test('the COUNTS table keeps a null total as a "not measured" row', async () => {

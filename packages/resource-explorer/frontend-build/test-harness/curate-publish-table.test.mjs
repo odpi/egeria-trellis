@@ -101,7 +101,7 @@ test('a size in bytes reads as RE reads every other size, and no row shows a fie
     value_words: '131072 bytes' }));
   const { document } = await open({ table: tbl });
   const r = flat(rowEl(document, 'example_step_x/total_size'));
-  assert.ok(r.includes('128 KB'), `a size is formatted: ${r}`);
+  assert.ok(r.includes('131.1 KB'), `a size is formatted: ${r}`);
   assert.ok(!r.includes('131072'), `no raw byte count: ${r}`);
   assert.ok(!flat(band(document)).includes('sample_ratio'), 'the basis field path is not shown');
 });

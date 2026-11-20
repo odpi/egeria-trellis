@@ -30,6 +30,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
+from resource_explorer.byte_format import format_bytes
 from resource_explorer.surveyors.survey_definition_executor import (
     PUBLISH_NOT_CHOSEN,
     PUBLISHED,
@@ -536,12 +537,8 @@ def _egeria_led_inventory(registry, slug: str) -> dict:
 
 
 def _fmt_size(n: int) -> str:
-    v = float(n)
-    for unit in ("B", "KB", "MB", "GB", "TB"):
-        if v < 1024 or unit == "TB":
-            return f"{int(v)} {unit}" if unit == "B" else f"{v:.1f} {unit}"
-        v /= 1024
-    return f"{n} B"
+    """Decimal units, the same words as the survey card's price line (TR-81)."""
+    return format_bytes(n)
 
 
 def _filesystem_inventory_headline(registry, slug: str) -> dict | None:

@@ -201,7 +201,9 @@ class TestCueHarness:
         src = (NEXT / "stages" / "repo-header.js").read_text()
         src = (src.replace("'/static/next/glyphs.js'", "'./glyphs.mjs'")
                   .replace("'/static/next/link-actions.js'", "'./link-actions.mjs'")
-                  .replace("'/static/next/format.js'", "'./format.mjs'"))
+                  .replace("'/static/next/format.js'", "'./format.mjs'")
+                  .replace("'/static/next/stages/native-report.js'", "'./native-report.mjs'"))
+        (tmp_path / "native-report.mjs").write_text((NEXT / "stages" / "native-report.js").read_text(), encoding="utf-8")
         (tmp_path / "repo-header.mjs").write_text(src, encoding="utf-8")
         for name in ("glyphs", "link-actions", "format"):
             body = (tmp_path / f"{name}.js").read_text().replace("'/static/next/", "'./").replace(".js'", ".mjs'")

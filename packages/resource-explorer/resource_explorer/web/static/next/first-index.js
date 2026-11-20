@@ -16,6 +16,7 @@
  * REMEMBERED: the PATH ("Index all" or "Ask me for each") the person used last, per browser, to focus that button
  * next time. Never the consent: the ask is always shown and both buttons are always offered.
  */
+import { fmtBytesDecimal } from '/static/next/stages/native-report.js';
 import { ago } from '/static/next/format.js';
 import { getFirstIndexAsk, queueFirstIndex, withdrawFirstIndex, getFirstIndexProgress } from '/static/re-api.js';
 import { openDialog } from '/static/next/worklist.js';
@@ -29,10 +30,7 @@ export const PATH_KEY = 're_first_index_path';
 
 export function fmtBytes(n) {
   if (n == null) return '';
-  const mb = n / 1048576;
-  if (mb >= 10) return `${Math.round(mb).toLocaleString('en-US')} MB`;
-  if (mb >= 1) return `${mb.toFixed(1)} MB`;
-  return `${Math.max(1, Math.round(n / 1024)).toLocaleString('en-US')} KB`;
+  return fmtBytesDecimal(Math.max(1, n));
 }
 
 export function fmtDuration(secs) {

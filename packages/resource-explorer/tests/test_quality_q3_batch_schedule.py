@@ -116,10 +116,10 @@ def test_two_priced_rows_before_anything_is_queued_each_figure_saying_what_it_is
     assert _queued(registry) == []                      # the price queues nothing
     rows = {r["entity_slug"]: r for r in price["rows"]}
     assert set(rows) == {PHARMA, WORKS} and price["runnable"] == 2
-    assert rows[PHARMA]["tables"]["count"] == 2 and rows[PHARMA]["size"]["words"] == "96.0 KB"
+    assert rows[PHARMA]["tables"]["count"] == 2 and rows[PHARMA]["size"]["words"] == "98.3 KB"
     # a table with no size is said, never added as zero
     assert rows[WORKS]["size"]["unknown_tables"] == 1
-    assert rows[WORKS]["size"]["words"] == "4.0 MB · 1 table(s) size unknown · never analyzed"
+    assert rows[WORKS]["size"]["words"] == "4.2 MB · 1 table(s) size unknown · never analyzed"
     for r in rows.values():
         assert r["time"] == {"seconds": None, "basis": "not measured", "runs": 0,
                              "words": "time not measured yet · the first run sets it"}

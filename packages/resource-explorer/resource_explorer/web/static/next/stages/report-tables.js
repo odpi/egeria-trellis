@@ -6,6 +6,7 @@
  *  - when the columns outgrow the page the table scrolls inside its own box, never the page.
  *
  * Imports colresize.js only, so a plain page or a node test can load it. */
+import { fmtBytesDecimal } from '/static/next/stages/native-report.js';
 import { cellStyle, handleHtml, innerStyle, headCellStyle, attachColumnResize, registerSpec } from '/static/trellis-ui/colresize.js';
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
@@ -71,10 +72,7 @@ export function attachGrids(root, specFor) {
 /** "2.0 MB"; '—' words are the caller's: a missing size is never formatted here. */
 export function fmtSize(bytes) {
   if (typeof bytes !== 'number' || !Number.isFinite(bytes)) return '';
-  const u = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let v = bytes; let i = 0;
-  while (v >= 1024 && i < u.length - 1) { v /= 1024; i += 1; }
-  return `${i === 0 ? v : v.toFixed(1)} ${u[i]}`;
+  return fmtBytesDecimal(bytes);
 }
 
 /** "2026-10-06 14:02" from an ISO-ish timestamp. */

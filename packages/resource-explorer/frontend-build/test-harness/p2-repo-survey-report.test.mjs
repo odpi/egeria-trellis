@@ -60,7 +60,7 @@ test('Understanding for a repo has a Survey report section with metrics, file ty
   assert.match(text(document.querySelector('[data-report-card="license"]')), /MIT/);
   assert.deepEqual([...document.querySelectorAll('[data-file-type]')].map((r) => r.dataset.fileType), ['Python', 'Markdown']);
   assert.equal(document.querySelector('[data-file-type="Python"] td:nth-child(3)').textContent, '75%');
-  assert.deepEqual([...document.querySelectorAll('[data-data-file="data/a.csv"] td')].map((c) => c.textContent), ['data/a.csv', 'csv', '100', '3', '2 KB']);
+  assert.deepEqual([...document.querySelectorAll('[data-data-file="data/a.csv"] td')].map((c) => c.textContent), ['data/a.csv', 'csv', '100', '3', '2.0 KB']);
   assert.match(text(document.querySelector('[data-data-file="data/b.parquet"]')), /not read/, 'an unprofiled file is not 0 rows');
   assert.deepEqual([...document.querySelectorAll('[data-ecosystem="pypi"] td')].map((c) => c.textContent), ['pypi', '12', '5']);
 });

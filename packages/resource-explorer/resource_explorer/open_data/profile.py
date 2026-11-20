@@ -17,6 +17,8 @@ Results are kept as one `step_runs` row per dataset (entity type `open_data`): n
 """
 from __future__ import annotations
 
+from resource_explorer.byte_format import format_bytes
+
 import hashlib
 import os
 import re
@@ -64,7 +66,7 @@ def cap_bytes() -> int:
 
 
 def _mb(n: int) -> str:
-    return f"{n / (1024 * 1024):.0f} MB" if n >= 1024 * 1024 else f"{n / 1024:.0f} KB"
+    return format_bytes(n)
 
 
 def profile_price(n_datasets: int) -> dict:

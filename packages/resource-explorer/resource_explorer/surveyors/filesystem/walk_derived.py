@@ -22,6 +22,8 @@ from __future__ import annotations
 import logging
 import socket
 
+from resource_explorer.byte_format import format_bytes
+
 log = logging.getLogger(__name__)
 
 #: How many of the heaviest folders the price line names.
@@ -90,17 +92,8 @@ def published_derived(registry, slug: str) -> dict:
 
 
 def _fmt_bytes(n: int) -> str:
-    """Decimal (1000), labelled B/KB/MB/GB: the file-system card's one size format (D12; macOS Finder's). A value that
-    rounds up to 1000 of its unit moves to the next ("999,950 B" is "1.0 MB", never "1,000.0 KB")."""
-    v = float(n)
-    for unit in ("B", "KB", "MB", "GB"):
-        if unit == "B":
-            if v < 1000:
-                return f"{v:,.0f} B"
-        elif round(v, 1) < 1000 or unit == "GB":
-            return f"{v:,.1f} {unit}"
-        v /= 1000
-    return f"{v:,.1f} GB"
+    """Decimal (1000), labelled B/KB/MB/GB/TB: the file-system card's one size format (D12; macOS Finder's)."""
+    return format_bytes(n)
 
 
 def _newest_walk(registry, slug: str) -> dict | None:

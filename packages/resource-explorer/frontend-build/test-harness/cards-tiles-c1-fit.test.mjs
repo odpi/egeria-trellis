@@ -83,7 +83,7 @@ test('a figure with a unit: "5.4" is the figure and "MB" is small beside it', as
   const f = d.querySelector('[data-tile-key="size"] [data-tile-figure]');
   const unit = f.querySelector('[data-tile-unit]');
   assert.equal(unit.textContent, 'MB');
-  assert.equal(f.textContent.replace(/[●\s]/g, ''), '5.4MB');
+  assert.equal(f.textContent.replace(/[●\s]/g, ''), '5.7MB');
   assert.match(read('themes.css'), /\[data-tile-unit\]\s*\{[^}]*font-size:\s*0\.5em/);
 });
 

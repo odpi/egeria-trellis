@@ -168,7 +168,7 @@ def ask_figures(registry, slugs: list[str]) -> dict:
             "slug": slug, "name": p.display_name or slug, "index_state": index_state(p),
             **m, **e, "time_words": UNKNOWN_UNTIL_FIRST_INDEX if e["seconds"] is None else "",
             "size_words": UNKNOWN_UNTIL_FIRST_INDEX if e["chunks"] is None else "",
-            "fetch": "clones the repository" + (f" (≈ {round(m['repo_kb'] / 1024)} MB)" if m["repo_kb"] else ""),
+            "fetch": "clones the repository" + (f" (≈ {round(m['repo_kb'] * 1024 / 1_000_000)} MB)" if m["repo_kb"] else ""),
         })
     return {"repositories": repos, "missing": missing, "basis": b, "totals": totals(repos)}
 
