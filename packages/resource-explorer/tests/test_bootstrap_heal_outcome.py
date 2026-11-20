@@ -76,7 +76,9 @@ def test_a_heal_that_ran_but_whose_canary_is_still_missing_is_a_warning_and_neve
     assert len(lines) == 1 and lines[0].levelno == logging.WARNING
     assert lines[0].getMessage() == "bootstrap: b heal ran but the canary is still missing · post_heal ok"
     assert _lines(caplog, "healed ·") == [] and _lines(caplog, "heal failed") == []
-    assert res["batches"]["b"]["action"] == "healed"          # the result map is unchanged by this task
+    # TR-111: the result map agrees with the warning (and with pass_state "failed")
+    assert res["batches"]["b"]["action"] == "failed"
+    assert res["batches"]["b"]["reason"] == "heal ran but the canary is still missing · post_heal ok"
 
 
 def test_a_heal_whose_canary_could_not_be_read_says_not_verified(tmp_path, monkeypatch, caplog):
@@ -89,6 +91,22 @@ def test_a_heal_whose_canary_could_not_be_read_says_not_verified(tmp_path, monke
     assert len(lines) == 1
     assert lines[0].getMessage() == "bootstrap: b healed · 1 file · not verified (could not reach Egeria) · post_heal ok"
     assert "canary verified" not in lines[0].getMessage()
+
+
+def test_a_heal_whose_canary_could_not_be_read_stays_healed_and_says_not_verified_in_its_reason(tmp_path, monkeypatch):
+    _batch(tmp_path)
+    _canary_sequence(monkeypatch, [False, None])
+    monkeypatch.setattr(bs, "heal_batch", lambda b: (True, "post_heal ok"))
+    res = bs.check_and_heal(tmp_path)
+    assert res["batches"]["b"]["action"] == "healed"
+    assert res["batches"]["b"]["reason"] == "post_heal ok · not verified (could not reach Egeria)"
+
+
+def test_a_verified_heal_keeps_its_reason_unchanged(tmp_path, monkeypatch):
+    _batch(tmp_path)
+    _canary_sequence(monkeypatch, [False, True])
+    monkeypatch.setattr(bs, "heal_batch", lambda b: (True, "post_heal ok"))
+    assert bs.check_and_heal(tmp_path)["batches"]["b"] == {"action": "healed", "reason": "post_heal ok"}
 
 
 def test_a_failed_heal_logs_heal_failed_with_why_as_a_warning_and_no_healed_line(tmp_path, monkeypatch, caplog):

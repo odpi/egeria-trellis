@@ -1788,7 +1788,14 @@ def _check_and_heal_locked(docs_dir: Path, force: bool, *, only: str = "", reque
                     st.last_check_error = ""
                     st.last_verified_at = _now()
                     st.present = recheck
-            results[batch.batch_id] = {"action": "healed" if ok else "failed", "reason": detail}
+            if not ok:
+                results[batch.batch_id] = {"action": "failed", "reason": detail}
+            elif recheck is True:
+                results[batch.batch_id] = {"action": "healed", "reason": detail}
+            elif recheck is False:
+                results[batch.batch_id] = {"action": "failed", "reason": f"heal ran but the canary is still missing{f' · {words}' if words else ''}"}
+            else:
+                results[batch.batch_id] = {"action": "healed", "reason": f"{words} · not verified (could not reach Egeria)" if words else "not verified (could not reach Egeria)"}
             pass_state[batch.batch_id] = (STATE_PRESENT if ok and recheck is True
                                           else STATE_UNKNOWN if ok and recheck is None else "failed")
     finally:
