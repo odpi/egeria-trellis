@@ -1133,18 +1133,11 @@ def put_filesystem_review_verdict(slug: str, body: ReviewVerdictBody, request: R
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-#: Switches the confirmed-data-class write on. Off until the Architect rules on its shape (C3 item 5).
-DATA_CLASS_PUBLISH_ENV = "RE_FS_DATA_CLASS_PUBLISH"
-
-
 @router.post("/{slug}/review/publish-data-classes")
 @_logged_press("Publish data classes", publish=True,
                outcome=lambda r: (NOTHING_NEW_WORDS if r.get("nothing_new") else f"published {r.get('sent')} confirmed data-class matches"))
 def publish_filesystem_data_classes(slug: str) -> dict:
-    """Publish the data-class matches a person confirmed, one DataClassAnnotation each (`publish_confirmed_data_classes`).
-    PROPOSED SHAPE: refused (409) until `RE_FS_DATA_CLASS_PUBLISH=1`, which is set only after the Architect rules on it."""
-    import os
-
+    """Publish the data-class matches a person confirmed, one DataClassAnnotation each (`publish_confirmed_data_classes`)."""
     from resource_explorer import fs_review
     from resource_explorer.web.routes.curate import require_resource_write
 
@@ -1152,9 +1145,6 @@ def publish_filesystem_data_classes(slug: str) -> dict:
     fs = registry.get_filesystem(slug)
     if not fs:
         raise HTTPException(status_code=404, detail=f"FileSystem '{slug}' not found.")
-    if os.environ.get(DATA_CLASS_PUBLISH_ENV) != "1":
-        raise HTTPException(status_code=409, detail="Confirmed data classes are not sent to Egeria yet: the shape of the "
-                            "write waits for the Architect's ruling.")
     require_resource_write(registry, "filesystem", slug, "publish")
     run, confirmed = fs_review.confirmed_classes(registry, slug)
     if not confirmed:
