@@ -196,14 +196,17 @@ class RAGSystem:
                             tracker.add_relevance(source['score'])
                     except Exception:
                         pass
-                tracker.log_metrics({
+                metrics = {
                     "response_length": len(result.get("response", "")),
                     "num_sources": result.get("num_sources", 0),
                     "retrieval_time": result.get("retrieval_time", 0.0),
                     "generation_time": result.get("generation_time", 0.0),
                     "avg_relevance_score": result.get("avg_relevance_score", 0.0),
                     "context_length": result.get("context_length", 0)
-                })
+                }
+                # TR-98: a time that was not measured is None, and mlflow.log_metrics raises on a None value (which dropped the
+                # WHOLE row, response_length included). Log only what was measured.
+                tracker.log_metrics({k: v for k, v in metrics.items() if v is not None})
         except Exception as e:
             logger.warning(f"MLflow tracking failed: {e}")
 
@@ -1988,7 +1991,9 @@ class RAGSystem:
                 cache_hit=result.get("cache_hit", False),
                 success=True,
                 result_count=result.get("num_sources", 0),
-                search_time_ms=(result.get("retrieval_time") or 0) * 1000,
+                # TR-98: `search_time_ms` is nullable and an unmeasured retrieval time is None: store NULL, not 0 ms.
+                # (`latency_ms` is NOT NULL, so it keeps `or 0` above.)
+                search_time_ms=(None if result.get("retrieval_time") is None else result.get("retrieval_time") * 1000),
                 llm_time_ms=(result.get("generation_time") or 0) * 1000,
                 avg_relevance_score=result.get("avg_relevance_score", 0.0),
                 sources_json=json.dumps(sources_data) if sources_data else None,

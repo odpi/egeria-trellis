@@ -380,3 +380,80 @@ def test_a_measured_zero_second_read_is_not_mistaken_for_unmeasured():
     with recording_retrieval() as log:
         record_lookup("symbol_store", 0.0, [])
     assert with_retrieval({"response": "x"}, log)["retrieval_time"] == 0.0
+
+
+# ── Second read-back: a time that was not measured must not reach MLflow or the metrics table as a number ───────────────
+
+
+class _FakeTracker:
+    def __init__(self):
+        self.logged = []
+
+    def log_metrics(self, metrics):
+        self.logged.append(dict(metrics))
+
+    def add_relevance(self, score):
+        pass
+
+
+def _bare_rag(tracker=None, collector=None):
+    import contextlib
+
+    from advisor.rag_system import RAGSystem
+    rag = RAGSystem.__new__(RAGSystem)
+
+    class _Mlflow:
+        @contextlib.contextmanager
+        def track_operation(self, **kwargs):
+            yield tracker
+
+    rag.mlflow_tracker = _Mlflow() if tracker is not None else None
+    rag.metrics_collector = collector
+    return rag
+
+
+def test_mlflow_is_not_sent_a_retrieval_time_that_was_not_measured():
+    """MLflow's log_metrics raises on a None value, which dropped the WHOLE row (response_length included) for every
+    cache-only answer. None-valued keys are dropped; everything measured is kept."""
+    tracker = _FakeTracker()
+    result = {"query": "how many classes", "response": "There are **3 classes**", "num_sources": 1,
+              "retrieval_time": None, "generation_time": 0.0, "avg_relevance_score": 0.0, "context_length": 5, "sources": []}
+    _bare_rag(tracker=tracker)._track_mlflow(result, include_context=False)
+    (logged,) = tracker.logged
+    assert "retrieval_time" not in logged
+    assert logged["response_length"] == len(result["response"]) and logged["num_sources"] == 1
+    assert all(v is not None for v in logged.values())
+
+
+def test_mlflow_still_gets_a_measured_retrieval_time():
+    tracker = _FakeTracker()
+    result = {"query": "q", "response": "r", "num_sources": 1, "retrieval_time": 0.25, "generation_time": 1.0,
+              "avg_relevance_score": 0.5, "context_length": 1, "sources": []}
+    _bare_rag(tracker=tracker)._track_mlflow(result, include_context=False)
+    assert tracker.logged[0]["retrieval_time"] == 0.25
+
+
+def _recorded_metric(retrieval_time):
+    class _Collector:
+        def __init__(self):
+            self.metrics = []
+
+        def record_query(self, metric):
+            self.metrics.append(metric)
+
+    collector = _Collector()
+    result = {"query": "q", "response": "r", "num_sources": 0, "retrieval_time": retrieval_time, "generation_time": 2.0,
+              "sources": [], "query_type": "GENERAL"}
+    _bare_rag(collector=collector)._record_local_metrics(result)
+    return collector.metrics[0]
+
+
+def test_an_unmeasured_search_time_is_stored_as_null_not_zero_milliseconds():
+    metric = _recorded_metric(None)
+    assert metric.search_time_ms is None          # the column is nullable: "not measured", not "0 ms"
+    assert metric.latency_ms == pytest.approx(2000.0)   # NOT NULL: the generation time alone, no invented search time
+
+
+def test_a_measured_search_time_is_stored_in_milliseconds():
+    metric = _recorded_metric(0.25)
+    assert metric.search_time_ms == pytest.approx(250.0) and metric.latency_ms == pytest.approx(2250.0)
