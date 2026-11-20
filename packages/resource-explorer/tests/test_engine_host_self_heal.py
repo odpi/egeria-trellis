@@ -46,6 +46,12 @@ def _canary(monkeypatch, answer):
     monkeypatch.setattr(bs, "canary_present", lambda b, expert=None: answer)
 
 
+def _canary_missing_then_present(monkeypatch):
+    """The canary is verified missing, then present after the heal (TR-111: a heal whose canary stays missing is "failed")."""
+    seq = [False, True]
+    monkeypatch.setattr(bs, "canary_present", lambda b, expert=None: seq.pop(0) if len(seq) > 1 else seq[0])
+
+
 # ── F54: opt-in ──────────────────────────────────────────────────────────────
 
 def test_opted_out_batch_is_read_but_never_healed_and_reported_opted_out(root, monkeypatch):
@@ -82,7 +88,7 @@ def test_opted_in_and_missing_heals_every_document_in_order_through_the_runner(r
     (root / "engine-host" / "library" / "x.md").write_text((root / "plain" / "only.md").read_text())
     _engine_batch(root, files=("decl.md", "library/x.md"))
     monkeypatch.setenv(OPT, "true")
-    _canary(monkeypatch, False)
+    _canary_missing_then_present(monkeypatch)
     monkeypatch.setattr("resource_explorer.registry.ProjectRegistry", lambda *a, **k: reg)
     seen = []
     real = runner.run_document
@@ -180,7 +186,7 @@ def test_the_waiver_never_passes_a_run_in_progress(root, reg, monkeypatch):
 
 def test_one_batch_run_works_with_the_setting_off(root, monkeypatch):
     _engine_batch(root)
-    _canary(monkeypatch, False)
+    _canary_missing_then_present(monkeypatch)
     healed = []
     monkeypatch.setattr(bs, "heal_batch", lambda b, **k: healed.append((b.batch_id, k)) or (True, "1 document run"))
     out = bs.check_and_heal(root, only="engine-host", requested_by="dan")
