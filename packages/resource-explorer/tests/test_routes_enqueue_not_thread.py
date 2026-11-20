@@ -46,7 +46,10 @@ def registry(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def client(registry):
+def client(registry, monkeypatch):
+    from tests.zone_fakes import open_access
+
+    open_access(monkeypatch, caller_if_none="enqueue-tester")  # TR-95: the run route checks start_action; these tests are about something else
     from resource_explorer.web.app import app
 
     return TestClient(app)

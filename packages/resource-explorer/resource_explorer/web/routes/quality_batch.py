@@ -59,7 +59,7 @@ async def run(body: QualityBatchRequest) -> dict:
     from resource_explorer.a2a_auth import caller
     from resource_explorer.registry import ProjectRegistry
     from resource_explorer.run_queue import requested_by
-    from resource_explorer.workflows.egeria_work_access import batch_refusal
+    from resource_explorer.workflows.egeria_work_access import definition_batch_refusal
     from resource_explorer.zone_access import EgeriaAccessReader
 
     registry = ProjectRegistry()
@@ -69,4 +69,4 @@ async def run(body: QualityBatchRequest) -> dict:
     return await asyncio.to_thread(
         quality_batch.enqueue_quality_batch, registry, slugs, work_list_slug=body.work_list_slug,
         requested_by=who, started_by_person=who, pressed=caller(), skip_unchanged=False,
-        refusal=lambda s: batch_refusal(registry, "database", s, reader=reader))
+        refusal=lambda s: definition_batch_refusal(registry, "database", s, reader=reader))

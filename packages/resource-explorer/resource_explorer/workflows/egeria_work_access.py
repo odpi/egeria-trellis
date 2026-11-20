@@ -401,6 +401,16 @@ def batch_refusal(registry, entity_type: str, slug: str, *, reader=None) -> str:
     return words(d)
 
 
+def definition_batch_refusal(registry, entity_type: str, slug: str, *, reader=None) -> str:
+    """One member of a batch that queues Survey Definition runs (TR-95): "" when the caller may start the run
+    (`start_action`, what the individual Run routes and the definition run route check) and make its Egeria write
+    (`batch_refusal`), else "not permitted · <reason>"."""
+    # `person_write_refusal`: a run nobody asked for (a schedule with no recorded creator) follows the no-requester
+    # rule (open when no zone is in use; refused with those words, not "sign in to curate", when one is).
+    why = _curate().person_write_refusal(registry, entity_type, slug, "start_action", reader=reader)
+    return why or batch_refusal(registry, entity_type, slug, reader=reader)
+
+
 # ── RFA ToDos ───────────────────────────────────────────────────────────────────────────────────────────
 
 def todo_writes(rfa_row: Optional[dict]) -> list[ElementWrite]:
