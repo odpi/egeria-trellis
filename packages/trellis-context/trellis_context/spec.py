@@ -49,7 +49,9 @@ class Section:
     floor: Rung = Rung.IDENTIFIERS
     #: Sections sharing a group are packed symmetrically -- equal budget, same
     #: rung. This is how comparison avoids favouring whichever subject packed
-    #: first (docs/context-compilation-design.md §6).
+    #: first (docs/context-compilation-design.md §6). The shared rung respects
+    #: every member's `floor`: if the group fits only below one member's floor,
+    #: the whole group is dropped (or the compile fails, if a member is required).
     group: str = ""
 
     def __post_init__(self) -> None:
