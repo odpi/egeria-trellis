@@ -215,7 +215,7 @@ test('At a glance (database): the tile figures are the ones the sentence figures
   assert.equal(fig('schemas'), '● 3');
   assert.equal(fig('tables'), '● 10');
   assert.equal(fig('rows'), '● ~1,500,000');
-  assert.equal(fig('size'), '◐ ≥ 3.0 MB', 'summed over 8 of 10 tables: partial, a lower bound');
+  assert.equal(fig('size'), '◐ ≥ 3.1 MB', 'summed over 8 of 10 tables: partial, a lower bound');
   assert.equal(g.querySelector('[data-tile-key="size"]').dataset.tileState, 'partial');
   assert.match(text(g.querySelector('[data-glance-fig="columns"]')), /38 columns/, 'columns stays a figure in the sentence');
 });

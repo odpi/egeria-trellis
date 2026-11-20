@@ -112,7 +112,7 @@ test('coco_pharma shape: one visible table, the rest owned by another user read 
   assert.match(text(root.querySelector('[data-report-unseen]').innerHTML), /2 of 3 tables not visible to the survey's user/);
   const rows = Object.fromEntries([...root.querySelectorAll('[data-report-row]')].map((r) => [r.querySelector('td').textContent.trim(), r]));
   const tds = (n) => [...rows['db.s.' + n].querySelectorAll('td')].slice(1);
-  assert.equal(tds('seen')[1].textContent.trim(), '144 KB');
+  assert.equal(tds('seen')[1].textContent.trim(), '147.5 KB');
   assert.equal(tds('a')[1].textContent.trim(), '–');
   assert.equal(tds('a')[1].querySelector('span').getAttribute('title'), "Egeria stored 0 here: not visible to the survey's user (owner egeria_admin)");
   assert.equal(tds('v')[1].textContent.trim(), 'view');

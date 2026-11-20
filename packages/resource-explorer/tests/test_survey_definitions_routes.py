@@ -34,6 +34,9 @@ def client(registry, monkeypatch):
         "resource_explorer.registry.ProjectRegistry.__init__",
         lambda self, db_path=None: setattr(self, "__dict__", registry.__dict__) or None,
     )
+    from tests.zone_fakes import open_access
+
+    open_access(monkeypatch, caller_if_none="route-tester")   # TR-95: the run route now checks start_action
     from resource_explorer.web.app import app
     return TestClient(app)
 

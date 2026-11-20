@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 
+from resource_explorer.byte_format import format_bytes
 from resource_explorer.agents.base import BaseExplorerAgent
 from resource_explorer.prompt_templates import stats_agent_system_prompt
 from resource_explorer.registry import ProjectRegistry
@@ -100,7 +101,7 @@ class StatsAgent(BaseExplorerAgent):
             if kb is None:
                 return "N/A"
             kb = int(kb)
-            return f"{kb / 1024:.1f} MB" if kb >= 1024 else f"{kb} KB"
+            return format_bytes(kb * 1024)  # repo_size_kb is GitHub's KiB; the words are decimal (TR-81)
 
         # Prefer live counts from project_commits for consistency
         from datetime import datetime as _dt, timedelta as _td

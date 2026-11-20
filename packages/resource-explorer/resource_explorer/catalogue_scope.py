@@ -36,6 +36,8 @@ itself.
 """
 from __future__ import annotations
 
+from resource_explorer.byte_format import format_bytes
+
 import json
 import re
 from datetime import datetime
@@ -838,12 +840,7 @@ def _pick_counters(cands: list[dict]) -> dict | None:
 def _fmt_bytes(n: int | None) -> str:
     if n is None:
         return "not measured"
-    v = float(n)
-    for unit in ("B", "KB", "MB", "GB", "TB"):
-        if v < 1024 or unit == "TB":
-            return f"{int(v)} {unit}" if unit == "B" or v >= 10 else f"{v:.1f} {unit}"
-        v /= 1024
-    return f"{int(n)} B"
+    return format_bytes(n)
 
 
 def _src_words(src: str) -> str:

@@ -17,7 +17,11 @@ from resource_explorer.web.app import app
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
+    # TR-95: run-now asks for start_action; these tests are about dispatch, not access.
+    from tests.zone_fakes import open_access
+
+    open_access(monkeypatch, caller_if_none="run-now-tester")
     return TestClient(app)
 
 

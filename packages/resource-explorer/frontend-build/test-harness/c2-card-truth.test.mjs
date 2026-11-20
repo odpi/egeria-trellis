@@ -244,7 +244,7 @@ test('D12: one size format on the card, decimal and labelled, at the 1000 bounda
   const { host, fs } = await setUp();
   const { fmtBytesDecimal: f } = await import('/static/next/stages/native-report.js');
   assert.deepEqual([0, 999, 1000, 1500, 999_949, 999_950, 57_400_000, 8_400_000_000, 2_500_000_000_000].map(f),
-    ['0 B', '999 B', '1.0 KB', '1.5 KB', '999.9 KB', '1.0 MB', '57.4 MB', '8.4 GB', '2,500.0 GB']);
+    ['0 B', '999 B', '1.0 KB', '1.5 KB', '999.9 KB', '1.0 MB', '57.4 MB', '8.4 GB', '2.5 TB']);
   host.innerHTML = fs.folderSurveyCardHtml(LOADING_BAY());
   const t = text(host);
   assert.match(t, /Total size\s?57\.4 MB/);

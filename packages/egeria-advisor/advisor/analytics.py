@@ -26,6 +26,9 @@ class AnalyticsManager:
         self.cache_dir = cache_dir or Path(settings.advisor_cache_dir)
         self.stats: Optional[Dict[str, Any]] = None
         self.directory_stats: Optional[Dict[str, Any]] = None
+        # The cached metrics files actually loaded, so an answer from them can say so (TR-51 d).
+        self.stats_file: Optional[Path] = None
+        self.directory_stats_file: Optional[Path] = None
         self._load_statistics()
         self._load_directory_statistics()
     
@@ -79,6 +82,7 @@ class AnalyticsManager:
                 else:
                     self.stats = data.get("statistics", {})
                     
+            self.stats_file = enhanced_file if self.stats else None
             logger.info(f"Loaded statistics from {enhanced_file}")
         except Exception as e:
             logger.error(f"Failed to load statistics: {e}")
@@ -97,6 +101,7 @@ class AnalyticsManager:
         try:
             with open(dir_stats_file, 'r') as f:
                 self.directory_stats = json.load(f)
+            self.directory_stats_file = dir_stats_file if self.directory_stats else None
             logger.info(f"Loaded directory statistics from {dir_stats_file}")
             logger.info(f"Directories available: {', '.join([d for d in self.directory_stats.keys() if d != '_total'])}")
         except Exception as e:
@@ -413,6 +418,9 @@ class AnalyticsManager:
                 return f"There are **{count:,} functions** in {scope}."
 
         # ── Fall back to stale JSON cache for non-structural queries ──────
+        # TR-51 d: an answer from here was read from the cached metrics file, not the symbol store; record that file
+        # as its source (nothing, when no file was loaded).
+        self._record_cache_read(path_filter)
 
         # Detect what the user is asking about
         if "how many class" in query_lower:
@@ -512,6 +520,14 @@ class AnalyticsManager:
             # Default: provide a general summary
             return self._format_summary(self.get_summary())
     
+    def _record_cache_read(self, path_filter: Optional[str]) -> None:
+        from advisor.agents.tools import lookup_source, record_lookup
+        files = [f for f in (self.stats_file, self.directory_stats_file if path_filter else None) if f]
+        if files:
+            record_lookup("analytics_cache", 0.0, [lookup_source("analytics_cache", str(f), f.name,
+                                                                 "cached codebase metrics", kind="metrics_file")
+                                                   for f in files])
+
     def _format_summary(self, summary: Dict[str, Any]) -> str:
         """Format a summary dictionary into a readable string."""
         lines = ["**Codebase Statistics:**\n"]

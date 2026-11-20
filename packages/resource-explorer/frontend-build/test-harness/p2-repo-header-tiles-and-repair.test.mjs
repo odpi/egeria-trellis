@@ -74,7 +74,7 @@ test('a stat that was never read says "not read"; a stored zero stays 0', async 
   assert.match(tileText(t.host, 'last_pushed'), /not read/);
   assert.doesNotMatch(tileText(t.host, 'last_pushed'), /\b0\b/);
   assert.match(tileText(t.host, 'forks'), /12/);
-  assert.match(tileText(t.host, 'size'), /2\.0 MB/);
+  assert.match(tileText(t.host, 'size'), /2\.1 MB/);
   assert.match(tileText(t.host, 'security'), /1\/2 enabled/);
   assert.match(tileText(t.host, 'website'), /example\.org/);
   assert.equal(t.host.querySelectorAll('[data-scouting-tile]').length, 9);

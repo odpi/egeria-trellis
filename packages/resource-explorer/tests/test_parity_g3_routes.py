@@ -162,3 +162,11 @@ def test_a_recorded_zero_pending_stays_zero(registry, client):
          "pending_changes": 0, "state": "measured"}])
     r = client.get(f"/api/stats/databases/{SLUG}/table_sizes").json()["ranked"][0]
     assert r["pending_changes"] == 0 and r["last_analyzed"] == "2026-10-02T03:00:00"
+
+
+def test_the_size_chart_is_in_decimal_megabytes_like_every_other_size(registry, client):
+    """TR-81: the axis says MB, so 60,209,097 bytes plots as 60.21, not 57.42."""
+    _survey(registry, T1, {"x": 1})
+    _tables(registry, T1, [("s", "t", 5, 60_209_097)])
+    body = client.get(f"/api/stats/databases/{SLUG}/table_sizes?measure=size").json()
+    assert body["sizes_mb"] == [60.21]

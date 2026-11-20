@@ -26,6 +26,7 @@
 import { listWorkLists, openWorkList, saveAsWorkList, openDialog, closeCellDetail, CELL }
   from '/static/next/worklist.js';
 import { ago, whenMs, houseTime, verdictLineHtml, changedTimesHtml, savedLine, readBackAt, stepOutcome, statusToken, publishedEarlierSentence, PUBLISHED_EARLIER_WORD } from '/static/next/format.js';
+import { fmtBytesDecimal } from '/static/next/stages/native-report.js';
 import { showMarkdown } from '/static/trellis-ui/markdown.js';
 // The one glyph table (REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md §1). `GLYPH`
 // and `factGlyph` below are thin views over `GLYPH_STATES` -- this file
@@ -8852,14 +8853,7 @@ export function fmtScalar(v, name = '') {
   return String(Math.round(n * 10) / 10);
 }
 
-function fmtBytes(n) {
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let i = 0;
-  let x = Math.abs(n);
-  while (x >= 1024 && i < units.length - 1) { x /= 1024; i += 1; }
-  const shown = i === 0 ? String(Math.round(x)) : (Math.round(x * 10) / 10).toFixed(1);
-  return `${n < 0 ? '-' : ''}${shown} ${units[i]}`;
-}
+const fmtBytes = (n) => (n < 0 ? `-${fmtBytesDecimal(-n)}` : fmtBytesDecimal(n));
 
 /**
  * The state legend, with counts.

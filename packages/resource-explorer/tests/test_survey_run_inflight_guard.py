@@ -37,7 +37,10 @@ def registry(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def client(registry):
+def client(registry, monkeypatch):
+    from tests.zone_fakes import open_access
+
+    open_access(monkeypatch, caller_if_none="guard-tester")   # TR-95: the run route now checks start_action
     from resource_explorer.web.app import app
 
     with patch("resource_explorer.workflows.survey_definition.run_definition"):
