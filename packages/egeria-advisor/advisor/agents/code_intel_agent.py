@@ -24,15 +24,38 @@ Two structural changes from the EA-owned version this replaces:
 from __future__ import annotations
 
 import re
-from typing import Any, Optional, Dict, List
+import time
+from typing import Any, Callable, Optional, Dict, List
 from loguru import logger
 
 from advisor.agents.base import BaseAdvisorAgent
+from advisor.agents.tools import lookup_source, record_lookup, recording_retrieval, with_retrieval
 from advisor.db_consolidated import get_db_manager
 from advisor.re_code_scope import scope_clause as _scope_clause, SCOPES as _SCOPES, DEFAULT_PROJECT_SLUGS as _DEFAULT_PROJECT_SLUGS
 
 _SYMBOLS_TABLE = "resource_explorer.project_code_symbols"
 _RELATIONSHIPS_TABLE = "resource_explorer.project_code_relationships"
+
+
+def _read(sql: str, params: tuple, sources: Optional[Callable[[List[Dict[str, Any]]], list]] = None) -> List[Dict[str, Any]]:
+    """One symbol-store read, recorded with its time in the request's retrieval log (TR-51 d). `sources(rows)` says
+    what the answer may cite from rows that came back; a read that found nothing records its time only."""
+    db = get_db_manager()
+    started = time.perf_counter()
+    rows = db.execute_query(sql, params)
+    record_lookup("symbol_store", time.perf_counter() - started, sources(rows) if (sources and rows) else ())
+    return rows
+
+
+def _definitions(rows: List[Dict[str, Any]]) -> list:
+    """Each definition row is a source: its file, its name and signature."""
+    return [lookup_source("symbol_store", r.get("file_path") or "", r.get("name") or "", r.get("signature") or "",
+                          kind="definition", module=r.get("project_slug") or "") for r in rows]
+
+
+def _table_read(table: str, what: str) -> Callable[[List[Dict[str, Any]]], list]:
+    """An aggregate read (counts, lists, hierarchies) is one source: the table and what was asked of it."""
+    return lambda rows: [lookup_source("symbol_store", table, what, f"{len(rows)} rows", kind="aggregate")]
 
 
 def _resolve_symbol_name(words: List[str], kinds: tuple = ("class",)) -> str:
@@ -49,7 +72,6 @@ def _resolve_symbol_name(words: List[str], kinds: tuple = ("class",)) -> str:
     """
     if not words:
         return ""
-    db = get_db_manager()
     concat = "".join(words)
     snake = "_".join(words)
     candidates = []
@@ -58,10 +80,8 @@ def _resolve_symbol_name(words: List[str], kinds: tuple = ("class",)) -> str:
             candidates.append(cand)
     kind_clause = " OR ".join(["kind = %s"] * len(kinds))
     for cand in candidates:
-        rows = db.execute_query(
-            f"SELECT name FROM {_SYMBOLS_TABLE} WHERE ({kind_clause}) AND name ILIKE %s LIMIT 1",
-            tuple(kinds) + (cand,)
-        )
+        rows = _read(f"SELECT name FROM {_SYMBOLS_TABLE} WHERE ({kind_clause}) AND name ILIKE %s LIMIT 1",
+                     tuple(kinds) + (cand,))
         if rows:
             return rows[0]["name"]
     return concat
@@ -70,7 +90,6 @@ def _resolve_symbol_name(words: List[str], kinds: tuple = ("class",)) -> str:
 # Tools to be exposed to the LLM / direct executor
 def get_class_for_method(method_name: str, collection: Optional[str] = None) -> List[Dict[str, Any]]:
     """Find a method or standalone function's definition: parent class (if any), file path, line number, signature, and docstring."""
-    db = get_db_manager()
     scope_sql, scope_params = _scope_clause(collection)
     sql = f"""
         SELECT name, parent_class, project_slug, file_path, start_line, signature, docstring
@@ -78,11 +97,10 @@ def get_class_for_method(method_name: str, collection: Optional[str] = None) -> 
         WHERE kind IN ('method', 'function') AND name ILIKE %s AND {scope_sql}
         ORDER BY parent_class
     """
-    return db.execute_query(sql, tuple([method_name] + scope_params))
+    return _read(sql, tuple([method_name] + scope_params), _definitions)
 
 def get_class_info(class_name: str, collection: Optional[str] = None) -> List[Dict[str, Any]]:
     """Get a class's own definition: its docstring, file path, line numbers, and signature."""
-    db = get_db_manager()
     scope_sql, scope_params = _scope_clause(collection)
     sql = f"""
         SELECT name, project_slug, file_path, start_line, end_line, signature, docstring, parent_class
@@ -90,11 +108,10 @@ def get_class_info(class_name: str, collection: Optional[str] = None) -> List[Di
         WHERE kind = 'class' AND name ILIKE %s AND {scope_sql}
         ORDER BY project_slug
     """
-    return db.execute_query(sql, tuple([class_name] + scope_params))
+    return _read(sql, tuple([class_name] + scope_params), _definitions)
 
 def check_inheritance(class_a: str, class_b: str, collection: Optional[str] = None) -> Dict[str, Any]:
     """Check if class_a inherits from class_b (directly or recursively), returning the path if found."""
-    db = get_db_manager()
     anchor_sql, anchor_params = _scope_clause(collection, table_alias="")
     sql = f"""
         WITH RECURSIVE inheritance_path AS (
@@ -112,7 +129,7 @@ def check_inheritance(class_a: str, class_b: str, collection: Optional[str] = No
         SELECT source_name, target_name, depth, project_slug FROM inheritance_path WHERE target_name ILIKE %s
     """
     params = [class_a] + anchor_params + [class_b]
-    rows = db.execute_query(sql, tuple(params))
+    rows = _read(sql, tuple(params), _table_read(_RELATIONSHIPS_TABLE, f"{class_a} inherits from {class_b}"))
     if rows:
         return {
             "inherits": True,
@@ -128,7 +145,6 @@ def check_inheritance(class_a: str, class_b: str, collection: Optional[str] = No
 
 def list_classes(collection: Optional[str] = None) -> List[str]:
     """List all the class names defined in a specific collection (e.g. 'pyegeria' or 'egeria_java')."""
-    db = get_db_manager()
     scope_sql, scope_params = _scope_clause(collection)
     sql = f"""
         SELECT name, file_path
@@ -136,12 +152,11 @@ def list_classes(collection: Optional[str] = None) -> List[str]:
         WHERE kind = 'class' AND {scope_sql}
         ORDER BY name
     """
-    rows = db.execute_query(sql, tuple(scope_params))
+    rows = _read(sql, tuple(scope_params), _table_read(_SYMBOLS_TABLE, f"classes in {collection or 'all projects'}"))
     return [f"{r['name']} (in {r['file_path']})" for r in rows]
 
 def get_class_hierarchy(class_name: str, collection: Optional[str] = None) -> Dict[str, Any]:
     """Get the ancestors (parents) and descendants (children) of a class in the codebase."""
-    db = get_db_manager()
     scope_sql, scope_params = _scope_clause(collection, table_alias="")
 
     anc_sql = f"""
@@ -157,7 +172,8 @@ def get_class_hierarchy(class_name: str, collection: Optional[str] = None) -> Di
         )
         SELECT target_name AS class_name, depth, project_slug FROM ancestors
     """
-    ancestors = db.execute_query(anc_sql, tuple([class_name] + scope_params))
+    ancestors = _read(anc_sql, tuple([class_name] + scope_params),
+                      _table_read(_RELATIONSHIPS_TABLE, f"ancestors of {class_name}"))
 
     dec_sql = f"""
         WITH RECURSIVE descendants AS (
@@ -172,7 +188,8 @@ def get_class_hierarchy(class_name: str, collection: Optional[str] = None) -> Di
         )
         SELECT source_name AS class_name, depth, project_slug FROM descendants
     """
-    descendants = db.execute_query(dec_sql, tuple([class_name] + scope_params))
+    descendants = _read(dec_sql, tuple([class_name] + scope_params),
+                        _table_read(_RELATIONSHIPS_TABLE, f"descendants of {class_name}"))
 
     return {
         "class_name": class_name,
@@ -182,7 +199,6 @@ def get_class_hierarchy(class_name: str, collection: Optional[str] = None) -> Di
 
 def get_codebase_stats(collection: Optional[str] = None) -> Dict[str, Any]:
     """Get statistics about the codebase (counts of classes, methods, functions, total lines of code)."""
-    db = get_db_manager()
     scope_sql, scope_params = _scope_clause(collection)
     sql = f"""
         SELECT kind, COUNT(*) AS count, SUM(end_line - start_line + 1) AS total_loc
@@ -190,7 +206,7 @@ def get_codebase_stats(collection: Optional[str] = None) -> Dict[str, Any]:
         WHERE {scope_sql}
         GROUP BY kind
     """
-    rows = db.execute_query(sql, tuple(scope_params))
+    rows = _read(sql, tuple(scope_params), _table_read(_SYMBOLS_TABLE, f"codebase stats for {collection or 'all projects'}"))
 
     stats = {
         "classes": 0,
@@ -287,6 +303,13 @@ class CodeIntelAgent(BaseAdvisorAgent):
         return [get_class_info, get_class_for_method, check_inheritance, get_class_hierarchy, get_codebase_stats, list_classes]
 
     def handle(self, query: str) -> dict:
+        """TR-51 d: the answer reports the symbol-store reads it was built from (sources, lookup time,
+        retrieval_method), not hard-coded zeros; "none" only when nothing was read."""
+        with recording_retrieval() as log:
+            result = self._handle(query)
+        return with_retrieval(result, log)
+
+    def _handle(self, query: str) -> dict:
         logger.info(f"CodeIntelAgent handling query: {query}")
 
         from advisor.llm_client import get_ollama_client

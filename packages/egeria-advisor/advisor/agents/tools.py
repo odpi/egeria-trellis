@@ -97,8 +97,9 @@ _RETRIEVAL: "contextvars.ContextVar[Optional[dict]]" = contextvars.ContextVar("e
 
 @contextlib.contextmanager
 def recording_retrieval():
-    """`with recording_retrieval() as log:` -- every _search_egeria_content_raw inside records its hits and time."""
-    log = {"sources": [], "seconds": 0.0, "searches": 0}
+    """`with recording_retrieval() as log:` -- every _search_egeria_content_raw and record_lookup inside records its
+    hits and time."""
+    log = {"sources": [], "seconds": 0.0, "searches": 0, "methods": []}
     token = _RETRIEVAL.set(log)
     try:
         yield log
@@ -114,11 +115,40 @@ def _source_of(r) -> dict:
             "type": md.get("type", "unknown"), "module": md.get("module", ""), "collection": col, "_collection": col}
 
 
+def _note(log: dict, method: str, seconds: float, sources) -> None:
+    log["seconds"] += seconds
+    log["searches"] += 1
+    if method not in log["methods"]:
+        log["methods"].append(method)
+    log["sources"].extend(sources)
+
+
+# TR-51 (d): the symbol store (RE's project_code_symbols / project_code_relationships), the cached metrics file and
+# the Dr.Egeria command index are read too. Each read records here, with its time, as vector searches do. A read
+# that returned something is a source; one that found nothing still counts its time (the store was asked).
+def lookup_source(collection: str, file_path: str, name: str, text: str = "", kind: str = "symbol",
+                  module: str = "") -> dict:
+    """A source from an exact lookup. It carries no score: a lookup has no relevance score, and consumers default a
+    missing one (none is invented here)."""
+    return {"text": text, "file_path": file_path, "name": name, "type": kind, "module": module,
+            "collection": collection, "_collection": collection}
+
+
+def record_lookup(method: str, seconds: float, sources=()) -> None:
+    """Record one read by `method` ("symbol_store", "analytics_cache", "command_keyword_index") into the current
+    request's log. Outside recording_retrieval() it does nothing."""
+    log = _RETRIEVAL.get()
+    if log is not None:
+        _note(log, method, seconds, list(sources))
+
+
 def with_retrieval(result: dict, log: Optional[dict]) -> dict:
     """`result` reporting what was retrieved for it: the distinct sources, their number, the search time and their
-    mean score. A result that reports its own sources keeps them; with nothing retrieved, the zeros are true."""
+    mean score, and retrieval_method: the stores read, or "none" when nothing was read. A result that reports its own
+    sources keeps them; with nothing retrieved, the zeros are true. With no log, nothing is claimed."""
     if not log or result.get("num_sources"):
         return result
+    method = ", ".join(log.get("methods") or []) or "none"
     seen, sources = set(), []
     for src in log["sources"]:
         key = (src["collection"], src["file_path"], src["text"][:200])
@@ -126,7 +156,7 @@ def with_retrieval(result: dict, log: Optional[dict]) -> dict:
             seen.add(key)
             sources.append(src)
     scores = [s["score"] for s in sources if isinstance(s.get("score"), (int, float))]
-    return {**result, "sources": sources, "num_sources": len(sources),
+    return {**result, "sources": sources, "num_sources": len(sources), "retrieval_method": method,
             "retrieval_time": log["seconds"] if log["searches"] else result.get("retrieval_time", 0.0),
             "avg_relevance_score": (sum(scores) / len(scores)) if scores else result.get("avg_relevance_score", 0.0)}
 
@@ -141,9 +171,7 @@ def _search_egeria_content_raw(query: str, collections: list[str], top_k: int = 
     result = store.search_specific_collections(query=query, collection_names=collections, top_k=top_k)
     log = _RETRIEVAL.get()
     if log is not None:
-        log["seconds"] += time.perf_counter() - started
-        log["searches"] += 1
-        log["sources"].extend(_source_of(r) for r in (result.results or []))
+        _note(log, "vector_search", time.perf_counter() - started, [_source_of(r) for r in (result.results or [])])
     if not result.results:
         return "No relevant content found."
     parts = []

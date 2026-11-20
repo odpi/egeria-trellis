@@ -13,6 +13,7 @@ code (which reads `row['collection']`) needs no changes.
 """
 from __future__ import annotations
 
+import time
 from typing import Any, Optional
 from loguru import logger
 
@@ -30,6 +31,17 @@ class ReCodeSymbolReader:
         self.db_manager = get_db_manager()
         self.db_manager.connect()
 
+    def _read(self, sql: str, params: tuple, what: str) -> list:
+        """One read, recorded with its time in the request's retrieval log (TR-51 d): a read that returned rows is
+        one source (the table and what was asked of it); one that found nothing records its time only."""
+        from advisor.agents.tools import lookup_source, record_lookup
+        started = time.perf_counter()
+        rows = self.db_manager.execute_query(sql, params)
+        record_lookup("symbol_store", time.perf_counter() - started,
+                      [lookup_source("symbol_store", _SYMBOLS_TABLE, what, f"{len(rows)} rows", kind="aggregate")]
+                      if rows else ())
+        return rows
+
     def collection_summary(self, collection: Optional[str] = None) -> dict[str, Any]:
         where, params = scope_clause(collection)
         sql = f"""
@@ -38,7 +50,7 @@ class ReCodeSymbolReader:
             FROM {_SYMBOLS_TABLE} WHERE {where}
             GROUP BY project_slug, kind
         """
-        rows = self.db_manager.execute_query(sql, tuple(params))
+        rows = self._read(sql, tuple(params), f"collection summary for {collection or 'all projects'}")
 
         _kind_key = {"class": "classes", "function": "functions", "method": "methods"}
         summary: dict[str, Any] = {}
@@ -57,7 +69,7 @@ class ReCodeSymbolReader:
         full_params: list = [kind] + params
         if not include_private:
             sql += " AND is_private = 0"
-        rows = self.db_manager.execute_query(sql, tuple(full_params))
+        rows = self._read(sql, tuple(full_params), f"count of {kind}s in {collection or 'all projects'}")
         return rows[0]["count"] if rows else 0
 
     def list_classes(self, collection: Optional[str] = None, include_private: bool = False) -> list[dict]:
@@ -70,7 +82,7 @@ class ReCodeSymbolReader:
             WHERE kind = 'class' AND {where}{priv}
             ORDER BY name
         """
-        return self.db_manager.execute_query(sql, tuple(params))
+        return self._read(sql, tuple(params), f"classes in {collection or 'all projects'}")
 
     def methods_for_class(self, class_name: str, collection: Optional[str] = None, include_private: bool = False) -> list[dict]:
         where, params = scope_clause(collection)
@@ -81,7 +93,7 @@ class ReCodeSymbolReader:
             WHERE kind = 'method' AND parent_class = %s AND {where}{priv}
             ORDER BY name
         """
-        return self.db_manager.execute_query(sql, tuple([class_name] + params))
+        return self._read(sql, tuple([class_name] + params), f"methods of {class_name}")
 
     def search_symbols(self, name_pattern: str, collection: Optional[str] = None, kind: Optional[str] = None, limit: int = 20) -> list[dict]:
         where, params = scope_clause(collection)
@@ -95,7 +107,7 @@ class ReCodeSymbolReader:
             ORDER BY project_slug, kind, name
             LIMIT %s
         """
-        return self.db_manager.execute_query(sql, tuple(full_params))
+        return self._read(sql, tuple(full_params), f"symbols matching {name_pattern}")
 
     def most_complex(self, collection: Optional[str] = None, limit: int = 10) -> list[dict]:
         where, params = scope_clause(collection)
@@ -106,7 +118,7 @@ class ReCodeSymbolReader:
             WHERE kind IN ('function','method') AND {where}
             ORDER BY complexity DESC LIMIT %s
         """
-        return self.db_manager.execute_query(sql, tuple(params + [limit]))
+        return self._read(sql, tuple(params + [limit]), f"most complex in {collection or 'all projects'}")
 
     def largest_classes(self, collection: Optional[str] = None, limit: int = 10) -> list[dict]:
         where, params = scope_clause(collection, table_alias="s")
@@ -121,7 +133,7 @@ class ReCodeSymbolReader:
             WHERE s.kind = 'class' AND {where}
             ORDER BY method_count DESC LIMIT %s
         """
-        return self.db_manager.execute_query(sql, tuple(params + [limit]))
+        return self._read(sql, tuple(params + [limit]), f"largest classes in {collection or 'all projects'}")
 
 
 _reader: ReCodeSymbolReader | None = None
