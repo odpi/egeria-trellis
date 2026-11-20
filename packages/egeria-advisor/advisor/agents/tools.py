@@ -99,7 +99,7 @@ _RETRIEVAL: "contextvars.ContextVar[Optional[dict]]" = contextvars.ContextVar("e
 def recording_retrieval():
     """`with recording_retrieval() as log:` -- every _search_egeria_content_raw and record_lookup inside records its
     hits and time."""
-    log = {"sources": [], "seconds": 0.0, "searches": 0, "methods": []}
+    log = {"sources": [], "seconds": 0.0, "searches": 0, "unmeasured": 0, "methods": []}
     token = _RETRIEVAL.set(log)
     try:
         yield log
@@ -116,7 +116,12 @@ def _source_of(r) -> dict:
 
 
 def _note(log: dict, method: str, seconds: float, sources) -> None:
-    log["seconds"] += seconds
+    # TR-98: `seconds` is None for a read whose time was not measured (the cached metrics file): it adds nothing and is counted
+    # apart, so an answer from such reads alone reports its time as not measured, not 0.0.
+    if seconds is None:
+        log["unmeasured"] = log.get("unmeasured", 0) + 1
+    else:
+        log["seconds"] += seconds
     log["searches"] += 1
     if method not in log["methods"]:
         log["methods"].append(method)
@@ -156,8 +161,16 @@ def with_retrieval(result: dict, log: Optional[dict]) -> dict:
             seen.add(key)
             sources.append(src)
     scores = [s["score"] for s in sources if isinstance(s.get("score"), (int, float))]
+    # TR-98: reads whose time was not measured add nothing; when EVERY read was unmeasured the time is None (not measured),
+    # never a made-up 0.0. A read that really took 0.0 s was measured and stays 0.0.
+    if not log["searches"]:
+        final_retrieval_time = result.get("retrieval_time", 0.0)
+    elif log["searches"] == log.get("unmeasured", 0):
+        final_retrieval_time = None
+    else:
+        final_retrieval_time = log["seconds"]
     return {**result, "sources": sources, "num_sources": len(sources), "retrieval_method": method,
-            "retrieval_time": log["seconds"] if log["searches"] else result.get("retrieval_time", 0.0),
+            "retrieval_time": final_retrieval_time,
             "avg_relevance_score": (sum(scores) / len(scores)) if scores else result.get("avg_relevance_score", 0.0)}
 
 

@@ -29,6 +29,8 @@ class AnalyticsManager:
         # The cached metrics files actually loaded, so an answer from them can say so (TR-51 d).
         self.stats_file: Optional[Path] = None
         self.directory_stats_file: Optional[Path] = None
+        # Track why stats failed (TR-98 absence-as-answer)
+        self.stats_problem: Optional[str] = None
         self._load_statistics()
         self._load_directory_statistics()
     
@@ -43,6 +45,8 @@ class AnalyticsManager:
             if not summary_file.exists():
                 logger.warning(f"Statistics file not found: {enhanced_file}")
                 self.stats = {}
+                self.stats_problem = (f"no metrics file found: looked for {enhanced_file.name} and {summary_file.name} "
+                                      f"in {self.cache_dir}")
                 return
             enhanced_file = summary_file
         
@@ -83,10 +87,14 @@ class AnalyticsManager:
                     self.stats = data.get("statistics", {})
                     
             self.stats_file = enhanced_file if self.stats else None
+            if not self.stats:
+                # A file that parses but carries no statistics measured nothing: not a zero (TR-98).
+                self.stats_problem = f"{enhanced_file.name} holds no statistics"
             logger.info(f"Loaded statistics from {enhanced_file}")
         except Exception as e:
             logger.error(f"Failed to load statistics: {e}")
             self.stats = {}
+            self.stats_problem = f"failed to read metrics file: {e}"
     
     def _load_directory_statistics(self):
         """Load per-directory statistics from cache."""
@@ -422,6 +430,10 @@ class AnalyticsManager:
         # as its source (nothing, when no file was loaded).
         self._record_cache_read(path_filter)
 
+        # TR-98: If stats failed to load, return "not measured" instead of 0 counts
+        if self.stats_problem:
+            return f"Codebase metrics were not measured ({self.stats_problem})."
+
         # Detect what the user is asking about
         if "how many class" in query_lower:
             count = self.get_total_classes(path_filter)
@@ -524,7 +536,7 @@ class AnalyticsManager:
         from advisor.agents.tools import lookup_source, record_lookup
         files = [f for f in (self.stats_file, self.directory_stats_file if path_filter else None) if f]
         if files:
-            record_lookup("analytics_cache", 0.0, [lookup_source("analytics_cache", str(f), f.name,
+            record_lookup("analytics_cache", None, [lookup_source("analytics_cache", str(f), f.name,
                                                                  "cached codebase metrics", kind="metrics_file")
                                                    for f in files])
 
