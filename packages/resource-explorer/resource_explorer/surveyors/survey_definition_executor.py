@@ -1495,9 +1495,14 @@ class SurveyDefinitionExecutor:
         try:
             # Status is "error" only if there are actual errors, not cancelled steps.
             # A run with only cancelled steps is stored as "ok" (no errors).
-            has_errors = bool(errors)
-            status = "error" if has_errors else "ok"
-            summary=f"{survey_def.display_name}: {steps_summary(steps_report, errors)}"
+            from resource_explorer.workflows.survey_definition import (
+                _status_and_summary_for_cancelled_steps,
+            )
+            
+            # Use helper to determine status and summary based on errors, cancellations, and completed steps
+            status, summary = _status_and_summary_for_cancelled_steps(errors, cancelled_count, steps_report)
+            # Prepend survey definition name to match existing format
+            summary = f"{survey_def.display_name}: {summary}"
             survey_entry = log_survey(
                 self.registry, entity_type, slug,
                 getattr(entity, "display_name", "") or slug,

@@ -65,3 +65,12 @@ test('the status filter treats a cancelled-only run as ok, so it is not found un
   assert.match(of('c3').tone, /text-state-ok/);
   assert.match(of('e2').tone, /text-state-warn/);
 });
+
+test('a run where all steps are cancelled is stored with status "cancelled" and shows neutral tone', async () => {
+  const { of } = await render([row('c4', 'cancelled', 'Cancelled · 1 step cancelled, nothing measured')]);
+  const r = of('c4');
+  assert.match(r.text, /Cancelled · 1 step cancelled, nothing measured/);
+  // Neutral tone (not ok, not warn/error)
+  assert.doesNotMatch(r.tone, /text-state-ok/);
+  assert.doesNotMatch(r.tone, /text-state-warn/);
+});
