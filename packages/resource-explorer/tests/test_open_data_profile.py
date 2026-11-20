@@ -82,7 +82,7 @@ def _by_title(out):
 
 def test_the_price_line_is_an_upper_bound_stated_before_the_press():
     assert profile.profile_price(3)["line"].startswith("3 datasets × up to 6 calls")
-    assert "capped at 50 MB" in profile.profile_price(3)["line"]
+    assert "capped at 52.4 MB" in profile.profile_price(3)["line"]
     assert profile.profile_price(1)["line"].startswith("1 dataset × up to 6 calls")
 
 
@@ -111,7 +111,7 @@ def test_a_file_that_turns_out_longer_than_the_cap_is_also_not_profiled(store, l
     out, _ = _run(store, listed)
     c = next(d for d in out["datasets"] if "child" in d["slug"])
     only = c["distributions"][0]
-    assert only["state"] == profile.OVER_CAP and "longer than the 50 MB cap" in only["words"]
+    assert only["state"] == profile.OVER_CAP and "longer than the 52.4 MB cap" in only["words"]
     assert c["outcome"] == "not_profiled"
 
 

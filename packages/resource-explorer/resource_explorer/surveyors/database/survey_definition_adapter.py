@@ -27,6 +27,8 @@ docs/design-notes/EXECUTION-MODES-HYBRID-CLARIFICATION.md. Unlike the plain
 """
 from __future__ import annotations
 
+from resource_explorer.byte_format import format_bytes
+
 import json
 import logging
 from datetime import datetime, timezone
@@ -3111,16 +3113,8 @@ def _grain_determination_container_headline(registry, slug: str) -> dict | None:
 
 
 def _format_bytes(n: int) -> str:
-    """Same thresholds as every other byte-formatting spot in this codebase
-    (KB/MB/GB, 1024-based) — kept local rather than imported to avoid a new
-    cross-module dependency for one three-line function; consolidate if a
-    third caller shows up."""
-    value = float(n)
-    for unit in ("bytes", "KB", "MB", "GB", "TB"):
-        if value < 1024 or unit == "TB":
-            return f"{value:,.0f} {unit}" if unit == "bytes" else f"{value:,.1f} {unit}"
-        value /= 1024
-    return f"{value:,.1f} TB"
+    """Decimal units (TR-81), through the one shared formatter."""
+    return format_bytes(n, bytes_word="bytes")
 
 
 DATABASE_ANALYSIS_RESULTS_MAP: dict[str, tuple] = {

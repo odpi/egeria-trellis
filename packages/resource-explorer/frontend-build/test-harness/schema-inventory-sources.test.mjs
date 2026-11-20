@@ -83,7 +83,7 @@ test('every schema and table row carries its source and as-of, and a filled fact
   assert.match(flat(s1.querySelector(':scope > div details > summary')), /not measured · not measured · columns not measured/);
   assert.doesNotMatch(flat(document.querySelector('#schema-tree')), /undefined|NaN|null column/);
   // a native schema carries no row total: the stamp says tables and size, not a made-up "0 row(s)"
-  assert.match(flat(s0.querySelector('summary')), /1 table\(s\) · 8\.0 KB|1 table\(s\) · 8 KB/);
+  assert.match(flat(s0.querySelector('summary')), /1 table\(s\) · 8\.2 KB/);
   assert.doesNotMatch(flat(s0.querySelector('summary')), /0 row\(s\)/);
 });
 

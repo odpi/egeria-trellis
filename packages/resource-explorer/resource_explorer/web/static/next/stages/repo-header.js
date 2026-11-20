@@ -21,6 +21,7 @@
  * `delete-in-egeria`) are not reachable from here. Republish and resurvey WRITE a new report to Egeria, so
  * they ask first; discard writes nothing to Egeria.
  */
+import { fmtBytesDecimal } from '/static/next/stages/native-report.js';
 import { stateEntry } from '/static/next/glyphs.js';
 import { LINK_ACTIONS } from '/static/next/link-actions.js';
 import { ago, PUBLISHED_EARLIER_WORD, publishedEarlierSentence } from '/static/next/format.js';
@@ -170,7 +171,7 @@ export function scoutingTilesHtml(ov) {
     tile('contributors', 'Contributors', num('contributors', ov.contributors_count)),
     tile('last_pushed', 'Last pushed', unread.has('last_pushed_at') ? cue() : esc(ago(ov.last_pushed_at) || ov.last_pushed_at),
       unread.has('last_pushed_at') ? '' : ov.last_pushed_at),
-    tile('size', 'Size', unread.has('repo_size_kb') ? cue(ZERO_PROVES_NOTHING_SENTENCE) : `${esc((ov.repo_size_kb / 1024).toFixed(1))} MB`),
+    tile('size', 'Size', unread.has('repo_size_kb') ? cue(ZERO_PROVES_NOTHING_SENTENCE) : `${esc(fmtBytesDecimal(ov.repo_size_kb * 1024))}`),
     tile('security', 'Security', unread.has('security_and_analysis') || !sec
       ? cue('GitHub shows security settings only to admins of the repository, or they have not been read yet.')
       : `${sec.on}/${sec.total} enabled`, sec ? sec.detail : ''),

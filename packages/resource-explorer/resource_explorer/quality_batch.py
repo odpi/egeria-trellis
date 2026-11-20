@@ -24,6 +24,8 @@ Three things are Q3's own:
 """
 from __future__ import annotations
 
+from resource_explorer.byte_format import format_bytes
+
 import json
 import logging
 import uuid
@@ -81,12 +83,7 @@ def _duration_words(seconds: float) -> str:
 
 
 def _bytes_words(n: int) -> str:
-    size = float(n)
-    for unit in ("bytes", "KB", "MB", "GB", "TB"):
-        if size < 1024 or unit == "TB":
-            return f"{int(size)} bytes" if unit == "bytes" else f"{size:.1f} {unit}"
-        size /= 1024
-    return f"{n} bytes"     # pragma: no cover - the loop always returns
+    return format_bytes(n, bytes_word="bytes")
 
 
 # ── The inventory ───────────────────────────────────────────────────────────────────────────────────────
