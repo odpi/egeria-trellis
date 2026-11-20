@@ -81,7 +81,7 @@ Filesystem Scouting Survey
 GovActionProcess::FilesystemScoutingSurvey
 
 ### Description
-Walks the folder and records what is there: how many files and folders, their sizes, hidden files, links and timestamps. No file is opened. It then reads only what that walk stored to say whether the folder has a recognisable structure (a project, a dataset layout, an archive, backups) and how much changed since the previous walk. Cheap, and nothing is written into the folder. Resource Explorer leads this definition: when Egeria can read the folder, Egeria's Folder Survey leads and is run from the file system's folder-survey card, and this definition's walk stops and says so. A step that has not run shows "Not yet run", never an empty answer.
+Walks the folder and records what is there: how many files and folders, their sizes, hidden files, links and timestamps. No file is opened. It then reads only what that walk stored to say whether the folder has a recognisable structure (a project, a dataset layout, an archive, backups) and how much changed since the previous walk. Cheap, and nothing is written into the folder. This definition is Resource Explorer's own walk and does not run Egeria's Folder Survey. If Egeria can read the folder, run Egeria's Folder Survey from the file system's folder-survey card instead; this definition's walk then stops and says so. A step that has not run shows "Not yet run", never an empty answer.
 
 ### Additional Properties
 | Parameter Name | Parameter Value |

@@ -32,6 +32,8 @@ Run this whenever FILESYSTEM_STEP_REGISTRY, `filesystem_survey_types.csv` or an 
 execute the regenerated doc(s) against Egeria. After executing a regenerated doc against an *already-linked* process,
 run `uv run python scripts/reconcile_filesystem_survey_definition_links.py`: Dr.Egeria's "Link First/Next Process
 Step" commands are not idempotent (see `generate_repo_survey_definition.py` and `survey_definition_reconciler.py`).
+The two reconcilers load this module's SPECS at import, so a step that is not runnable raises SurveyTypesCsvError
+there too (the same as the database batch).
 The overwrite guard (a sha256 sidecar, `.generated_filesystem.json`) and `RE_SURVEY_DEFS_DIR` are the database
 generator's, unchanged.
 """
