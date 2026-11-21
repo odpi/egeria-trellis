@@ -122,7 +122,7 @@ ENV PATH="/app/.venv/bin:${PATH}" \
     OLLAMA_BASE_URL=http://host.docker.internal:11434
 
 COPY --from=builder --chown=trellis:trellis /app/.venv /app/.venv
-COPY --from=builder --chown=trellis:trellis /app/hf-cache /app/.cache/huggingface
+COPY --from=builder --chown=trellis:0 --chmod=g=u /app/hf-cache /app/.cache/huggingface
 COPY --chown=trellis:trellis packages/egeria-advisor packages/egeria-advisor
 COPY --chown=trellis:trellis packages/trellis-microflow packages/trellis-microflow
 COPY --chown=trellis:trellis packages/trellis-vectorstore packages/trellis-vectorstore
@@ -150,7 +150,15 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 # Writable runtime data for the non-root user: caches, feedback, per-user
 # document namespaces, cloned survey checkouts. Mount a volume here in
 # compose; a named volume inherits this ownership on first use.
-RUN mkdir -p /app/data && chown trellis:trellis /app/data
+# TR-112c: the same image also runs under an arbitrary UID with GID 0 (OpenShift restricted-v2 assigns the UID and
+# always uses GID 0). Every written path is therefore group 0 with g=u: the data dir, HOME (the user's own caches and
+# config; the arbitrary UID has no passwd entry, so HOME is set explicitly), and the model cache. Compose and
+# docker run keep running as trellis (1000:1000) unchanged.
+ENV HOME=/home/trellis
+RUN mkdir -p /app/data /home/trellis/.cache \
+    && chown -R trellis:0 /app/data /home/trellis \
+    && chmod -R g=u /app/data /home/trellis \
+    && chown trellis:0 /app/.cache /app/.cache/huggingface && chmod g=u /app/.cache /app/.cache/huggingface
 ENV ADVISOR_DATA_PATH=/app/data
 USER trellis
 
