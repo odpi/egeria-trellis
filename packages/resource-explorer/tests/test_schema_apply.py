@@ -161,3 +161,52 @@ def test_bad_mode_is_refused(tmp_path, monkeypatch):
     monkeypatch.setenv("RE_SCHEMA_MODE", "sometimes")
     with pytest.raises(ValueError, match="RE_SCHEMA_MODE"):
         ProjectRegistry(database_url=f"sqlite:///{tmp_path/'x.db'}")
+
+
+# ── the fingerprint follows what _init_schema imports (TR-112b read-back W1) ─────────────────────────────────
+
+def _fp(mutate=None):
+    from resource_explorer import schema_fingerprint as sf
+
+    def source_of(name):
+        src = sf.default_source(name)
+        return mutate(name, src) if (mutate and src is not None) else src
+    return sf.fingerprint("resource_explorer.registry", "ProjectRegistry", source_of=source_of)
+
+
+def _edit_in_definition(module, name):
+    """Mutate the first string or int literal inside the top-level definition of `name` in `module`."""
+    import ast
+
+    def m(mod, src):
+        if mod != module:
+            return src
+        node = next(n for n in ast.parse(src).body
+                    if (isinstance(n, (ast.FunctionDef, ast.ClassDef)) and n.name == name)
+                    or (isinstance(n, ast.Assign) and any(getattr(t, "id", None) == name for t in n.targets)))
+        doc = node.body[0] if getattr(node, "body", None) and isinstance(node.body, list) else None
+        const = next(c for c in ast.walk(node) if isinstance(c, ast.Constant) and isinstance(c.value, str)
+                     and c is not getattr(doc, "value", None) and c.value)
+        seg = ast.get_source_segment(src, const)
+        q = 3 if seg.endswith(('"""', "'''")) else 1
+        return src.replace(seg, seg[:-q] + "X" + seg[-q:], 1)   # one extra character inside a string literal
+    return m
+
+
+def test_fingerprint_is_stable_and_ignores_docstrings_and_comments():
+    base = _fp()
+    assert base == _fp()
+    assert base == _fp(lambda n, s: s.replace('"""Run `_init_schema` and log exactly one INFO line',
+                                               '"""Changed words. Run `_init_schema` and log exactly one INFO line')
+                       if n == "resource_explorer.registry" else s)
+    assert base == _fp(lambda n, s: s + "\n# a comment\n" if n == "resource_explorer.open_data.schema" else s)
+
+
+@pytest.mark.parametrize("module,name", [
+    ("resource_explorer.open_data.schema", "ADD_REPO_SLUG_COLUMN"),      # from ... import in _migrate_open_data_tables
+    ("resource_explorer.open_data.schema", "STATEMENTS"),
+    ("resource_explorer.surveyors.survey_report", "ANNOTATION_TYPES_REGISTRY"),   # imported inside _init_schema
+    ("resource_explorer.github.org_importer", "_url_to_slug"),                   # an imported helper function
+])
+def test_fingerprint_moves_when_imported_schema_code_changes(module, name):
+    assert _fp() != _fp(_edit_in_definition(module, name)), f"{module}.{name} is not in the fingerprint"

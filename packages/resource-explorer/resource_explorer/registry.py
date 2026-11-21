@@ -293,7 +293,12 @@ class InvestigationPublishRunning(RuntimeError):
 
 
 class SchemaNotReady(RuntimeError):
-    """RE_SCHEMA_MODE=external and the registry schema is not at this code's version (TR-112b)."""
+    """RE_SCHEMA_MODE=external and the registry schema is not at this code's version (TR-112b).
+
+    Scope: this covers the registry (`ProjectRegistry`) only. Four other stores still run their own DDL on first use,
+    even in external mode: the metrics collector, trellis_feedback, trellis_vectorstore (including
+    `CREATE EXTENSION vector`) and trellis_artifact_tree. Bringing them under the schema Job is TR-115
+    (TR-112b part 2)."""
 
 
 SCHEMA_MODES = ("auto", "external")
@@ -2559,53 +2564,12 @@ class ProjectRegistry:
 
     @classmethod
     def schema_fingerprint(cls) -> str:
-        """Hash of the schema-defining code: `_init_schema`, every `self.` method and class constant it reaches,
-        and every module-level name those use. Comments, blank lines and docstrings do not change it; any SQL or
-        migration change does."""
-        import ast
-        import hashlib
-        import inspect
-        import textwrap
+        """Hash of the schema-defining code, including what `_init_schema` imports (see schema_fingerprint.py)."""
         cached = cls.__dict__.get("_schema_fingerprint_cache")
         if cached:
             return cached
-        mod = ast.parse(inspect.getsource(inspect.getmodule(cls)))
-        top = {}
-        for node in mod.body:
-            if isinstance(node, ast.Assign):
-                for t in node.targets:
-                    if isinstance(t, ast.Name):
-                        top[t.id] = node
-            elif isinstance(node, ast.ClassDef) and node.name == cls.__name__:
-                klass = node
-        methods = {n.name: n for n in klass.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
-        consts = {t.id: n for n in klass.body if isinstance(n, ast.Assign) for t in n.targets if isinstance(t, ast.Name)}
-
-        def strip_doc(fn):
-            if fn.body and isinstance(fn.body[0], ast.Expr) and isinstance(getattr(fn.body[0], "value", None), ast.Constant) \
-                    and isinstance(fn.body[0].value.value, str):
-                fn.body = fn.body[1:] or [ast.Pass()]
-            return fn
-
-        todo, seen, parts, mod_seen = ["_init_schema"], set(), [], set()
-        while todo:
-            name = todo.pop()
-            if name in seen:
-                continue
-            seen.add(name)
-            node = methods.get(name) or consts.get(name)
-            if node is None:
-                continue
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                node = strip_doc(node)
-            parts.append(f"{name}:{ast.dump(node)}")
-            for sub in ast.walk(node):
-                if isinstance(sub, ast.Attribute) and isinstance(sub.value, ast.Name) and sub.value.id in ("self", "cls", cls.__name__):
-                    todo.append(sub.attr)
-                elif isinstance(sub, ast.Name) and sub.id in top and sub.id not in mod_seen:
-                    mod_seen.add(sub.id)
-                    parts.append(f"{sub.id}:{ast.dump(top[sub.id])}")
-        digest = hashlib.sha256("\n".join(sorted(parts)).encode()).hexdigest()
+        from resource_explorer.schema_fingerprint import fingerprint
+        digest = fingerprint(__name__, cls.__name__)
         cls._schema_fingerprint_cache = digest
         return digest
 
