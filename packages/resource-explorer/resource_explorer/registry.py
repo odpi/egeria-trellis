@@ -292,10 +292,25 @@ class InvestigationPublishRunning(RuntimeError):
         self.slug, self.running = slug, running
 
 
+class SchemaNotReady(RuntimeError):
+    """RE_SCHEMA_MODE=external and the registry schema is not at this code's version (TR-112b).
+
+    Scope: this covers the registry (`ProjectRegistry`) only. Four other stores still run their own DDL on first use,
+    even in external mode: the metrics collector, trellis_feedback, trellis_vectorstore (including
+    `CREATE EXTENSION vector`) and trellis_artifact_tree. Bringing them under the schema Job is TR-115
+    (TR-112b part 2)."""
+
+
+SCHEMA_MODES = ("auto", "external")
+
+
 class ConnectionWrapper:
-    def __init__(self, raw_conn, is_postgres: bool):
+    def __init__(self, raw_conn, is_postgres: bool, statement_counter: "list[int] | None" = None):
         self.raw_conn = raw_conn
         self.is_postgres = is_postgres
+        # [n]: when set, every statement sent through this connection's cursors adds one (schema apply counts
+        # the setup this way). None for every ordinary connection.
+        self.statement_counter = statement_counter
 
     def __enter__(self):
         return self
@@ -325,16 +340,22 @@ class ConnectionWrapper:
     def cursor(self):
         raw_cursor = self.raw_conn.cursor()
         if self.is_postgres:
-            return PostgresCursorWrapper(raw_cursor)
+            w = PostgresCursorWrapper(raw_cursor)
         else:
-            return SQLiteCursorWrapper(raw_cursor)
+            w = SQLiteCursorWrapper(raw_cursor)
+        w.statement_counter = self.statement_counter
+        return w
 
 
 class SQLiteCursorWrapper:
+    statement_counter = None
+
     def __init__(self, raw_cursor):
         self.raw_cursor = raw_cursor
 
     def execute(self, sql: str, params: Any = None):
+        if self.statement_counter is not None:
+            self.statement_counter[0] += 1
         if params is None:
             self.raw_cursor.execute(sql)
         else:
@@ -705,6 +726,8 @@ API_REFERENCE_DDL = (
 
 
 class PostgresCursorWrapper:
+    statement_counter = None
+
     def __init__(self, raw_cursor):
         self.raw_cursor = raw_cursor
 
@@ -728,6 +751,8 @@ class PostgresCursorWrapper:
         return sql_trans
 
     def execute(self, sql: str, params: Any = None):
+        if self.statement_counter is not None:
+            self.statement_counter[0] += 1
         sql_trans = self._translate_sql(sql)
         if params is None:
             self.raw_cursor.execute(sql_trans)
@@ -1964,8 +1989,25 @@ class ProjectRegistry:
     # the full URL internally; only the credential-free label is ever logged.
     _opened_logged: set[str] = set()
 
+    @classmethod
+    def open_for_schema_apply(cls, **kwargs) -> "ProjectRegistry":
+        """A registry that builds its engine and runs neither the setup nor the marker check: the apply command's.
+        The mode is passed to the instance, never kept on the class (no shared state between threads, and a
+        patched ProjectRegistry class cannot leak into a constructor)."""
+        self = cls.__new__(cls)
+        self._construct(schema_mode="apply", **kwargs)
+        return self
+
     def __init__(self, db_path: str = "data/registry.db", database_url: str | None = None) -> None:
-        """database_url, when given, is used verbatim — bypassing the
+        self._construct(db_path, database_url)
+
+    def _construct(self, db_path: str = "data/registry.db", database_url: str | None = None,
+                   schema_mode: str | None = None) -> None:
+        """The schema mode (TR-112b) comes from RE_SCHEMA_MODE. "auto" (the default) runs the schema setup here, as
+        always. "external" never runs DDL: it checks the schema-version marker that `resource-explorer schema apply`
+        wrote and raises SchemaNotReady when it is missing or for other code.
+
+        database_url, when given, is used verbatim — bypassing the
         db_path sentinel/config-lookup logic below entirely. Added for the
         real-Postgres integration test tier (Phase 8): db_path's own
         sentinel special-casing has no way to point a ProjectRegistry at an
@@ -1973,6 +2015,13 @@ class ProjectRegistry:
         without either mutating global config or forcing SQLite.
         """
         self.db_path = db_path
+        import os as _os
+        if schema_mode is None:
+            # "apply" is private to open_for_schema_apply's parameter: the environment value may only be auto or external.
+            schema_mode = (_os.environ.get("RE_SCHEMA_MODE") or "auto").strip().lower()
+            if schema_mode not in SCHEMA_MODES:
+                raise ValueError(f"RE_SCHEMA_MODE must be one of {', '.join(SCHEMA_MODES)}, not {schema_mode!r}")
+        self.schema_mode = schema_mode
         if database_url is not None:
             self.database_url = database_url
         elif db_path == "data/registry.db":
@@ -2067,15 +2116,14 @@ class ProjectRegistry:
             if self.database_url not in ProjectRegistry._pg_schema_ready:
                 with ProjectRegistry._pg_cache_lock:
                     if self.database_url not in ProjectRegistry._pg_schema_ready:
-                        self._run_schema_setup()
-                        ProjectRegistry._pg_schema_ready.add(self.database_url)
-                        ran_schema_init = True
+                        ran_schema_init = self._schema_at_start()
+                        if self.schema_mode != "apply":
+                            ProjectRegistry._pg_schema_ready.add(self.database_url)
         else:
             self.engine = create_engine(
                 self.database_url, pool_pre_ping=True, pool_recycle=1800,
             )
-            self._run_schema_setup()
-            ran_schema_init = True
+            ran_schema_init = self._schema_at_start()
         _elapsed_ms = (_time.perf_counter() - _t0) * 1000
         if _elapsed_ms > 5:
             from resource_explorer.registry_label import describe_registry
@@ -2136,7 +2184,7 @@ class ProjectRegistry:
             # project_analysis_metrics succeeds; with it on the same statement
             # raises IntegrityError, matching Postgres.
             raw_conn.execute("PRAGMA foreign_keys=ON")
-        conn = ConnectionWrapper(raw_conn, is_postgres)
+        conn = ConnectionWrapper(raw_conn, is_postgres, getattr(self, "_statement_counter", None))
         try:
             yield conn
             conn.commit()
@@ -2504,6 +2552,88 @@ class ProjectRegistry:
                     "AND name NOT LIKE 'sqlite_%'"
                 ).fetchall()
         return {r[0] for r in rows}
+
+    # ── TR-112b: schema apply, the version marker, RE_SCHEMA_MODE ─────────────────────────────────────────────
+    _SCHEMA_ADVISORY_LOCK = 7_112_002
+
+    def _schema_at_start(self) -> bool:
+        """What construction does about the schema: True when it ran the setup."""
+        if self.schema_mode == "auto":
+            self._run_schema_setup()
+            return True
+        if self.schema_mode == "external":
+            self._require_schema_marker()
+        return False
+
+    @classmethod
+    def schema_fingerprint(cls) -> str:
+        """Hash of the schema-defining code, including what `_init_schema` imports (see schema_fingerprint.py)."""
+        cached = cls.__dict__.get("_schema_fingerprint_cache")
+        if cached:
+            return cached
+        from resource_explorer.schema_fingerprint import fingerprint
+        digest = fingerprint(__name__, cls.__name__)
+        cls._schema_fingerprint_cache = digest
+        return digest
+
+    _MARKER_DDL = ("CREATE TABLE IF NOT EXISTS schema_version ("
+                   "id INTEGER PRIMARY KEY, schema_hash TEXT NOT NULL, statements INTEGER NOT NULL, applied_at TEXT NOT NULL)")
+
+    def _read_schema_marker(self):
+        """(hash, statements) from the marker row, or None when the table or row is missing."""
+        try:
+            with self._conn() as conn:
+                if self.database_url.startswith("postgresql"):
+                    found = conn.execute(
+                        "SELECT 1 FROM information_schema.tables WHERE table_schema = ? AND table_name = 'schema_version'",
+                        (self._search_path_schema(),)).fetchone()
+                    if not found:
+                        return None
+                row = conn.execute("SELECT schema_hash, statements FROM schema_version WHERE id = 1").fetchone()
+        except Exception:  # noqa: BLE001 - SQLite without the table
+            return None
+        return (row[0], int(row[1])) if row else None
+
+    def _require_schema_marker(self) -> None:
+        marker = self._read_schema_marker()
+        if marker is None or marker[0] != self.schema_fingerprint():
+            raise SchemaNotReady(
+                "the RE schema is not at this version: run `resource-explorer schema apply` (the chart's schema Job) first. "
+                + ("No schema-version marker was found." if marker is None else "The marker is for other code.")
+                + " RE_SCHEMA_MODE=external never runs DDL.")
+
+    def schema_apply(self) -> tuple[int, float]:
+        """Run the schema setup once, write the marker, and return (statements, seconds). When the marker already
+        matches this code nothing is sent but the marker read, and the stored statement count is returned. A
+        Postgres advisory lock makes concurrent Jobs take turns, so the second finds the marker and does nothing."""
+        import time as _t
+        t0 = _t.perf_counter()
+        lock_conn = None
+        if self.database_url.startswith("postgresql"):
+            lock_conn = self.engine.raw_connection()
+            lock_conn.cursor().execute("SELECT pg_advisory_lock(%s)", (self._SCHEMA_ADVISORY_LOCK,))
+        try:
+            marker = self._read_schema_marker()
+            if marker is not None and marker[0] == self.schema_fingerprint():
+                return marker[1], _t.perf_counter() - t0
+            self._statement_counter = [0]
+            try:
+                self._run_schema_setup()
+                with self._conn() as conn:
+                    conn.execute(self._MARKER_DDL)
+                setup_statements = self._statement_counter[0] + 1
+            finally:
+                self._statement_counter = None
+            from datetime import datetime, timezone
+            with self._conn() as conn:
+                conn.execute("DELETE FROM schema_version WHERE id = 1")
+                conn.execute("INSERT INTO schema_version (id, schema_hash, statements, applied_at) VALUES (1, ?, ?, ?)",
+                             (self.schema_fingerprint(), setup_statements, datetime.now(timezone.utc).isoformat()))
+            return setup_statements, _t.perf_counter() - t0
+        finally:
+            if lock_conn is not None:
+                lock_conn.cursor().execute("SELECT pg_advisory_unlock(%s)", (self._SCHEMA_ADVISORY_LOCK,))
+                lock_conn.close()
 
     def _run_schema_setup(self) -> None:
         """Run `_init_schema` and log exactly one INFO line saying what it

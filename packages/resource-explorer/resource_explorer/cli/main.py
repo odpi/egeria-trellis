@@ -52,6 +52,26 @@ def _announce_registry() -> None:
     typer.echo(describe_registry(url), err=True)
 
 
+# ── schema (TR-112b) ─────────────────────────────────────────────────────────
+
+schema_app = typer.Typer(help="The registry's database schema.", no_args_is_help=True)
+app.add_typer(schema_app, name="schema")
+
+
+@schema_app.command("apply")
+def schema_apply() -> None:
+    """Create or update the registry schema and write its version marker, then exit 0.
+
+    Same database URL as `web`, including `?options=-csearch_path=...`. A second run sends no DDL and
+    prints the same line. A chart runs this as a Job before the pods start with RE_SCHEMA_MODE=external.
+    """
+    from resource_explorer.registry import ProjectRegistry
+
+    n, secs = ProjectRegistry.open_for_schema_apply().schema_apply()
+    elapsed = f"{secs * 1000:.0f} ms" if secs < 1 else f"{secs:.1f} s"
+    typer.echo(f"schema ready · {n} statements · {elapsed}")
+
+
 # ── sign in / sign out ───────────────────────────────────────────────────────
 #
 # `docs/runtime-architecture-plan.md` §4: Egeria is the identity provider, its
