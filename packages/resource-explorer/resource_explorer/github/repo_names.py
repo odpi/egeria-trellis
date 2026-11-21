@@ -9,17 +9,22 @@ from __future__ import annotations
 
 import re
 
-# https://host/owner/repo[.git][/]   ssh://git@host/owner/repo[.git]   git@host:owner/repo[.git]
-_PATH = re.compile(r"^(?:[a-z][a-z0-9+.-]*://(?:[^/@]+@)?[^/]+/|[^/@\s]+@[^:/\s]+:)(?P<path>.+)$", re.I)
+# https://host/owner/repo[.git]   ssh://git@host/owner/repo[.git]   git@host:owner/repo[.git]
+_PATH = re.compile(
+    r"^(?:[a-z][a-z0-9+.-]*://(?:[^/@]+@)?(?P<host>[^/:]+)(?::\d+)?/|[^/@\s]+@(?P<shost>[^:/\s]+):)(?P<path>.+)$", re.I)
+_HOST = "github.com"
 
 
 def repo_display_name(github_url: str) -> str | None:
-    """`owner/repo` from a repository URL, `.git` and trailing slashes removed; None when the URL has
-    no owner and repo (the caller decides what to fall back to; nothing is guessed here)."""
+    """`owner/repo` from a GitHub repository URL, `.git`, trailing slashes, `?query` and `#fragment` removed.
+
+    None when the URL has no owner and repo, or is not on github.com: another host's path shape (a GitLab
+    subgroup, say) is not owner/repo, so the caller falls back rather than publishing a wrong name."""
     m = _PATH.match((github_url or "").strip())
-    if not m:
+    if not m or (m.group("host") or m.group("shost") or "").lower() != _HOST:
         return None
-    parts = [p for p in m.group("path").split("/") if p]
+    path = re.split(r"[?#]", m.group("path"), maxsplit=1)[0]
+    parts = [p for p in path.split("/") if p]
     if len(parts) < 2:
         return None
     owner, repo = parts[0], parts[1].removesuffix(".git")

@@ -528,13 +528,18 @@ def test_the_display_name_is_read_from_the_asset_shape_and_absent_or_odd_answers
     ("ssh://git@github.com/odpi/egeria-python.git", "odpi/egeria-python"),
     ("https://token@github.com/odpi/egeria-python.git", "odpi/egeria-python"),
     ("https://github.com/odpi/egeria-python/tree/main", "odpi/egeria-python"),
+    ("https://github.com/odpi/egeria-python.git?ref=main", "odpi/egeria-python"),   # N1
+    ("https://github.com/odpi/egeria-python#readme", "odpi/egeria-python"),         # N1
+    ("https://github.com/odpi/egeria-python/?tab=x#y", "odpi/egeria-python"),       # N1
 ])
 def test_every_url_form_gives_owner_slash_repo(url, expected):
     from resource_explorer.github.repo_names import repo_display_name
     assert repo_display_name(url) == expected
 
 
-@pytest.mark.parametrize("url", ["", "https://github.com/odpi", "https://github.com/", "not a url", "git@github.com:odpi"])
+@pytest.mark.parametrize("url", ["https://gitlab.com/group/sub/repo.git", "git@gitlab.com:group/sub/repo.git",       # N2
+                                 "https://example.test/owner/repo", "https://github.com.evil.test/odpi/egeria-python",
+                                 "", "https://github.com/odpi", "https://github.com/", "not a url", "git@github.com:odpi"])
 def test_a_url_with_no_owner_and_repo_gives_none_not_a_guess(url):
     from resource_explorer.github.repo_names import repo_display_name
     assert repo_display_name(url) is None
