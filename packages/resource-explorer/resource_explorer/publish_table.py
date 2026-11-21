@@ -559,6 +559,10 @@ def build_rows(registry, entity_type: str, slug: str, *, layer=None, entries: li
                         row.update(capped=True)
                         if not words:
                             row.update(value_words=f"{CAPPED_WORDS} {row['value_words']}")
+                        # Where the walk stopped, in the walk's own words ("capped at 100,000 entries"), when the result says.
+                        stopped = source.get("capped_words") if isinstance(source, dict) else ""
+                        if stopped:
+                            row.update(value_words=f"{row['value_words']} · {stopped}")
                 elsewhere = published_elsewhere(entry, m.name, engine_reports) or read_back_from_egeria(raw)
                 row["elsewhere"] = elsewhere
                 why = ""

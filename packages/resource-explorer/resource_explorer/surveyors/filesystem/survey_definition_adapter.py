@@ -454,15 +454,20 @@ def _re_walk_inventory(registry, slug: str) -> dict:
     Egeria publish proof and carries the walk's totals, else {}. An RE-led walk keeps its totals on that row and makes
     no per-entry rows, so reading only those said "not measured" over a file system RE had walked. A total the row does
     not carry stays None ("not measured"), never 0."""
+    from resource_explorer.registry import is_re_walk_row
+
     for row in registry.list_filesystem_surveys(slug):
-        sd = row.get("survey_data")
-        if row.get("source") == "egeria-published" or not isinstance(sd, dict) or sd.get("total_files") is None:
+        if not is_re_walk_row(row):
             continue
+        sd = row["survey_data"]
         at = sd.get("surveyed_at") or row.get("surveyed_at") or ""
         files, dirs = sd.get("total_files"), sd.get("total_directories")
+        limits = sd.get("walk_limits") or {}
         return {"entry_count": files + dirs if files is not None and dirs is not None else None,
                 "file_count": files, "directory_count": dirs, "data_file_count": sd.get("total_data_files"),
                 "total_size_bytes": sd.get("total_size_bytes"), "surveyed_at": at, "_run": {"surveyed_at": at},
+                # A walk that stopped at a limit is a lower bound, never the whole tree (the rows say "at least").
+                "capped": bool(limits.get("capped")), "capped_words": limits.get("capped_words") or "",
                 "detail": {"source": "re_walk"}}
     return {}
 
