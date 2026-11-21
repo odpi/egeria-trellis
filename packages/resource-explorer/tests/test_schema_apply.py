@@ -210,3 +210,52 @@ def test_fingerprint_is_stable_and_ignores_docstrings_and_comments():
 ])
 def test_fingerprint_moves_when_imported_schema_code_changes(module, name):
     assert _fp() != _fp(_edit_in_definition(module, name)), f"{module}.{name} is not in the fingerprint"
+
+
+# ── no class state: mocked and concurrent constructors (TR-112b gate b479) ──────────────────────────────────
+
+def test_a_patched_project_registry_class_cannot_leak_into_a_real_constructor(monkeypatch, tmp_path):
+    """The scheduler and scouting tests replace ProjectRegistry with a MagicMock. Reading the schema mode from class
+    state made a real constructor see that mock as its mode."""
+    from unittest.mock import MagicMock, patch
+    import resource_explorer.registry as r
+    real = r.ProjectRegistry
+    with patch.object(r, "ProjectRegistry", MagicMock(name="ProjectRegistry")):
+        # a registry built while the module attribute is a mock still works
+        inst = real(database_url=f"sqlite:///{tmp_path/'a.db'}")
+        assert inst.schema_mode == "auto"
+        applied = real.open_for_schema_apply(database_url=f"sqlite:///{tmp_path/'b.db'}")
+        assert applied.schema_mode == "apply"
+    # and the mocked class itself constructs and runs, as the scheduler and scouting paths use it
+    mocked = MagicMock(name="ProjectRegistry")
+    assert mocked().list_projects() is not None
+
+
+def test_two_threads_each_get_their_own_mode(tmp_path):
+    import threading
+    from resource_explorer.registry import ProjectRegistry
+    barrier = threading.Barrier(2)
+    got: dict[str, str] = {}
+
+    def applier():
+        barrier.wait()
+        got["apply"] = ProjectRegistry.open_for_schema_apply(database_url=f"sqlite:///{tmp_path/'x.db'}").schema_mode
+
+    def plain():
+        barrier.wait()
+        got["plain"] = ProjectRegistry(database_url=f"sqlite:///{tmp_path/'y.db'}").schema_mode
+
+    for _ in range(25):
+        got.clear()
+        ts = [threading.Thread(target=applier), threading.Thread(target=plain)]
+        [t.start() for t in ts]
+        [t.join() for t in ts]
+        assert got == {"apply": "apply", "plain": "auto"}
+        barrier.reset()
+
+
+def test_the_constructor_signature_is_unchanged():
+    import inspect
+    from resource_explorer.registry import ProjectRegistry
+    assert list(inspect.signature(ProjectRegistry.__init__).parameters)[1:] == ["db_path", "database_url"]
+    assert not hasattr(ProjectRegistry, "_schema_mode_override")

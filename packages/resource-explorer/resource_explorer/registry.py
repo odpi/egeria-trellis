@@ -1989,19 +1989,20 @@ class ProjectRegistry:
     # the full URL internally; only the credential-free label is ever logged.
     _opened_logged: set[str] = set()
 
-    # TR-112b: set only by `open_for_schema_apply`; the constructor signature stays (tests pin it).
-    _schema_mode_override: str | None = None
-
     @classmethod
     def open_for_schema_apply(cls, **kwargs) -> "ProjectRegistry":
-        """A registry that builds its engine and runs neither the setup nor the marker check: the apply command's."""
-        cls._schema_mode_override = "apply"
-        try:
-            return cls(**kwargs)
-        finally:
-            cls._schema_mode_override = None
+        """A registry that builds its engine and runs neither the setup nor the marker check: the apply command's.
+        The mode is passed to the instance, never kept on the class (no shared state between threads, and a
+        patched ProjectRegistry class cannot leak into a constructor)."""
+        self = cls.__new__(cls)
+        self._construct(schema_mode="apply", **kwargs)
+        return self
 
     def __init__(self, db_path: str = "data/registry.db", database_url: str | None = None) -> None:
+        self._construct(db_path, database_url)
+
+    def _construct(self, db_path: str = "data/registry.db", database_url: str | None = None,
+                   schema_mode: str | None = None) -> None:
         """The schema mode (TR-112b) comes from RE_SCHEMA_MODE. "auto" (the default) runs the schema setup here, as
         always. "external" never runs DDL: it checks the schema-version marker that `resource-explorer schema apply`
         wrote and raises SchemaNotReady when it is missing or for other code.
@@ -2015,7 +2016,7 @@ class ProjectRegistry:
         """
         self.db_path = db_path
         import os as _os
-        schema_mode = ProjectRegistry._schema_mode_override or (_os.environ.get("RE_SCHEMA_MODE") or "auto").strip().lower()
+        schema_mode = schema_mode or (_os.environ.get("RE_SCHEMA_MODE") or "auto").strip().lower()
         if schema_mode not in SCHEMA_MODES + ("apply",):
             raise ValueError(f"RE_SCHEMA_MODE must be one of {', '.join(SCHEMA_MODES)}, not {schema_mode!r}")
         self.schema_mode = schema_mode
