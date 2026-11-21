@@ -2016,9 +2016,11 @@ class ProjectRegistry:
         """
         self.db_path = db_path
         import os as _os
-        schema_mode = schema_mode or (_os.environ.get("RE_SCHEMA_MODE") or "auto").strip().lower()
-        if schema_mode not in SCHEMA_MODES + ("apply",):
-            raise ValueError(f"RE_SCHEMA_MODE must be one of {', '.join(SCHEMA_MODES)}, not {schema_mode!r}")
+        if schema_mode is None:
+            # "apply" is private to open_for_schema_apply's parameter: the environment value may only be auto or external.
+            schema_mode = (_os.environ.get("RE_SCHEMA_MODE") or "auto").strip().lower()
+            if schema_mode not in SCHEMA_MODES:
+                raise ValueError(f"RE_SCHEMA_MODE must be one of {', '.join(SCHEMA_MODES)}, not {schema_mode!r}")
         self.schema_mode = schema_mode
         if database_url is not None:
             self.database_url = database_url

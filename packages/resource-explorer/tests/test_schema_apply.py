@@ -157,6 +157,16 @@ def test_sqlite_apply_and_external(tmp_path, monkeypatch, sql_log):
     assert [s for s in sql_log if DDL.match(s)] == []
 
 
+def test_environment_value_apply_is_refused(tmp_path, monkeypatch):
+    """"apply" is reachable only through open_for_schema_apply, never from RE_SCHEMA_MODE: a web start with it would run
+    neither the setup nor the marker check."""
+    monkeypatch.setenv("RE_SCHEMA_MODE", "apply")
+    with pytest.raises(ValueError, match="auto, external"):
+        ProjectRegistry(database_url=f"sqlite:///{tmp_path/'x.db'}")
+    monkeypatch.delenv("RE_SCHEMA_MODE")
+    assert ProjectRegistry.open_for_schema_apply(database_url=f"sqlite:///{tmp_path/'y.db'}").schema_mode == "apply"
+
+
 def test_bad_mode_is_refused(tmp_path, monkeypatch):
     monkeypatch.setenv("RE_SCHEMA_MODE", "sometimes")
     with pytest.raises(ValueError, match="RE_SCHEMA_MODE"):
