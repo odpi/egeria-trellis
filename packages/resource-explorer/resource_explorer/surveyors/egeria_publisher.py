@@ -38,6 +38,7 @@ import os
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from resource_explorer.github.repo_names import repo_display_name
 from resource_explorer.egeria_timing import time_egeria_call
 from resource_explorer.surveyors.survey_report import SurveyResult
 from resource_explorer.config import egeria_platform_url, egeria_view_server  # noqa: E402,F401
@@ -899,7 +900,8 @@ class EgeriaPublisher:
             "class": "SourceControlLibraryProperties",
             "typeName": "SourceControlLibrary",
             "qualifiedName": qualified_name,
-            "displayName": result.project_display_name,
+            # owner/repo from the URL, whichever path registered the repository (TR-116).
+            "displayName": repo_display_name(result.github_url) or result.project_display_name,
             "description": f"GitHub repository: {result.github_url}",
             # The repo's own location, in the attribute Egeria defines for it (Referenceable.url).
             # additionalProperties["github_url"] is kept: existing consumers read it, and the duplication is cheap.

@@ -512,3 +512,69 @@ def test_the_display_name_is_read_from_the_asset_shape_and_absent_or_odd_answers
     egeria = FakeRepoEgeria()
     nameless = egeria.seed("SourceControlLibrary", QN)
     assert EgeriaPublisher._current_display_name(egeria.get_metadata_element_by_guid(nameless)) is None
+
+
+# ── TR-116: a repository's displayName is owner/repo, from its URL, whoever registered it ─────────────────────
+
+
+@pytest.mark.parametrize("url, expected", [
+    ("https://github.com/odpi/egeria-python.git", "odpi/egeria-python"),
+    ("https://github.com/odpi/egeria-python", "odpi/egeria-python"),
+    ("https://github.com/open-policy-agent/opa", "open-policy-agent/opa"),
+    ("https://github.com/odpi/egeria-python/", "odpi/egeria-python"),
+    ("https://github.com/odpi/egeria-python.git/", "odpi/egeria-python"),
+    ("git@github.com:odpi/egeria-python.git", "odpi/egeria-python"),
+    ("git@github.com:odpi/egeria-python", "odpi/egeria-python"),
+    ("ssh://git@github.com/odpi/egeria-python.git", "odpi/egeria-python"),
+    ("https://token@github.com/odpi/egeria-python.git", "odpi/egeria-python"),
+    ("https://github.com/odpi/egeria-python/tree/main", "odpi/egeria-python"),
+    ("https://github.com/odpi/egeria-python.git?ref=main", "odpi/egeria-python"),   # N1
+    ("https://github.com/odpi/egeria-python#readme", "odpi/egeria-python"),         # N1
+    ("https://github.com/odpi/egeria-python/?tab=x#y", "odpi/egeria-python"),       # N1
+])
+def test_every_url_form_gives_owner_slash_repo(url, expected):
+    from resource_explorer.github.repo_names import repo_display_name
+    assert repo_display_name(url) == expected
+
+
+@pytest.mark.parametrize("url", ["https://gitlab.com/group/sub/repo.git", "git@gitlab.com:group/sub/repo.git",       # N2
+                                 "https://example.test/owner/repo", "https://github.com.evil.test/odpi/egeria-python",
+                                 "", "https://github.com/odpi", "https://github.com/", "not a url", "git@github.com:odpi"])
+def test_a_url_with_no_owner_and_repo_gives_none_not_a_guess(url):
+    from resource_explorer.github.repo_names import repo_display_name
+    assert repo_display_name(url) is None
+
+
+@pytest.mark.parametrize("registered_as", ["egeria-python", "odpi/egeria-python", "Egeria Python"])
+@pytest.mark.parametrize("url", ["https://github.com/odpi/egeria-python.git", "git@github.com:odpi/egeria-python.git"])
+def test_the_published_name_does_not_depend_on_how_the_repository_was_registered(registered_as, url):
+    class R(_Result):
+        project_display_name = registered_as
+        github_url = url
+    egeria = FakeRepoEgeria()
+    guid = _publisher(egeria)._find_or_create_asset(R())
+    assert egeria.elements[guid]["props"]["displayName"] == "odpi/egeria-python"
+
+
+def test_a_url_with_no_owner_falls_back_to_the_registered_name():
+    class R(_Result):
+        github_url = "https://example.test/"
+        project_display_name = "kept"
+    egeria = FakeRepoEgeria()
+    guid = _publisher(egeria)._find_or_create_asset(R())
+    assert egeria.elements[guid]["props"]["displayName"] == "kept"
+
+
+def test_every_repository_publish_path_names_through_the_one_helper():
+    """The only place that builds a SourceControlLibrary body is the publisher's create, and it names it by the
+    helper; no other module creates one, and the registered display name is no longer the SCL's name."""
+    src = (PKG / "surveyors" / "egeria_publisher.py").read_text()
+    assert src.count('"class": "SourceControlLibraryProperties"') == 2  # create body + the language update, which sets no name
+    assert '"displayName": repo_display_name(result.github_url) or result.project_display_name' in src
+    assert not re.search(r'"displayName":\s*result\.project_display_name\s*,\s*\n\s*"description": f"GitHub repository', src)
+    makers = [p.name for p in PKG.rglob("*.py")
+              if "SourceControlLibraryProperties" in p.read_text() and p.name not in ("egeria_publisher.py",)]
+    # Anything else that names the class may only read or describe it, never build a body with a displayName.
+    for name in makers:
+        text = next(PKG.rglob(name)).read_text()
+        assert not re.search(r'"class":\s*"SourceControlLibraryProperties"', text), name
