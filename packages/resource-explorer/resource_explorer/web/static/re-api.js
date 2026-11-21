@@ -306,6 +306,10 @@ export const putFilesystemReviewVerdict = (slug, kind, key, verdict) =>
 /** Publish confirmed data-class matches to Egeria; answers `{ sent, added, nothing_new, words }`. */
 export const publishFilesystemDataClasses = (slug) =>
   post(`/api/filesystems/${encodeURIComponent(slug)}/review/publish-data-classes`);
+/** TR-87: a person's "Request action" on one file-system finding of one step run; its own endpoint, never the publish
+ *  choice's. Answers `{ nothing_new, annotation_guid, report_guid, words }`. */
+export const requestFilesystemFindingAction = (slug, step, finding, run_id) =>
+  post(`/api/filesystems/${encodeURIComponent(slug)}/findings/request-action`, { step, finding, run_id });
 /** Files build step 5: the data-file profiles (column rows per run), priced before the run. */
 export const runFileProfiles = (slug) => post(`/api/filesystems/${encodeURIComponent(slug)}/file-profiles`);
 export const readFileProfilesFromEgeria = (slug) =>

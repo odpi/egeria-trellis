@@ -296,7 +296,8 @@ def test_a_run_in_progress_of_any_document_refuses_the_completion(root, reg, mon
 def test_a_missing_canary_still_heals_the_whole_batch_as_before(root, reg, monkeypatch):
     """F55 touches only the present-canary branch: a verified-missing canary is F54's heal, every document."""
     _two_document_batch(root)
-    _canary(monkeypatch, False)
+    seq = [False, True]      # missing, then present after the heal (TR-111)
+    monkeypatch.setattr(bs, "canary_present", lambda b, expert=None: seq.pop(0) if len(seq) > 1 else seq[0])
     monkeypatch.setattr("resource_explorer.registry.ProjectRegistry", lambda *a, **k: reg)
     monkeypatch.setattr(bs, "created_element_present", lambda *a, **k: pytest.fail("the heal needs no element lookup"))
     RunnerFakes(monkeypatch)

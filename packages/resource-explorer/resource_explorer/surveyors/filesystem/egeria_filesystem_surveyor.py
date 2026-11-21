@@ -863,6 +863,77 @@ class EgeriaFileSystemSurveyor:
                                      source="egeria-published", executor="local", metrics=proof)
         return proof
 
+    def request_action_for_finding(self, fs_entity: FileSystemEntity, found: dict, requested_by: str,
+                                   registry: ProjectRegistry | None = None) -> dict:
+        """TR-87: ONE RequestForActionAnnotation for ONE file-system finding, pressed by a person (`found` is
+        `fs_findings.reread`'s answer: the finding as the stored result of that step run holds it).
+
+        The report is RE's own, one per step run: `SurveyReport::FileSystem::<slug>::<step>::<step run>`, found by its
+        qualifiedName and reused, ReportSubject -> the file system's asset. The annotation has a stable name from the
+        finding key; the report's annotations are read once (`_held_annotation_names`) and a held one is never created
+        again: `nothing_new` and the existing GUID. A held list that could not be read to its end is unknown, and an
+        unknown list creates nothing. Same `refuse_unsupported_private` and `guard_linkage` as the TR-86 publish."""
+        from resource_explorer.egeria_linkage import guard_linkage
+        from resource_explorer.private_publish import refuse_unsupported_private
+        from resource_explorer.surveyors.survey_report import RequestForActionAnnotation
+
+        spec, key, run, count = found["spec"], found["key"], found["run_id"], found["count"]
+        fs_name = fs_entity.display_name or fs_entity.slug
+        refuse_unsupported_private(registry, "filesystem", fs_entity.slug, name=fs_name)
+        with guard_linkage(registry, "filesystem", fs_entity.slug, fs_name, fs_entity.egeria_asset_guid or ""):
+            self.connect()
+            fs_guid = fs_entity.egeria_asset_guid
+            if not fs_guid:
+                raise EgeriaFileSystemSurveyorError(
+                    f"FileSystem '{fs_name}' is not yet published to Egeria — there is no asset to attach the report to.")
+            at = datetime.utcnow().isoformat()
+            props = {"step": spec.step, "finding": spec.finding, "run": run, "asOf": found.get("as_of", ""),
+                     "count": count, "requestedBy": requested_by, "requestedAt": at}
+            if found.get("files"):
+                props["files"] = list(found["files"])
+                if found.get("more"):
+                    props["files"].append(f"and {found['more']} more")
+            annotation = RequestForActionAnnotation(
+                summary=f"{count:,} {spec.unit} on {fs_name} ({spec.step_name}, run {run})",
+                analysis_step=spec.step, annotation_type_name="FileSystemFindingRequest", confidence=100,
+                check_name=f"fs_finding_rfa::{spec.finding}", item_key=key,
+                action_requested=spec.action, action_target_name=self.root_folder_qualified_name(
+                    fs_entity.slug, (fs_entity.canonical_mount_point or fs_entity.local_mount_point or "").rstrip("/")),
+                explanation=f"Requested by {requested_by} on {at} from Resource Explorer's {spec.step} run {run}",
+                json_properties=props)
+            qualified_name = f"SurveyReport::FileSystem::{fs_entity.slug}::{spec.step}::{run}"
+            report_guid = self._find_element_guid(qualified_name, type_name="SurveyReport", qualified_name=True)
+            reused = bool(report_guid)
+            if not reused:
+                report_guid = self._asset_maker.create_asset(body={
+                    "class": "NewElementRequestBody", "parentGUID": fs_guid, "parentRelationshipTypeName": "ReportSubject",
+                    "properties": {
+                        "class": "AssetProperties", "typeName": "SurveyReport", "qualifiedName": qualified_name,
+                        "displayName": f"{spec.step_name}: {fs_name}",
+                        "description": f"{spec.step_name} findings for {fs_name}, step run {run} · surveyed by Resource Explorer",
+                        "additionalProperties": {"step": spec.step, "surveyor": "Resource Explorer"}}})   # no annotation_count: a second finding on this report would make it stale
+            held = self._held_annotation_names(report_guid) if reused else {}
+            if held is None:
+                raise EgeriaFileSystemSurveyorError(
+                    "the report's annotations could not be read to the end, so nothing was created (unknown, never none)")
+            stamp = f"{spec.step}::{run}"
+            name = self._annotation_names([annotation], fs_entity.slug, stamp)[0]
+            nothing_new = name in held
+            if nothing_new:
+                annotation_guid = held[name]
+            else:
+                made = self._create_annotations([annotation], report_guid, fs_entity.slug, stamp)
+                annotation_guid = (made[0] if isinstance(made, list) and made else "") or ""
+                if not annotation_guid:
+                    # the shared publisher keeps going past a failed create and hands back no GUID: never "sent"
+                    raise EgeriaFileSystemSurveyorError("Egeria did not confirm the request (no annotation GUID came back)")
+            proof = {"report_guid": report_guid, "report_reused": reused, "annotation_guid": annotation_guid,
+                     "nothing_new": nothing_new, "key": key, "summary": annotation.summary, "at": at}
+        if registry:
+            registry.record_step_run(fs_entity.slug, "fs_finding_rfa", f"{key}", entity_type="filesystem",
+                                     source="egeria-published", executor="local", metrics=proof)
+        return proof
+
     def _metadata_expert_client(self):
         """The MetadataExpert for the paged read of a report's annotations."""
         if self._metadata_expert is None:
