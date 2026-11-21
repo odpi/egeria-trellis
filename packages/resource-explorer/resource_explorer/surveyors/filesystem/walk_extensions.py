@@ -779,7 +779,9 @@ def attach_extensions(fs_entity, registry, survey_data: dict, *, led_by: str = L
 def run_alongside_egeria(fs_entity, registry, *, egeria_report_guid: str = "") -> dict:
     """Resource Explorer's extensions beside an Egeria-led folder survey: the same walk, but ONLY what Egeria's Folder
     Survey does not keep is stored and published (rows, folder bulk and depth, owner and mode, hashes, narratives). The stored
-    blob carries no counts, classification or inventory (Egeria has those) and no `surveyed_by`, so the folder-survey card
+    blob carries RE's own totals of this walk (`total_files`, `total_data_files`, `total_size_bytes`, `walk_limits`) but no
+    classification, `surveyed_by` or inventory: Egeria's Folder Survey is the inventory, so the row is stored with source
+    "walk-extensions" and every reader of the inventory skips it (`registry.is_re_walk_row`). The folder-survey card
     never mistakes it for the survey itself. Raises FileNotFoundError where Resource Explorer cannot read the mount."""
     from resource_explorer.surveyors.filesystem.local_filesystem_surveyor import LocalFileSystemSurveyor
 

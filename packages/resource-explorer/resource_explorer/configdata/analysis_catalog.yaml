@@ -3313,24 +3313,28 @@ filesystem_analyses:
         unit: files
         as_of: run.surveyed_at
         value_field: file_count
+        capped_field: capped
         annotation:
           type: ResourceMeasureAnnotation
       - name: directories
         unit: directories
         as_of: run.surveyed_at
         value_field: directory_count
+        capped_field: capped
         annotation:
           type: ResourceMeasureAnnotation
       - name: data_files
         unit: data files
         as_of: run.surveyed_at
         value_field: data_file_count
+        capped_field: capped
         annotation:
           type: ResourceMeasureAnnotation
       - name: total_size
         unit: bytes
         as_of: run.surveyed_at
         value_field: total_size_bytes
+        capped_field: capped
         annotation:
           type: ResourceMeasureAnnotation
       absence:

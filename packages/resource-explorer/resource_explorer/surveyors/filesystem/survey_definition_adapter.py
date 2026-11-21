@@ -449,15 +449,45 @@ FILESYSTEM_ANALYSIS_STEP_MAP: dict[str, list[str]] = {
 # filesystem_rows_from_survey_data`), so this is a plain summarization —
 # no new domain logic, same as database's schema_inventory/row_count_
 # snapshot readers.
+def _re_walk_inventory(registry, slug: str) -> dict:
+    """The inventory as Resource Explorer's own walk measured it (TR-106): the newest stored survey row that is not an
+    Egeria publish proof and carries the walk's totals, else {}. An RE-led walk keeps its totals on that row and makes
+    no per-entry rows, so reading only those said "not measured" over a file system RE had walked. A total the row does
+    not carry stays None ("not measured"), never 0."""
+    from resource_explorer.registry import is_re_walk_row
+
+    for row in registry.list_filesystem_surveys(slug):
+        if not is_re_walk_row(row):
+            continue
+        sd = row["survey_data"]
+        at = sd.get("surveyed_at") or row.get("surveyed_at") or ""
+        files, dirs = sd.get("total_files"), sd.get("total_directories")
+        limits = sd.get("walk_limits") or {}
+        return {"entry_count": files + dirs if files is not None and dirs is not None else None,
+                "file_count": files, "directory_count": dirs, "data_file_count": sd.get("total_data_files"),
+                "total_size_bytes": sd.get("total_size_bytes"), "surveyed_at": at, "_run": {"surveyed_at": at},
+                # A walk that stopped at a limit is a lower bound, never the whole tree (the rows say "at least").
+                "capped": bool(limits.get("capped")), "capped_words": limits.get("capped_words") or "",
+                "detail": {"source": "re_walk"}}
+    return {}
+
+
 def _filesystem_inventory_results(registry, slug: str) -> dict:
     # Where Egeria's Folder Survey leads, it answers and RE reads back (Files brief): RE's own walk rows are never made
     # on that branch, so reading only them said "not measured" over a file system Egeria had walked (F39/F41).
     egeria = _egeria_led_inventory(registry, slug)
-    if egeria:
-        return egeria
     entries = registry.query_detail_rows("filesystem_entries", slug)
+    if egeria and entries:
+        return egeria
     if not entries:
-        return {}
+        # No per-entry rows: the newest of Egeria's survey and RE's own walk (TR-106); neither is "not measured".
+        walk = _re_walk_inventory(registry, slug)
+        if egeria and walk:
+            from resource_explorer.folder_survey_view import _when
+
+            oldest = _when("1970-01-01T00:00:00")
+            return egeria if (_when(egeria.get("surveyed_at") or "") or oldest) >= (_when(walk["surveyed_at"]) or oldest) else walk
+        return egeria or walk
     data_files = registry.query_detail_rows("filesystem_data_files", slug)
     files = [e for e in entries if (e.get("entry_type") or "file") == "file"]
     dirs = [e for e in entries if e.get("entry_type") == "directory"]

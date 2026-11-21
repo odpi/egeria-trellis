@@ -1917,6 +1917,17 @@ def _target_request_type(target_json) -> str:
 #: Module-level, not a class attribute: trellis-analytics' RegistryReadView borrows these methods unbound.
 _NATIVE_ANNOTATION_ON_REPORT = "NOT (item_key IS NOT NULL AND content_hash IS NULL)"
 
+
+def is_re_walk_row(row: dict) -> bool:
+    """TR-106: is this stored `filesystem_surveys` row Resource Explorer's OWN walk of the whole file system, with its totals?
+    Not an Egeria publish proof (`egeria-published`), and not RE's walk BESIDE an Egeria-led Folder Survey (`walk-extensions`):
+    that row carries RE's totals too, but Egeria's survey is the inventory there. One predicate for the inventory reader, the
+    run credit (`_step_run_times`) and the survey tile, so the three cannot disagree."""
+    sd = (row or {}).get("survey_data")
+    return (row or {}).get("source") not in ("egeria-published", "walk-extensions") and isinstance(sd, dict) \
+        and sd.get("total_files") is not None
+
+
 class ProjectRegistry:
     # Process-wide cache: a Postgres `Engine` (connection pool) and whether
     # `_init_schema` has already run, keyed by `database_url`. Added
@@ -16372,7 +16383,21 @@ class ProjectRegistry:
             # C1: a completed Egeria Folder Survey (report read back) is a run of filesystem_inventory, where Egeria leads.
             found = sorted(found + [("filesystem_inventory", ts) for ts in self._completed_native_survey_times(slug)],
                            key=lambda kv: kv[1], reverse=True)
+            # TR-106: an RE-led walk keeps its totals on a stored survey row and writes no step run of its own: it is a run
+            # of filesystem_inventory too, or the inventory reads "not measured" over a file system RE has walked.
+            found = sorted(found + [("filesystem_inventory", ts) for ts in self._walk_survey_times(slug)],
+                           key=lambda kv: kv[1], reverse=True)
         return found
+
+    def _walk_survey_times(self, slug: str) -> list[str]:
+        """`surveyed_at` of this file system's stored survey rows that carry the walk's totals (`total_files`) and are not an
+        Egeria publish proof, newest first. Empty when it could not be read: nothing is credited on a guess."""
+        try:
+            return [str((r.get("survey_data") or {}).get("surveyed_at") or r.get("surveyed_at"))
+                    for r in self.list_filesystem_surveys(slug)
+                    if is_re_walk_row(r) and (r["survey_data"].get("surveyed_at") or r.get("surveyed_at"))]
+        except Exception:
+            return []
 
     def _completed_native_survey_times(self, slug: str) -> list[str]:
         """`surveyed_at` of the `egeria-native:*` rows of this file system whose engine action succeeded AND whose

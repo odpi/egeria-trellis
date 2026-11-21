@@ -5986,6 +5986,7 @@ export async function loadSurveyPane() {
   const nElsewhere = elsewhere.reduce((n, t) => n + byTier.get(t).length, 0);
 
   surveyTileDefs = all;
+  surveyTileWalk = data.re_walk || null;
   el.innerHTML = subTabsHtml() + `
     <div id="survey-tiles" class="mb-s4" data-survey-tiles></div>
     <div class="mb-s3 flex flex-wrap items-baseline gap-s3">
@@ -6263,6 +6264,7 @@ function openAnalysisQuestionsPopover(row) {
 
 /** The survey definitions of the pane on screen, for the "last survey" tile (set by loadSurveyPane). */
 let surveyTileDefs = [];
+let surveyTileWalk = null;
 
 /** An analysis row whose last run failed, or whose run just now failed to start: the rows that "need you". */
 export function analysisNeedsYou(slug, row) {
@@ -6272,8 +6274,9 @@ export function analysisNeedsYou(slug, row) {
 /** The tiles at the head of Survey & analyses (PLAN-CARDS-AND-TILES.md section 3, row 2): analyses run, need you,
  *  last survey. `analyses` is null while the analyses are still being read, `{ error }` when that read failed, else
  *  `{ rows, counts }` exactly as the list below uses them, so a tile and the list it opens always agree.
- *  Every tile opens what it counted. A read that failed is "? not read", never a number. */
-export function surveyTilesHtml(slug, defs, analyses) {
+ *  Every tile opens what it counted. A read that failed is "? not read", never a number.
+ *  `walk` is `{ at, kind: 're_walk', capped }` when Resource Explorer's own walk exists; absent otherwise. */
+export function surveyTilesHtml(slug, defs, analyses, walk) {
   const tiles = [];
   if (analyses) {
     if (analyses.error) {
@@ -6298,7 +6301,20 @@ export function surveyTilesHtml(slug, defs, analyses) {
   }
   // The most recent run among the definitions, as the server merged it (RE's own and Egeria-coordinated runs).
   const ran = (defs || []).filter((d) => d.last_run_at).sort((a, b) => whenMs(b.last_run_at) - whenMs(a.last_run_at));
-  if ((defs || []).length) {
+  if (walk && walk.at) {
+    // A walk exists: show it as the last survey tile if it's newer than any definition run
+    const walkIsNewest = !ran.length || whenMs(walk.at) > whenMs(ran[0].last_run_at);
+    if (walkIsNewest) {
+      tiles.push(tileHtml({ key: 'last_survey', label: 'last survey', opens: 'fs_survey', state: 'measured', figure: esc(ago(walk.at)), sub: 'Resource Explorer walk' + (walk.capped ? ' · stopped at its limit' : ''), title: esc(walk.at) }));
+    } else if ((defs || []).length) {
+      // Definition run is newer: show it as before
+      tiles.push(tileHtml({
+        key: 'last_survey', label: 'last survey', opens: `def:${ran[0].qualified_name}`, state: 'measured', figure: esc(ago(ran[0].last_run_at)),
+        sub: esc(ran[0].display_name || ran[0].qualified_name), title: esc(ran[0].last_run_at),
+      }));
+    }
+  } else if ((defs || []).length) {
+    // No walk: fall back to definition run logic
     tiles.push(ran.length
       ? tileHtml({
         key: 'last_survey', label: 'last survey', opens: `def:${ran[0].qualified_name}`, state: 'measured', figure: esc(ago(ran[0].last_run_at)),
@@ -6309,15 +6325,16 @@ export function surveyTilesHtml(slug, defs, analyses) {
   return tileRowHtml(tiles);
 }
 
-function renderSurveyTiles(slug, analyses) {
+function renderSurveyTiles(slug, analyses, walk = surveyTileWalk) {
   const host = $('survey-tiles');
   if (!host || slug !== state.selectedSlug) return;
-  host.innerHTML = surveyTilesHtml(slug, surveyTileDefs, analyses);
+  host.innerHTML = surveyTilesHtml(slug, surveyTileDefs, analyses, walk);
   bindTiles(host, (target) => {
     const root = $('content');
     const el = target === 'analyses' ? root.querySelector('[data-analyses-card]')
       : target === 'need_you' ? (root.querySelector('[data-needs-you]') || root.querySelector('[data-analyses-card]'))
-        : [...root.querySelectorAll('[data-def-row]')].find((d) => d.dataset.defRow === target.replace(/^def:/, ''));
+        : target === 'fs_survey' ? root.querySelector('[data-fs-folder-survey-host]')
+          : [...root.querySelectorAll('[data-def-row]')].find((d) => d.dataset.defRow === target.replace(/^def:/, ''));
     if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 }
@@ -6331,7 +6348,7 @@ async function renderAnalysesIndexSection(slug, stage) {
   } catch (err) {
     if (slug === state.selectedSlug && state.subTab === 'survey') {
       host.innerHTML = `<span class="text-state-warn">The analyses could not be read: ${esc(err.message)}</span>`;
-      renderSurveyTiles(slug, { error: err.message });
+      renderSurveyTiles(slug, { error: err.message }, surveyTileWalk);
     }
     return;
   }
@@ -6368,7 +6385,7 @@ async function renderAnalysesIndexSection(slug, stage) {
         ${elsewhere.map(analysisIndexRowHtml).join('')}
       </details>` : ''}`,
   })}`;
-  renderSurveyTiles(slug, { rows, counts: data.counts || {} });
+  renderSurveyTiles(slug, { rows, counts: data.counts || {} }, surveyTileWalk);
 
   host.querySelectorAll('[data-analyses-sort]').forEach((b) => b.addEventListener('click', () => {
     try { localStorage.setItem(ANALYSES_SORT_KEY, b.dataset.analysesSort); } catch { /* per-viewer convenience only */ }
