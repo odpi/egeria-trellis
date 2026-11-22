@@ -848,8 +848,9 @@ investigation: the sidebar shows "WORK LISTS FOR <NAME>" and "OTHER WORK LISTS" 
    - *Explain in one line each:* Study, Task, Campaign, Personal, Experiment (code). Personal and Experiment are private
      to you, and a private investigation cannot yet publish a database or a file system (seen, user guide).
 4. For **Where it lives**, choose **Ad-hoc**: "Stays local. Nothing is written to Egeria" (code).
-   - *Explain:* Ad-hoc is the simplest start, and you can promote it to Egeria later. "Create in Egeria" makes it a
-     shared project in Egeria at once (D3). The dialog's default today is "Create in Egeria" (code), so the step
+   - *Explain:* Ad-hoc is the simplest start, and you can promote it to Egeria later. "Egeria Project (created when you promote)" makes it
+     a shared project in Egeria once you promote it (D3; TR-120 renamed the choice, the Project is not made at create).
+     The dialog's default today is "Egeria Project (created when you promote)" (code), so the step
      tells the reader plainly to change it (D3a; gap G3).
 5. Create it, then click **Make current** on its page.
    - *You see:* the button reads "Current investigation" (code), the header shows its name, and the sidebar shows

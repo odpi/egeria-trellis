@@ -12585,6 +12585,10 @@ class ProjectRegistry:
     #: null GUID, and only one of them is a deliberate choice.
     BINDING_LOCAL = "local"      # ad-hoc: no Egeria Project, by choice
     BINDING_EGERIA = "egeria"    # has one, or is meant to
+    #: TR-120. An investigation bound "egeria" with no Project GUID is not broken and not local: the binding only
+    #: records intent, and the Egeria Project is created when the investigation is promoted. Said in words wherever
+    #: the empty GUID would otherwise read as "none" or as created.
+    EGERIA_PROJECT_NOT_CREATED_WORDS = "Egeria Project not created yet: Promote creates it"
     EGERIA_BINDINGS = (BINDING_LOCAL, BINDING_EGERIA)
 
     #: The THIRD axis (F56, owner's Option D, 2026-11-04): who may see the
@@ -12825,6 +12829,11 @@ class ProjectRegistry:
             "free_text_name": d.get("egeria_free_text_name") or "",
         }
         d["member_count"] = len(self.list_investigation_members(slug))
+        # TR-120: said in words, only when it is true. After an Egeria reset the Project is gone (status unbound),
+        # which has its own words; a local investigation was never going to have one.
+        if ((d.get("egeria_binding") or self.BINDING_EGERIA) == self.BINDING_EGERIA
+                and not d.get("egeria_project_guid") and d["egeria_context"]["status"] != "unbound"):
+            d["egeria_project_words"] = self.EGERIA_PROJECT_NOT_CREATED_WORDS
         return d
 
     def list_investigations(self, *, include_closed: bool = False,
