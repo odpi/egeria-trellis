@@ -81,7 +81,7 @@ CANARY_PREFIX = "ValidValueDefinition::ResourceExplorer::DataClassSeed::"
 
 _NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]*$")
 _KEYWORD_RE = re.compile(r"^[a-z0-9_]+$")
-_FIELDS = ("name", "displayName", "description", "dataPatterns", "specification")
+_FIELDS = ("name", "displayName", "description", "dataPatterns", "specification", "requiresNameMatch", "valueCheck")
 #: Caps on the seed: each keyword is one Egeria element and one link, created at start-up.
 MAX_DATA_CLASSES = 100
 MAX_KEYWORDS_PER_CLASS = 50
@@ -132,11 +132,28 @@ def _validate(raw: Any, source: str) -> list[dict]:
                 re.compile(spec)
             except re.error as exc:
                 raise SeedError(f"{where}: 'specification' is not a valid regular expression ({exc})") from exc
+        # TR-131: a generic value shape (a date, a run of digits) is established only with the column name.
+        needs_name = entry.get("requiresNameMatch")
+        if needs_name is not None and not isinstance(needs_name, bool):
+            raise SeedError(f"{where}: 'requiresNameMatch' must be true or false")
+        check = entry.get("valueCheck")
+        if check is not None:
+            from resource_explorer.surveyors.database.column_matching import VALUE_CHECKS
+            if not isinstance(check, str) or check not in VALUE_CHECKS:
+                raise SeedError(f"{where}: 'valueCheck' must be one of {sorted(VALUE_CHECKS)}")
+            if spec is None:
+                raise SeedError(f"{where}: 'valueCheck' needs a 'specification' to check values against")
+        if needs_name and spec is None:
+            raise SeedError(f"{where}: 'requiresNameMatch' needs a 'specification' (it qualifies the value rule)")
         seen.add(name)
         item = {"name": name, "displayName": entry["displayName"].strip(),
                 "description": entry["description"].strip(), "dataPatterns": list(patterns)}
         if spec is not None:
             item["specification"] = spec
+        if needs_name:
+            item["requiresNameMatch"] = True
+        if check is not None:
+            item["valueCheck"] = check
         out.append(item)
     if not out:
         raise SeedError(f"{source}: no data classes")
@@ -269,6 +286,15 @@ def _sentence(exc: BaseException) -> str:
 
 # ── bodies ────────────────────────────────────────────────────────────────────
 
+def _spec_details(dc: dict) -> dict[str, str]:
+    details: dict[str, str] = {}
+    if dc.get("requiresNameMatch"):
+        details["requiresNameMatch"] = "true"
+    if dc.get("valueCheck"):
+        details["valueCheck"] = dc["valueCheck"]
+    return details
+
+
 def _data_class_body(dc: dict) -> dict:
     return {
         "class": "NewElementRequestBody",
@@ -286,6 +312,9 @@ def _data_class_body(dc: dict) -> dict:
             # no dataPatterns at all is sent (no keywords there, and no blank list item).
             "matchPropertyNames": list(dc["dataPatterns"]),
             **({"specification": dc["specification"]} if dc.get("specification") else {}),
+            # TR-131: how the value rule is applied, in Egeria's own string map for it, so the matcher reads it back
+            # from the class: requiresNameMatch (a generic shape needs the column name too) and valueCheck (luhn).
+            **({"specificationDetails": _spec_details(dc)} if _spec_details(dc) else {}),
         },
     }
 
