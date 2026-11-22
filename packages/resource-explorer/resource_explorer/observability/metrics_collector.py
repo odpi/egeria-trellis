@@ -104,9 +104,15 @@ class MetricsCollector:
         "chunk_feedback": ("chunk_ref", "positive_count", "neutral_count", "total_count"),
     }
 
-    def apply_schema(self) -> None:
-        """Create and migrate the tables: the schema Job's entry point (works in either mode)."""
-        self._init_schema()
+    def apply_schema(self) -> int:
+        """Create and migrate the tables: the schema Job's entry point (works in either mode). Returns the number of
+        statements `_init_schema` sent (introspection included, as the registry counts them)."""
+        self._statement_counter = [0]
+        try:
+            self._init_schema()
+            return self._statement_counter[0]
+        finally:
+            self._statement_counter = None
 
     def check_schema(self) -> None:
         """Read-only: raise `SchemaNotReady` unless both tables and every column this version needs exist."""
@@ -136,7 +142,7 @@ class MetricsCollector:
         if not is_postgres:
             raw_conn.row_factory = sqlite3.Row
             raw_conn.execute("PRAGMA foreign_keys=ON")
-        conn = ConnectionWrapper(raw_conn, is_postgres)
+        conn = ConnectionWrapper(raw_conn, is_postgres, getattr(self, "_statement_counter", None))
         try:
             yield conn
             conn.commit()

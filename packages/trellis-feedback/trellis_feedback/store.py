@@ -209,9 +209,20 @@ class FeedbackStore:
 
     # ── schema ──────────────────────────────────────────────────────────────────────────────
 
-    def apply_schema(self) -> None:
-        """Create and migrate the tables: the schema Job's entry point (works in either mode)."""
-        self._init_schema()
+    def apply_schema(self) -> int:
+        """Create and migrate the tables: the schema Job's entry point (works in either mode). Returns the number of
+        statements this sent to the database (introspection included)."""
+        from sqlalchemy import event
+        count = [0]
+
+        def _count(conn, cursor, statement, parameters, context, executemany):
+            count[0] += 1
+        event.listen(self.engine, "before_cursor_execute", _count)
+        try:
+            self._init_schema()
+        finally:
+            event.remove(self.engine, "before_cursor_execute", _count)
+        return count[0]
 
     def check_schema(self) -> None:
         """Read-only: raise `SchemaNotReady` unless both tables and every added column exist."""

@@ -67,32 +67,55 @@ def collection_name(slug: str, collection_type: str) -> str:
     return f"{re.sub(r'[^a-z0-9_]', '_', slug.lower())}_{collection_type}"
 
 
-def declared_collection_rows(slugs) -> list[dict]:
-    """One row per collection RE will use for these resources: name, dimension, metric, HNSW settings."""
+def _rows_for(names) -> list[dict]:
     from resource_explorer.config import get_config
-    from resource_explorer.configdata.collection_config import COLLECTION_TYPES
     dimension = int(get_config().embeddings.dimension)
-    return [
-        {"name": collection_name(slug, ctype), "dimension": dimension, "metric": METRIC,
-         "hnsw_m": HNSW_M, "hnsw_ef_construction": HNSW_EF_CONSTRUCTION}
-        for slug in slugs for ctype in COLLECTION_TYPES
-    ]
+    return [{"name": n, "dimension": dimension, "metric": METRIC, "hnsw_m": HNSW_M, "hnsw_ef_construction": HNSW_EF_CONSTRUCTION}
+            for n in dict.fromkeys(names)]
+
+
+def declared_collection_names(projects) -> list[str]:
+    """Every vector collection RE will write for these projects (dicts with slug, homepage_url, docs_url, collections), without repeats:
+    * `<slug>_<type>` for each collection type (repositories);
+    * `site_collection_name(<url>)` for the project's docs_url and homepage_url. Website ingestion keys its collection on the HOST of
+      the one it picks (docs_url if reachable, else homepage_url), not on a slug, so both are declared: known before the first ingest;
+    * the collection names the project has recorded (a site shared with a sibling repo, a host that was renamed).
+    A new host, project or URL changes this list: the next schema apply declares and creates it (a new resource needs the schema Job)."""
+    from resource_explorer.configdata.collection_config import COLLECTION_TYPES
+    from resource_explorer.ingestion.site_discovery import site_collection_name
+    names: list[str] = []
+    for p in projects:
+        names += [collection_name(p["slug"], ctype) for ctype in COLLECTION_TYPES]
+        for field in ("docs_url", "homepage_url"):
+            url = (p.get(field) or "").strip()
+            if url:
+                names.append(site_collection_name(url))
+        names += [str(c) for c in (p.get("collections") or []) if c]
+    return list(dict.fromkeys(names))
+
+
+def declared_collection_rows(slugs, extra_names=()) -> list[dict]:
+    """One row per collection RE will use: name, dimension, metric, HNSW settings. `slugs` give the repository collections
+    (`<slug>_<type>`); `extra_names` are declared as given (site collections, recorded names)."""
+    from resource_explorer.configdata.collection_config import COLLECTION_TYPES
+    return _rows_for([collection_name(slug, ctype) for slug in slugs for ctype in COLLECTION_TYPES] + list(extra_names))
 
 
 # ── the extension ──────────────────────────────────────────────────────────────────────────────────────────────────
 
-def ensure_extension(conn, dbname: str = "") -> None:
-    """Make sure `vector` is installed. If it is, send nothing. If not, try to create it; on a privilege error say what to
+def ensure_extension(conn, dbname: str = "") -> int:
+    """Make sure `vector` is installed; returns the statements sent (0 or 1). If it is, send nothing. If not, try to create it; on a privilege error say what to
     ask for instead of passing the raw permission error on (a managed Postgres often will not let the Job's role do it)."""
     import psycopg2.errors
     with conn.cursor() as cur:
         cur.execute("SELECT 1 FROM pg_extension WHERE extname = 'vector'")
         if cur.fetchone():
-            return
+            return 0
     try:
         with conn.cursor() as cur:
             cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
         conn.commit()
+        return 1
     except psycopg2.errors.InsufficientPrivilege as exc:
         try:
             conn.rollback()
@@ -158,9 +181,12 @@ def _pg_connect(cfg):
 
 
 def apply_all(url: str | None = None) -> dict[str, int]:
-    """One schema step for everything: the registry (`schema_apply`), then metrics, feedback, vectorstore (extension, schema,
-    the declared-collections table and every declared collection's table and index) and artifact_tree; then one marker row per
-    store. Returns {"registry": n, "stores": 4, ...}. A second run finds every marker current and sends no DDL."""
+    """One schema step for everything: the registry (`schema_apply`), then metrics, feedback, vectorstore (extension, schema, the declared-
+    collections table) and artifact_tree, and one marker row per store. Returns the statement counts: {"registry", "stores", "metrics", "feedback",
+    "vectorstore", "artifact_tree"}.
+
+    The markers say the stores' DDL is at this code's version, so a second run skips those. The collections are reconciled EVERY run: a project,
+    a URL or a host added since the last run is declared and its tables are created, because in `external` mode the pods cannot (TR-129/130)."""
     reg = ProjectRegistry.open_for_schema_apply(**({"database_url": url} if url else {}))
     n_registry, _secs = reg.schema_apply()
     if not reg.database_url.startswith("postgresql"):
@@ -169,35 +195,39 @@ def apply_all(url: str | None = None) -> dict[str, int]:
         return {"registry": n_registry, "stores": 0}
     fps = fingerprints()
     have = _read_markers(reg)
-    if not stores_drifted(have, fps) and (have.get(COMBINED_ROW) or ("",))[0] == fps["combined"]:
-        # Nothing to do: report the statements the first run counted, so a second run prints the same line.
-        return {"registry": n_registry, "stores": 0, **{n: have[row][1] for n, row in STORE_ROWS.items()}}
     with reg._conn() as conn:
-        slugs = [r[0] for r in conn.execute("SELECT slug FROM projects").fetchall()]
-    detail: dict[str, int] = {}
-
+        projects = [{"slug": r[0], "homepage_url": r[1] or "", "docs_url": r[2] or "", "collections": json.loads(r[3] or "[]")}
+                    for r in conn.execute("SELECT slug, homepage_url, docs_url, collections FROM projects").fetchall()]
+    drifted = stores_drifted(have, fps) or (have.get(COMBINED_ROW) or ("",))[0] != fps["combined"]
     from resource_explorer.config import get_config
-    from resource_explorer.observability.metrics_collector import MetricsCollector, resolve_metrics_url
-    MetricsCollector(database_url=resolve_metrics_url(), ddl="auto").apply_schema()
-    detail["metrics"] = 6
-
-    from resource_explorer.feedback_store import APP, EXTERNAL_SOURCES
-    from trellis_feedback import FeedbackStore as LibraryFeedbackStore
     cfg = get_config()
-    LibraryFeedbackStore(cfg.feedback.database_url, APP, external_sources=EXTERNAL_SOURCES, ddl="auto").apply_schema()
-    detail["feedback"] = 4
-
     pg = cfg.pgvector
+    detail: dict[str, int] = {n: (have.get(row) or ("", 0))[1] for n, row in STORE_ROWS.items()}
+    if drifted:
+        from resource_explorer.feedback_store import APP, EXTERNAL_SOURCES
+        from resource_explorer.observability.metrics_collector import MetricsCollector, resolve_metrics_url
+        from trellis_feedback import FeedbackStore as LibraryFeedbackStore
+        detail["metrics"] = MetricsCollector(database_url=resolve_metrics_url(), ddl="auto").apply_schema()
+        detail["feedback"] = LibraryFeedbackStore(cfg.feedback.database_url, APP, external_sources=EXTERNAL_SOURCES, ddl="auto").apply_schema()
+        from resource_explorer.ingestion.artifact_tree_sink import _store as _tree_store
+        detail["artifact_tree"] = _tree_store(ddl="auto").apply_schema()
+    # the vector store's own schema, the declared-collections table and the collections: reconciled every run
+    table = f'"{pg.schema_name}"."{COLLECTIONS_TABLE}"' if pg.schema_name else f'"{COLLECTIONS_TABLE}"'
+    sent = 0
     conn = _pg_connect(pg)
     try:
-        ensure_extension(conn, pg.dbname)
+        sent += ensure_extension(conn, pg.dbname)
         with conn.cursor() as cur:
             if pg.schema_name:
                 cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{pg.schema_name}"')
-            table = f'"{pg.schema_name}"."{COLLECTIONS_TABLE}"' if pg.schema_name else f'"{COLLECTIONS_TABLE}"'
+                sent += 1
             cur.execute(_COLLECTIONS_DDL.format(table=table))
-            rows = declared_collection_rows(slugs)
-            for r in rows:
+            sent += 1
+            cur.execute(f"SELECT name FROM {table}")
+            existing = {r[0] for r in cur.fetchall()}
+        new_rows = [r for r in declared_collection_rows([], declared_collection_names(projects)) if r["name"] not in existing]
+        with conn.cursor() as cur:
+            for r in new_rows:
                 cur.execute(
                     f"INSERT INTO {table} (name, dimension, metric, hnsw_m, hnsw_ef_construction) VALUES (%s, %s, %s, %s, %s) "
                     "ON CONFLICT (name) DO NOTHING",
@@ -206,12 +236,12 @@ def apply_all(url: str | None = None) -> dict[str, int]:
     finally:
         conn.close()
     from resource_explorer.vector_store_pg import PgVectorStore
-    PgVectorStore(ddl="auto").apply_schema([r["name"] for r in rows])
-    detail["vectorstore"] = 3 + 2 * len(rows)
-
-    from resource_explorer.ingestion.artifact_tree_sink import _store as _tree_store
-    _tree_store(ddl="auto").apply_schema()
-    detail["artifact_tree"] = 6
-
-    _write_markers(reg, fps, detail)
-    return {"registry": n_registry, "stores": len(STORE_ROWS), **detail}
+    applied = PgVectorStore(ddl="auto").apply_schema([r["name"] for r in new_rows])
+    sent += applied
+    if drifted:
+        detail["vectorstore"] = sent
+        _write_markers(reg, fps, detail)
+    else:
+        # what the new collections cost: the statements apply_schema sent, less the two its own connect() sends (extension, schema)
+        detail["vectorstore"] += max(0, applied - (2 if pg.schema_name else 1))
+    return {"registry": n_registry, "stores": len(STORE_ROWS) if drifted else 0, **detail}

@@ -72,11 +72,14 @@ class ArtifactTreeStore:
                 "a running process only calls check_schema()")
         self.apply_schema()
 
-    def apply_schema(self) -> None:
-        """Create the tables and indexes (the schema Job's entry point; allowed in either mode)."""
+    def apply_schema(self) -> int:
+        """Create the tables and indexes (the schema Job's entry point; allowed in either mode). Returns the statements run."""
+        n = 0
         with self._conn() as conn, conn.cursor() as cur:
             for stmt in create_schema_sql(self.config.schema):
                 cur.execute(stmt)
+                n += 1
+        return n
 
     def check_schema(self) -> None:
         """Read-only: raise `SchemaNotReady` unless the four tables exist."""

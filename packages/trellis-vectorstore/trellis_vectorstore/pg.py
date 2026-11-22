@@ -88,6 +88,7 @@ class PgVectorStore(BaseVectorStore):
         self._ddl = ddl
         self._declared_table = declared_collections_table
         self._declared_ok: set[str] = set()
+        self._ddl_sent = 0           # DDL statements this instance has sent (apply_schema reports the delta)
         self._config = config
         self._metric = resolve_metric(metric)
         self._embeddings = embeddings
@@ -200,7 +201,7 @@ class PgVectorStore(BaseVectorStore):
                 f"{op}() sends DDL and is refused with ddl='external': the schema Job (`resource-explorer schema apply`) "
                 "creates collections; a running process only reads and writes rows")
 
-    def apply_schema(self, collections: Sequence[str] = ()) -> None:
+    def apply_schema(self, collections: Sequence[str] = ()) -> int:
         """The schema Job's entry point: CREATE EXTENSION, CREATE SCHEMA, then each named collection's table and index.
         Works whatever this instance's `ddl` is (it runs through an `auto` twin that shares the configuration)."""
         twin = PgVectorStore(
@@ -212,6 +213,7 @@ class PgVectorStore(BaseVectorStore):
             for name in collections:
                 twin.create_collection(name)
                 twin.create_index(name)
+            return twin._ddl_sent
         finally:
             twin.disconnect()
 
@@ -230,17 +232,19 @@ class PgVectorStore(BaseVectorStore):
         if not row:
             raise SchemaNotReady(
                 f"collection {collection_name!r} is not declared in {self._declared_table}; ddl='external' sends no DDL: "
-                "run `resource-explorer schema apply` first")
+                "a new resource needs the schema Job: helm upgrade, or run `resource-explorer schema apply`")
         self._declared_ok.add(collection_name)
 
     def _ensure_extension(self, conn) -> None:
         with conn.cursor() as cur:
             cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        self._ddl_sent += 1
         conn.commit()
 
     def _ensure_schema(self, conn) -> None:
         with conn.cursor() as cur:
             cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{self._config.schema}"')
+        self._ddl_sent += 1
         conn.commit()
 
     # ------------------------------------------------------------------
@@ -259,6 +263,7 @@ class PgVectorStore(BaseVectorStore):
                     self._logger.warning(f"Dropped table: {table}")
                 ddl = self._render_ddl(table)
                 cur.execute(ddl)
+                self._ddl_sent += 1 + (1 if drop_if_exists else 0)
             conn.commit()
             self._logger.info(f"✓ Created/verified table: {table}")
         finally:
@@ -332,6 +337,7 @@ class PgVectorStore(BaseVectorStore):
         try:
             with conn.cursor() as cur:
                 cur.execute(sql)
+                self._ddl_sent += 1
             conn.commit()
             self._logger.info(f"✓ Created HNSW index on {table} (m={m}, ef_construction={ef_construction})")
         finally:
