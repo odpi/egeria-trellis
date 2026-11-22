@@ -42,3 +42,8 @@ def test_the_guide_does_not_say_od3_and_od4_are_on_branches():
 def test_the_ddl_record_says_it_was_merged():
     assert "branch pushed, not merged" not in DDL
     assert "merged" in DDL.split("\n", 3)[2]
+
+
+def test_the_guide_says_any_signed_in_user_can_add_a_suggested_portal_from_find():
+    admin = _section(GUIDE, 8)
+    assert "Any signed-in user can add a suggested portal from Find, not only an administrator." in admin

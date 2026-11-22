@@ -21,17 +21,22 @@ export function questionsCountWords(res) {
 
 export function questionsHtml(res) {
   const strip = res.stages.map((s) => `<span data-od-stage="${esc(s.stage)}" class="mr-s3 text-provenance text-ink-muted">${esc(s.stage)} · ${
-    s.partial ? `${s.partial} of ${s.total} in part` : 'no reader yet'}</span>`).join('');
+    s.partial ? `${s.partial} of ${s.total} in part` : `${s.total} · no reader yet`}</span>`).join('');
+  // The ones that cannot be asked of a dataset are not rows and not in M; they are said once, folded, with why.
+  const na = (res.not_applicable || []).length
+    ? `<details data-od-not-applicable class="mt-s2"><summary class="cursor-pointer text-provenance text-ink-muted">${res.not_applicable.length} generic questions are not asked of a dataset</summary>
+        <ul class="m-0 mt-s2 list-none p-0">${res.not_applicable.map((n) => `<li data-od-na="${esc(n.id)}" class="py-[2px] text-provenance text-ink-muted"><span class="font-mono">${esc(n.id)}</span> ${esc(n.question)} — ${esc(n.reason)}</li>`).join('')}</ul></details>`
+    : '';
   return `<div data-od-questions-panel class="mt-s3">
     <h5 class="m-0 mb-s2 text-caps uppercase tracking-caps text-ink-muted">Open data questions</h5>
     <p data-od-questions-count class="m-0 mb-s2 text-caveat text-ink">${esc(questionsCountWords(res))}</p>
     <div data-od-stage-strip class="mb-s2">${strip}</div>
-    <ul class="m-0 list-none p-0">${res.questions.map((q) => `<li data-od-question="${esc(q.id)}" data-od-state="${esc(q.state)}" class="border-b border-rule py-s2">
+    <ul class="m-0 list-none p-0">${res.questions.map((q) => `<li data-od-question="${esc(q.id)}" data-od-kind="${esc(q.kind || 'open_data')}" data-od-state="${esc(q.state)}" class="border-b border-rule py-s2">
       <div class="text-answer text-ink">${glyphSpan(q.state)} <span class="font-mono text-provenance text-ink-muted">${esc(q.id)}</span> ${esc(q.question)}
-        <span class="text-provenance text-ink-muted">· ${esc(q.stage)}</span></div>
+        <span class="text-provenance text-ink-muted">· ${esc(q.stage)}${q.kind === 'generic' ? ' · asked of every kind' : ''}</span></div>
       ${q.answer ? `<div data-od-answer class="text-caveat text-ink">${esc(q.answer)}</div>` : ''}
       <div data-od-words class="text-provenance text-ink-muted">${esc(q.words)}</div>
-    </li>`).join('')}</ul></div>`;
+    </li>`).join('')}</ul>${na}</div>`;
 }
 
 export async function mountQuestions(host, slug) {

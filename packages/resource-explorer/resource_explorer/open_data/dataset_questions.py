@@ -7,7 +7,10 @@ states a field that answers part of the question, the row is `partial` (◐) and
 from __future__ import annotations
 
 from resource_explorer.open_data.absence import NOT_REPORTED
+from resource_explorer.resource_types import GENERIC_QUESTION_KINDS, SURVEYED_RESOURCE_TYPES
 from resource_explorer.surveyors.question_catalog_reader import get_questions
+
+assert "open_data" in GENERIC_QUESTION_KINDS        # this page is the one user of the capability (TR-54 A2, TR-119)
 
 NO_MECHANISM = "No mechanism exists for this yet"
 _WILL = {
@@ -15,7 +18,67 @@ _WILL = {
     "od_cadence_kept": "the cadence check will compare the stated cadence with the modified dates",
     "od_profile": "the dataset profile will summarise the columns, size and formats it has read, and name what it has not",
 }
-STAGE_ORDER = ("Scouting", "Discovery", "Assessment")
+STAGE_ORDER = ("Scouting", "Discovery", "Assessment", "Analysis", "Enrichment")
+
+# The generic (`*`) questions, one decision each (TR-54 A2). A generic question is one every surveyed kind carries (the CSV's
+# `*`, expanded when the catalog is generated). Whether it can be asked of a DATASET is a judgement nobody had recorded, so it
+# is recorded here, with the reason for each exclusion; a new generic question fails
+# `test_every_generic_question_has_a_decision...` until someone decides. These are the builder's calls, for review.
+GENERIC_APPLIES = frozenset({
+    "Q-0002",   # what is it and what is it for: the publisher's title and description
+    "Q-0003",   # who owns and administers it: the publisher
+    "Q-0005",   # already cataloged in Egeria, and when
+    "Q-0007",   # existing use in the organization
+    "Q-0008",   # known feedback
+    "Q-0011",   # overlap with other resources: the same data, a subset, a replacement
+    "Q-0016",   # cost to run, host or license
+    "Q-0025",   # skills to support its use
+    "Q-0029",   # fit with governance frameworks
+    "Q-0030",   # explicit license and non-standard terms: the record's licence
+    "Q-0038",   # already surveyed at any tier (scout, profile)
+    "Q-0040",   # worth a full survey (a profile)
+    "Q-0057",   # restrictions beyond the license
+    "Q-0058",   # ready to be offered as a data product
+    "Q-0059",   # demand: subscriptions, requests, feedback, use
+})
+GENERIC_DOES_NOT_APPLY = {
+    "Q-0041": "RE has no survey of a dataset to measure change against; looking again re-reads the publisher's record (OD4)",
+    "Q-0054": "Egeria's survey engine does not survey a dataset on a data portal; there is nothing for it to reach",
+    "Q-0055": "RE holds no physical location for a published dataset; the publisher's jurisdiction is a different question",
+    "Q-0098": "asks about the estate's own platforms, monitoring and security controls, which a published dataset does not run on",
+}
+_GENERIC_WILL = {
+    "human": "a person's answer (Enrichment); RE holds none yet",
+    "direct": "a field RE does not hold for a dataset yet",
+    "mixed": "no reader combines the sources for a dataset yet",
+    "gap": "named as a gap; no reader yet",
+    "analysis": "an analysis that is declared and not built for datasets",
+    "partial": "only part of it can be read, and not yet for a dataset",
+}
+
+
+def _text(v) -> str | None:
+    return v.strip() if isinstance(v, str) and _stated(v) and v.strip() else None
+
+
+def _description_partial(d: dict) -> str | None:
+    rec = d.get("record") or {}
+    desc = next((t for t in (_text(rec.get("notes")), _text(rec.get("description"))) if t), None)
+    title = _text(d.get("title"))
+    if not desc and not title:
+        return None
+    said = f"{title} — {desc[:240]}{'…' if len(desc) > 240 else ''}" if title and desc else (desc or title)
+    return f"The publisher describes it as: {said} — {_source(d)}. What it is for is the publisher's wording, not RE's."
+
+
+def _publisher_partial(d: dict) -> str | None:
+    who = _text(d.get("publisher"))
+    return f"Published by {who}; the record names no owner or administrator beyond that — {_source(d)}" if who else None
+
+
+def _licence_generic_partial(d: dict) -> str | None:
+    return _licence_partial(d)
+
 
 
 def _stated(v) -> bool:
@@ -60,6 +123,38 @@ def _cadence_partial(d: dict) -> str | None:
 _PARTIAL = {"od_licence_usable": _licence_partial, "od_cadence_kept": _cadence_partial}
 
 
+_GENERIC_PARTIAL = {"Q-0002": _description_partial, "Q-0003": _publisher_partial, "Q-0030": _licence_generic_partial}
+
+
+def _generic_rows(d: dict) -> list[dict]:
+    by_type = {t: {e["id"]: e for e in get_questions(t)} for t in SURVEYED_RESOURCE_TYPES}
+    rows = []
+    for qid in sorted(GENERIC_APPLIES):
+        e = next((by_type[t][qid] for t in SURVEYED_RESOURCE_TYPES if qid in by_type[t]), None)
+        if e is None:                                  # retired from the catalog: not asked, not counted
+            continue
+        partial = _GENERIC_PARTIAL.get(qid, lambda _d: None)(d)
+        kind = e["answering"]["kind"]
+        rows.append({
+            "id": qid, "kind": "generic", "question": e["question"], "stage": e["stage"], "perspectives": e["perspectives"],
+            "purposes": e["purposes"], "analysis_ids": e["answering"]["analysis_ids"], "rationale": e["rationale"],
+            "state": "partial" if partial else "no_reader", "answer": partial or "",
+            "words": ("Answered in part by the record alone; " if partial else f"{NO_MECHANISM} — ")
+                     + f"{_GENERIC_WILL.get(kind, 'no reader yet')}.",
+        })
+    return rows
+
+
+def _not_applicable() -> list[dict]:
+    by_id = {e["id"]: e for t in SURVEYED_RESOURCE_TYPES for e in get_questions(t)}
+    return [{"id": qid, "question": by_id[qid]["question"], "reason": why}
+            for qid, why in sorted(GENERIC_DOES_NOT_APPLY.items()) if qid in by_id]
+
+
+def _strip_stage(stage: str) -> str:
+    return (stage or "").split("/")[0].strip()
+
+
 def build(d: dict) -> dict:
     rows = []
     for e in get_questions("open_data"):
@@ -67,15 +162,19 @@ def build(d: dict) -> dict:
         partial = _PARTIAL.get(lead, lambda _d: None)(d)
         will = _WILL.get(lead, "an analysis will answer it")
         rows.append({
-            "id": e["id"], "question": e["question"], "stage": e["stage"], "perspectives": e["perspectives"],
+            "id": e["id"], "kind": "open_data", "question": e["question"], "stage": e["stage"],
+            "perspectives": e["perspectives"],
             "purposes": e["purposes"], "analysis_ids": e["answering"]["analysis_ids"], "rationale": e["rationale"],
             "state": "partial" if partial else "no_reader",
             "answer": partial or "",
             "words": ("Answered in part by the record alone; " if partial else f"{NO_MECHANISM} — ") + f"{will}.",
         })
-    rows.sort(key=lambda r: (STAGE_ORDER.index(r["stage"]) if r["stage"] in STAGE_ORDER else 99, r["id"]))
+    rows += _generic_rows(d)
+    rows.sort(key=lambda r: (STAGE_ORDER.index(_strip_stage(r["stage"])) if _strip_stage(r["stage"]) in STAGE_ORDER else 99,
+                             r["id"]))
     partial_n = sum(1 for r in rows if r["state"] == "partial")
     return {"slug": d["slug"], "questions": rows, "total": len(rows), "answered": 0, "partial": partial_n,
-            "stages": [{"stage": s, "total": sum(1 for r in rows if r["stage"] == s),
-                        "partial": sum(1 for r in rows if r["stage"] == s and r["state"] == "partial")}
-                       for s in STAGE_ORDER if any(r["stage"] == s for r in rows)]}
+            "not_applicable": _not_applicable(),
+            "stages": [{"stage": s, "total": sum(1 for r in rows if _strip_stage(r["stage"]) == s),
+                        "partial": sum(1 for r in rows if _strip_stage(r["stage"]) == s and r["state"] == "partial")}
+                       for s in STAGE_ORDER if any(_strip_stage(r["stage"]) == s for r in rows)]}

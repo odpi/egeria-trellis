@@ -5,8 +5,9 @@
  *  caps and the price line's settings stay in Admin. The shortlist is the work list the import creates: it is
  *  listed under the sidebar's work lists like any other.
  *
- * Nothing here surveys, profiles or publishes. A dataset has no stage strip yet; Analysis, Curate and Automate
- * arrive with OD2-OD4, and this page says so in words about the dataset, not about the build.
+ * Nothing here surveys. The page asks the questions that apply to a dataset (its own three and the generic ones, in a
+ * per-stage strip with "N of M answered"); Analysis, Curate and Automate on a dataset are TR-119, and this page says so
+ * in words about the dataset, not about the build.
  */
 import { listOpenData, getOpenData, listOpenDataPortals, listPortalSeeds } from '/static/re-api.js';
 import { openDialog } from '/static/next/worklist.js';
