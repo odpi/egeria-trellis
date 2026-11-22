@@ -145,3 +145,57 @@ def test_the_picker_datalist_offers_the_open_data_list_for_open_data():
     body = src[src.index("function slugListRows"):]
     body = body[:body.index("\n}\n")]
     assert "'open_data'" in body and "state.openData" in body
+
+
+# ── A2 / N1: an already_in_catalog row is added when RE has a slug for it, and says why when it has none ─────────
+
+OD_JS = (NEXT / "admin" / "open_data.js").read_text(encoding="utf-8")
+
+
+def _import(store, portal, t, names, **kw):
+    kw.setdefault("egeria_lookup", lambda _i: None)
+    return service.import_datasets(store, _chosen(portal["slug"], *names), work_list_name="water", transport=t,
+                                   imported_by="tester", **kw)
+
+
+def test_n1_a_dataset_RE_already_holds_joins_the_investigation_and_the_row_says_so(store, reg):
+    inv = _investigation(reg)
+    portal, t, names = _search_two(store)
+    _import(store, portal, t, names[:1])                                   # held by RE, not yet in any investigation
+    held = store.list_datasets()[0]["slug"]
+    assert _members(reg, inv) == []
+    got = _import(store, portal, t, names[:1], investigation=inv)
+    [row] = got["rows"]
+    assert row["outcome"] == "already_in_catalog" and row["slug"] == held
+    assert row["investigation"] == f"added to {inv}"
+    assert _members(reg, inv) == [("open_data", held)] and got["investigation_members"] == 1
+    assert got["investigation"] == inv
+
+
+def test_n1_a_dataset_only_Egeria_holds_says_why_it_was_not_added(store, reg):
+    inv = _investigation(reg)
+    portal, t, names = _search_two(store)
+    got = _import(store, portal, t, names[:1], investigation=inv, egeria_lookup=lambda _i: "e-guid")
+    [row] = got["rows"]
+    assert row["outcome"] == "already_in_catalog" and "slug" not in row
+    assert row["investigation"] == f"not added to {inv}: Egeria holds it and RE has no record of it to add"
+    assert _members(reg, inv) == [] and got["investigation_members"] == 0
+    assert "investigation_note" not in got                                 # the investigation exists: no false note
+
+
+def test_n1_a_mixed_import_counts_each_row_once(store, reg):
+    inv = _investigation(reg)
+    portal, t, names = _search_two(store)
+    _import(store, portal, t, names[:1])
+    got = _import(store, portal, t, names, investigation=inv)             # one held by RE, one new
+    assert sorted(r["outcome"] for r in got["rows"]) == ["already_in_catalog", "imported"]
+    assert {r["investigation"] for r in got["rows"]} == {f"added to {inv}"}
+    assert got["investigation_members"] == 2 == len(_members(reg, inv))
+
+
+def test_n1_the_import_result_says_how_many_were_added_and_each_rows_reason():
+    body = OD_JS[OD_JS.index("export function importResultHtml(r) {"):]
+    body = body[:body.index("\n}\n")]
+    assert "r.investigation_members" in body and "added to <span" in body    # "N added to <investigation>"
+    assert "r.investigation_note" in body                                    # the named investigation does not exist
+    assert "o.investigation" in body                                         # each row's own reason, not silence
