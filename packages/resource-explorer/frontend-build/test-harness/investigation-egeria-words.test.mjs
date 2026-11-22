@@ -11,7 +11,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const INDEX_HTML = fs.readFileSync(path.resolve(HERE, '../../resource_explorer/web/static/next/index.html'), 'utf8');
 const tick = (ms = 60) => new Promise((r) => setTimeout(r, ms));
 const text = (el) => el.textContent.replace(/\s+/g, ' ').trim();
-const WORDS = 'Egeria Project not created yet: Promote creates it';
+const WORDS = 'Egeria Project not created yet: Publish to Egeria creates it';
 
 async function setUp(invExtra) {
   const { document, window } = makeDomEnvironment();

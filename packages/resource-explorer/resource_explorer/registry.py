@@ -12588,7 +12588,7 @@ class ProjectRegistry:
     #: TR-120. An investigation bound "egeria" with no Project GUID is not broken and not local: the binding only
     #: records intent, and the Egeria Project is created when the investigation is promoted. Said in words wherever
     #: the empty GUID would otherwise read as "none" or as created.
-    EGERIA_PROJECT_NOT_CREATED_WORDS = "Egeria Project not created yet: Promote creates it"
+    EGERIA_PROJECT_NOT_CREATED_WORDS = "Egeria Project not created yet: Publish to Egeria creates it"
     EGERIA_BINDINGS = (BINDING_LOCAL, BINDING_EGERIA)
 
     #: The THIRD axis (F56, owner's Option D, 2026-11-04): who may see the

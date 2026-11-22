@@ -18,7 +18,7 @@ from test_open_data import reg  # noqa: E402,F401  (the sqlite registry fixture 
 from resource_explorer.registry import ProjectRegistry  # noqa: E402
 
 NEXT = Path(__file__).parent.parent / "resource_explorer" / "web" / "static" / "next"
-WORDS = "Egeria Project not created yet: Promote creates it"
+WORDS = "Egeria Project not created yet: Publish to Egeria creates it"
 
 
 @pytest.fixture
@@ -86,7 +86,7 @@ def test_no_promote_happens_and_no_guid_is_made_by_a_create(client, reg):
 def test_the_choice_is_relabelled_and_the_old_label_is_gone(client):
     bindings = client.get("/api/investigations/classifications").json()["bindings"]
     by_name = {b["name"]: b for b in bindings}
-    assert by_name["egeria"]["label"] == "Egeria Project (created when you promote)"
+    assert by_name["egeria"]["label"] == "Egeria Project (created when you publish)"
     assert "Create in Egeria" not in by_name["egeria"]["label"]
     assert by_name["local"]["label"] == "Ad-hoc"                      # the other choice is untouched
     assert [b["name"] for b in bindings] == ["egeria", "local"]       # same choices, same order, same names
