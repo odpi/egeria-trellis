@@ -185,7 +185,7 @@ def _access(slug, walk, previous, rows, age, hot, cold, common, inputs) -> dict:
              if r["file_path"] not in ours and (a := age(r.get("accessed_at"))) is not None]
     v = {**common, **_bands(pairs, hot, cold), "Files Without An Access Time": len(rows) - len(timed),
          "Access Possibly Resource Explorer's Own Read": len(ours), "basis": ACCESS_BASIS}
-    caveat = (f"; {len(ours):,} last read possibly by Resource Explorer's previous walk, not counted" if ours else "")
+    caveat = (f"; {len(ours):,} last read possibly by Resource Explorer's own reads (its walk, profiles, narrative files or data-class matches), not counted" if ours else "")
     if own_unread:
         # not "no own reads": the read failed, so profile, narrative and data-class reads are not separated here
         caveat += (f"; Resource Explorer's own reads could not be read ({own_unread}), so reads by its profiles, narrative "

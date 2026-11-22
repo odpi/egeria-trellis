@@ -56,7 +56,7 @@ def test_a_walk_that_hashed_caveats_access_at_or_after_its_own_start():
     v = a["value"]
     assert v["Access Possibly Resource Explorer's Own Read"] == 1
     assert v["Hot Files"] == 1                                # only "early" is counted
-    assert "possibly by Resource Explorer's previous walk, not counted" in a["summary"]
+    assert "by Resource Explorer's own reads (its walk, profiles, narrative files or data-class matches), not counted" in a["summary"]
 
 
 def test_nothing_read_by_resource_explorer_means_no_caveat():
