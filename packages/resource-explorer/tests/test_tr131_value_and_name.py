@@ -277,3 +277,82 @@ def test_a_check_or_a_name_rule_with_no_specification_is_refused(tmp_path):
                      + extra)
         with pytest.raises(bdc.SeedError, match="specification"):
             bdc.load_data_class_seed(p)
+
+
+# ── read-back W1: the "001-" exit code, and a name-fit column that mostly conforms ───────────────────────────────
+
+#: Shapes from customers-100.csv / people-100.csv (Phone 1, Phone 2, Phone): about a fifth carry the "001-" prefix.
+_REAL_PHONES = ["001-808-617-6467x12895", "001-949-844-8787", "229.077.5154", "(392)345-1234x0013", "686-517-1290",
+                "+1-542-845-0089x56789", "(704)987-6543", "312.555.0188x441"]
+
+
+def test_an_exit_code_prefix_is_a_phone_number():
+    rx = re.compile(SEED["PhoneNumber"]["specification"])
+    for v in ("001-808-617-6467x12895", "001-949-844-8787", "011 44 20 7946 0958", "0044 20 7946 0958",
+              "00 33 1 23 45 67 89"):
+        assert rx.fullmatch(v), v
+    for v in ("00 1", "0011", "011-44-12"):
+        assert not rx.fullmatch(v), v
+
+
+@pytest.mark.parametrize("column", ["Phone 1", "Phone 2", "Phone"])
+def test_the_real_phone_columns_now_match(column):
+    values = [f"001-{200 + i:03d}-{300 + i:03d}-{1000 + i:04d}x{100 + i}" for i in range(8)] + \
+             [_REAL_PHONES[i % len(_REAL_PHONES)][:-1] + str(i % 10) for i in range(32)]
+    m = _match(values, ALL, column=column)
+    assert _matched_as(m, PHONE), m.describe()
+
+
+def test_a_name_fit_column_that_mostly_conforms_is_inconclusive_never_an_established_no_match():
+    phones = [f"555-{200 + i:03d}-{1000 + i:04d}" for i in range(32)]
+    others = [f"see note {i}" for i in range(8)]                     # 0.80 conform
+    m = _match(phones + others, ALL, column="phone")
+    assert m.verdict not in ESTABLISHED_VERDICTS and m.verdict in NOT_ESTABLISHED_VERDICTS
+    assert m.verdict == "inconclusive" and abs(m.sampled_conformance - 0.80) < 1e-9
+    assert "Phone Number" in m.not_established_reason and not m.matched_qualified_name
+    assert [c["display_name"] for c in m.other_candidates if c.get("near_miss_reason")] == ["Phone Number"]
+
+
+def test_mostly_conforming_values_under_an_unrelated_name_are_not_a_near_miss():
+    phones = [f"555-{200 + i:03d}-{1000 + i:04d}" for i in range(32)] + [f"see note {i}" for i in range(8)]
+    m = _match(phones, ALL, column="comments")
+    assert m.verdict != "inconclusive" and not any(c.get("near_miss_reason") for c in m.other_candidates)
+
+
+def test_a_name_fit_column_below_the_near_floor_is_still_a_finding():
+    values = [f"555-{200 + i:03d}-{1000 + i:04d}" for i in range(8)] + [f"see note {i}" for i in range(32)]   # 0.20
+    m = _match(values, [PHONE], column="phone")
+    assert m.verdict in ESTABLISHED_VERDICTS and not _matched_as(m, PHONE)
+
+
+# ── read-back W2: an empty cell in a file is missing data, not a value ───────────────────────────────────────────
+
+def _birthdates(n):
+    return [f"{1 + i % 12:02d}/{1 + i % 28:02d}/19{60 + i % 39:02d}" for i in range(n)]
+
+
+@pytest.mark.parametrize("ext", ["csv", "parquet"])
+def test_blank_cells_are_dropped_by_the_file_sampler(tmp_path, ext):
+    import pandas as pd
+
+    from resource_explorer.surveyors.filesystem.file_class_match import sample_values
+    dates = _birthdates(77)
+    col = dates + [""] * 20 + ["   "] * 3                             # 77% dates, 23% blank
+    p = tmp_path / f"userdata.{ext}"
+    df = pd.DataFrame({"birthdate": col, "id": list(range(100))})
+    if ext == "csv":
+        df.to_csv(p, index=False)
+    else:
+        df.to_parquet(p, index=False)
+    values, rows, why = sample_values(p, ext)
+    assert why == "" and rows == 100
+    assert values["birthdate"] and all(str(v).strip() for v in values["birthdate"])
+    assert len(values["birthdate"]) == 77
+    m = _match(values["birthdate"], ALL, column="birthdate")
+    assert _matched_as(m, DOB), m.describe()
+
+
+def test_with_the_blanks_counted_the_same_column_would_not_have_matched():
+    """The bite, without the sampler: 23 blanks among 100 values is 0.77 conformance."""
+    m = _match(_birthdates(77) + [""] * 23, [DOB], column="birthdate")
+    assert not _matched_as(m, DOB) and m.verdict == "inconclusive"      # and now inconclusive, not "no match"

@@ -45,9 +45,9 @@ data_classes:
     displayName: Phone Number
     description: Telephone contact number.
     dataPatterns: [phone, phone_number, telephone, mobile, tel_num]
-    # North American or + international numbers, with an optional extension (x718, ext. 12, #22); never a plain
-    # decimal, a dotted quad, money or a short code.
-    specification: '(?:(?:\+?1[\s.\-]?)?(?:\(\d{3}\)\s?|\d{3}[\s.\-]?)\d{3}[\s.\-]?\d{4}|(?=\+(?:[\s\-()]*\d){8,15}[\s\-()]*(?!\d))\+[2-9]\d{0,2}(?:[\s\-]?\(?\d{1,4}\)?){2,6})(?:\s*[,;]?\s*(?i:x|ext\.?|extension|#)\s*\d{1,6})?'
+    # North American or international numbers, written with +, or with a 00 / 011 exit code (001-808-617-6467), with
+    # an optional extension (x718, ext. 12, #22); never a plain decimal, a dotted quad, money or a short code.
+    specification: '(?:(?:(?:\+|00|011)?1[\s.\-]?)?(?:\(\d{3}\)\s?|\d{3}[\s.\-]?)\d{3}[\s.\-]?\d{4}|(?:\+|00|011)[\s\-]?(?=(?:[\s\-()]*\d){8,15}[\s\-()]*(?!\d))[2-9]\d{0,2}(?:[\s\-]?\(?\d{1,4}\)?){2,6})(?:\s*[,;]?\s*(?i:x|ext\.?|extension|#)\s*\d{1,6})?'
     requiresNameMatch: true
 
   - name: SocialSecurityNumber

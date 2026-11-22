@@ -114,6 +114,13 @@ ESTABLISHED_VERDICTS: frozenset[str] = frozenset(
 #: conformance, it is two populations in one column.
 VALUE_MATCH_THRESHOLD = 0.95
 
+#: TR-131 read-back W1: a column whose NAME fits a class and whose values conform at least this much (but below
+#: `VALUE_MATCH_THRESHOLD`) is `MATCH_INCONCLUSIVE`, never an established `no_match`: a Phone-named column that is
+#: four-fifths phone numbers is a mixed column or a format the rule does not know, and "no match" would be a confident
+#: wrong answer. Inconclusive rather than `partial_match`: table_preview and column_profile_step count `partial_match`
+#: as a match (it is the reference-data partial), which would show and publish the class.
+NEAR_MATCH_FLOOR = 0.60
+
 #: Below this many distinct sampled values, no value-pattern verdict is
 #: attempted: with three values, any regex that fits them fits by luck.
 MIN_DISTINCT_VALUES_FOR_VERDICT = 8
@@ -1054,6 +1061,9 @@ def data_class_match(
                 "candidate": candidate, "eligible": False,
                 "value_score": value_score, "name_score": name_score,
                 "type_score": type_score,
+                # TR-131 W1: the name fits and most values do too: not a match, and not a "no match" either.
+                "near": (value_score >= NEAR_MATCH_FLOOR and type_score != 0.0 and name_hint_passes(
+                    column_name, list(candidate.name_hints) + [candidate.display_name])),
             })
             continue
         # A declared, tested, FAILING type is disqualifying for the same reason.
@@ -1129,6 +1139,28 @@ def data_class_match(
     # TR-127: a candidate backed by a tested value rule outranks any that rests on name and type alone; when only
     # name-and-type candidates remain the answer is `name_only`, which is not a match.
     valued = [s for s in eligible if s.get("evidence") != "name_and_type"]
+    near = sorted((s for s in scored if s.get("near")), key=lambda s: (-s["value_score"], s["candidate"].display_name))
+    if near and not valued:
+        # TR-131 W1: the column is named for a class and most of its values fit that class's rule, but not 0.95 of
+        # them. Not established either way: a mixed column, or a format the rule does not know yet.
+        best = near[0]
+        candidate = best["candidate"]
+        return ColumnMatch(
+            **base, verdict=MATCH_INCONCLUSIVE,
+            sampled_conformance=best["value_score"],
+            not_established_reason=(
+                f"the column's name fits '{candidate.display_name}' and {best['value_score']:.2f} of the sampled "
+                f"values fit its value rule: more than {NEAR_MATCH_FLOOR:.2f} but less than "
+                f"{VALUE_MATCH_THRESHOLD:.2f}, so the column is neither a match nor a no-match (mixed values, or a "
+                f"format the rule does not know)"),
+            other_candidates=[
+                {"display_name": s["candidate"].display_name, "qualified_name": s["candidate"].qualified_name,
+                 "confidence": 0, "sampled_conformance": s["value_score"],
+                 "near_miss_reason": "the name fits and most values conform, but fewer than the match threshold"}
+                for s in near
+            ] + held_back,
+            unusable_specifications=unusable,
+        )
     if eligible and not valued:
         best = eligible[0]
         candidate = best["candidate"]
