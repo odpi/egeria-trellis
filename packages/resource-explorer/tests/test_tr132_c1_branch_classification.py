@@ -147,16 +147,96 @@ def test_a_failing_call_is_said_in_words_and_never_raises(reg):
     assert "could not be set" in words and "boom" in words
 
 
-def test_the_classification_reader_parses_a_folder_that_has_one_and_one_that_has_none():
+def _element_64(*classifications, key="otherClassifications"):
+    """A by-GUID answer in Egeria 6.4's shape: Branch has no header key of its own, so it arrives in otherClassifications."""
+    return {"elementHeader": {"guid": FOLDER, key: list(classifications)}, "properties": {"qualifiedName": "x"}}
+
+
+def _branch_cls(**props):
+    return {"classificationName": "Branch", "classificationProperties": {**SAME, **props}}
+
+
+def test_the_classification_reader_finds_a_branch_where_egeria_6_4_puts_it_and_in_any_header_value():
     pub = EgeriaPublisher(platform_url="https://fake", registry=MagicMock())
     pub._metadata_expert = MagicMock()
-    pub._metadata_expert.get_metadata_element_by_guid.return_value = {"elementHeader": {"classifications": [
-        {"classificationName": "Branch", "classificationProperties": dict(SAME)}]}, "properties": {}}
+    get = pub._metadata_expert.get_metadata_element_by_guid
+    get.return_value = _element_64({"classificationName": "Ownership", "classificationProperties": {}}, _branch_cls())
     assert pub._read_branch_classification(FOLDER) == ("present", SAME)
-    pub._metadata_expert.get_metadata_element_by_guid.return_value = {"elementHeader": {"classifications": []}, "properties": {}}
+    get.return_value = {"elementHeader": {"someOtherKey": _branch_cls(), "guid": FOLDER}, "properties": {}}      # a dict value
+    assert pub._read_branch_classification(FOLDER) == ("present", SAME)
+    get.return_value = {"elementHeader": {"classifications": [{"type": {"typeName": "Branch"}, "properties": dict(SAME)}]}, "properties": {}}
+    assert pub._read_branch_classification(FOLDER) == ("present", SAME)               # the older shapes still read
+    get.return_value = _element_64({"classificationName": "Ownership", "classificationProperties": {}})
     assert pub._read_branch_classification(FOLDER) == ("absent", None)
-    pub._metadata_expert.get_metadata_element_by_guid.return_value = "No elements found"
+    get.return_value = _element_64()
+    assert pub._read_branch_classification(FOLDER) == ("absent", None)
+    get.return_value = "No elements found"
     assert pub._read_branch_classification(FOLDER)[0] == "unreadable"
+
+
+def _pub_reading(reg, element):
+    """A publisher that reads the folder for real (through the 6.4-shaped answer) and calls a fake DevopsPipeline."""
+    reg.record_repo_branch_runs("widgets", RUN, [_row()])
+    pub = EgeriaPublisher(platform_url="https://fake", registry=reg)
+    pub._metadata_expert = MagicMock()
+    pub._metadata_expert.get_metadata_element_by_guid.return_value = element
+    fake = FakeDevops()
+    pub._branch_client = lambda: fake
+    pub._egeria_carries_6_4 = lambda: (True, "6.4.0")
+    return pub, fake
+
+
+def test_a_branch_already_set_in_the_6_4_shape_makes_no_call(reg):
+    pub, fake = _pub_reading(reg, _element_64(_branch_cls()))
+    assert "already set to main; nothing changed" in _classify(pub) and fake.calls == []
+
+
+def test_a_renamed_default_in_the_6_4_shape_makes_exactly_one_update(reg):
+    pub, fake = _pub_reading(reg, _element_64(_branch_cls(displayName="old-default", url=f"{GITHUB_URL}/tree/old-default")))
+    words = _classify(pub)
+    assert len(fake.calls) == 1 and fake.calls[0][1]["display_name"] == "main"
+    assert words == "Branch classification updated to main (was old-default)"
+
+
+def test_a_folder_with_no_branch_in_the_6_4_shape_gets_one_set_call(reg):
+    pub, fake = _pub_reading(reg, _element_64())
+    assert _classify(pub) == "Branch classification set on the root folder: main" and len(fake.calls) == 1
+
+
+# ── the 6.4 gate reads the platform's version synchronously, never through the shared async client ─────────────────
+
+def _gate_pub(about):
+    pub = EgeriaPublisher(platform_url="https://fake", registry=MagicMock())
+    pub._metadata_expert = MagicMock()
+    if isinstance(about, Exception):
+        pub._metadata_expert.get_platform_origin.side_effect = about
+    else:
+        pub._metadata_expert.get_platform_origin.return_value = about
+    return pub
+
+
+@pytest.fixture
+def no_async_gate(monkeypatch):
+    def boom(*a, **k):
+        raise AssertionError("the async gate (a new event loop over a shared async client) must not be used")
+
+    monkeypatch.setattr("pyegeria.core.egeria_6_4_gate.async_egeria_6_4_status", boom)
+
+
+def test_the_gate_is_true_for_a_6_4_payload_without_touching_the_async_client(no_async_gate):
+    about = json.dumps({"name": "platform-chassis-spring", "time": "2026-11-22T10:00:00.000Z", "version": "6.4.0"})
+    assert _gate_pub(about)._egeria_carries_6_4() == (True, "6.4.0")
+
+
+def test_the_gate_is_false_for_6_3_and_unknown_for_an_unreadable_answer_never_guessed(no_async_gate):
+    assert _gate_pub(json.dumps({"version": "6.3"}))._egeria_carries_6_4() == (False, "6.3")
+    assert _gate_pub(RuntimeError("down"))._egeria_carries_6_4() == (None, "")
+    assert _gate_pub("not json")._egeria_carries_6_4() == (None, "")
+    assert _gate_pub(None)._egeria_carries_6_4() == (None, "")
+
+
+def test_a_dict_payload_works_too(no_async_gate):
+    assert _gate_pub({"version": "6.4.0"})._egeria_carries_6_4() == (True, "6.4.0")
 
 
 # ── the hook: only the ROOT folder, whether it was found or created; no new element is made ───────────────────────

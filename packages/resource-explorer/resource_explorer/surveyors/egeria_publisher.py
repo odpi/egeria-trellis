@@ -1939,17 +1939,15 @@ class EgeriaPublisher:
         return f"{base}/tree/{quote(branch, safe='/')}"
 
     def _egeria_carries_6_4(self):
-        """(carries: True | False | None, version): whether the platform has the 6.4 additions, from pyegeria's gate. Never
-        raises: an unreadable answer is (None, "")."""
+        """(carries: True | False | None, version): whether the platform has the 6.4 additions. Read SYNCHRONOUSLY: the platform's
+        own origin answer (name, version, time) through the publisher's sync client, then pyegeria's sync `carries_6_4`. Never
+        pyegeria's async gate, which would drive a client whose async transport belongs to another event loop. Never raises: an
+        unreadable answer is (None, ""), which the gate reports in words and never takes for "no"."""
         try:
-            import asyncio
+            from pyegeria.core.egeria_6_4_gate import carries_6_4
 
-            from pyegeria.core.egeria_6_4_gate import async_egeria_6_4_status
-
-            from resource_explorer.concurrency import run_sync
-
-            carries, version, _url = run_sync(asyncio.run, async_egeria_6_4_status(self._metadata_expert), timeout=60)
-            return carries, version
+            about = self._metadata_expert.get_platform_origin()
+            return carries_6_4(about) if about else (None, "")
         except Exception as exc:  # noqa: BLE001
             log.warning("could not read the platform's version for the Branch gate: %s", exc)
             return None, ""
@@ -1974,8 +1972,14 @@ class EgeriaPublisher:
             return "unreadable", None
         if not isinstance(element, dict) or not (element.get("elementHeader") or element.get("properties")):
             return "unreadable", None
+        # Egeria 6.4 gives Branch no header key of its own, so it arrives under otherClassifications; scan EVERY header value (a
+        # list of classifications, or one), as the Portal's branch_of does, plus the older top-level shapes.
         header = element.get("elementHeader") or {}
-        for c in (header.get("classifications") or element.get("classifications") or []):
+        candidates: list = []
+        for value in header.values():
+            candidates.extend(value if isinstance(value, list) else [value])
+        candidates.extend(element.get("classifications") or [])
+        for c in candidates:
             if not isinstance(c, dict):
                 continue
             name = c.get("classificationName") or (c.get("type") or {}).get("typeName") or c.get("typeName") or ""
