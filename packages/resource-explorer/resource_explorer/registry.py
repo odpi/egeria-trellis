@@ -491,6 +491,38 @@ FILESYSTEM_FILE_COLUMNS_DDL = (
     """,
 )
 
+#: DDL for repo_branch_runs (TR-132 C1): which REFS of a repository a survey run measured or listed. One row per ref per run:
+#: the ref the survey READ (tier 'surveyed': its name, kind and commit, so a result says which branch, tag or commit it is about) and
+#: every other branch the GitHub API listed (tier 'listed': metadata only, nothing was read). 'catalogued' is for C2. Same rules as
+#: the other additive tables here: ONE idempotent block, CREATE ... IF NOT EXISTS only, no ALTER of an existing table, no data
+#: migration, no foreign keys, no question mark or colon-name token. It is created by `resource-explorer schema apply` (the marker's
+#: fingerprint follows this block), never by a pod in external mode. NULL means not known or not applicable (`protected`, and the
+#: three C2 columns `compared_to`, `changed_paths`, `deleted_paths`), never false or empty; `egeria_folder_guid` and `words` are
+#: filled when the Branch classification is set on the default branch's root folder or declined, in words.
+#: Retention: the newest REPO_BRANCH_RUNS_KEPT runs per repository; removing the repository removes them all.
+REPO_BRANCH_RUNS_KEPT = 10
+REPO_BRANCH_RUNS_DDL = (
+    """
+    CREATE TABLE IF NOT EXISTS repo_branch_runs (
+        slug               TEXT NOT NULL,
+        run_id             TEXT NOT NULL,
+        ref_name           TEXT NOT NULL,
+        ref_kind           TEXT NOT NULL DEFAULT 'branch',
+        surveyed_commit    TEXT NOT NULL DEFAULT '',
+        tier               TEXT NOT NULL DEFAULT 'listed',
+        is_default         INTEGER NOT NULL DEFAULT 0,
+        protected          INTEGER DEFAULT NULL,
+        compared_to        TEXT DEFAULT NULL,
+        changed_paths      TEXT DEFAULT NULL,
+        deleted_paths      TEXT DEFAULT NULL,
+        egeria_folder_guid TEXT DEFAULT NULL,
+        words              TEXT NOT NULL DEFAULT '',
+        recorded_at        TEXT NOT NULL,
+        UNIQUE(slug, run_id, ref_name, ref_kind)
+    )
+    """,
+)
+
 #: DDL for the annotations of a user step run by RE (extensibility brief 2c; the project owner chose a dedicated
 #: table, 2026-10-13). Same rules as RESOURCE_SCOPE_EVENTS_DDL: ONE additive, idempotent block, CREATE ... IF
 #: NOT EXISTS only, no ALTER of an existing table, no data migration, no foreign keys, no question mark or
@@ -4043,6 +4075,9 @@ class ProjectRegistry:
                 conn.execute(_ddl)
             # filesystem_file_columns: ONE additive, idempotent statement (see FILESYSTEM_FILE_COLUMNS_DDL; owner's go 2026-10-23).
             for _ddl in FILESYSTEM_FILE_COLUMNS_DDL:
+                conn.execute(_ddl)
+            # repo_branch_runs: ONE additive, idempotent block (see REPO_BRANCH_RUNS_DDL; TR-132 C1).
+            for _ddl in REPO_BRANCH_RUNS_DDL:
                 conn.execute(_ddl)
             # step_annotations: ONE additive, idempotent block (see STEP_ANNOTATIONS_DDL).
             for _ddl in STEP_ANNOTATIONS_DDL:
@@ -8274,6 +8309,7 @@ class ProjectRegistry:
             conn.execute("DELETE FROM project_aliases WHERE project_slug = ?", (normalized,))
             conn.execute("DELETE FROM project_contributor_stats WHERE project_slug = ?", (normalized,))
             conn.execute("DELETE FROM project_contributors WHERE project_slug = ?", (normalized,))
+            conn.execute("DELETE FROM repo_branch_runs WHERE slug = ?", (normalized,))
             conn.execute("DELETE FROM project_dependencies WHERE project_slug = ?", (normalized,))
             conn.execute("DELETE FROM project_file_type_counts WHERE project_slug = ?", (normalized,))
             conn.execute("DELETE FROM project_file_inventory WHERE project_slug = ?", (normalized,))
@@ -15817,6 +15853,76 @@ class ProjectRegistry:
             for old in pruned:
                 conn.execute("DELETE FROM filesystem_file_columns WHERE filesystem_slug = ? AND run_id = ?", (normalized, old))
         return {"rows": len(rows), "run_id": run_id, "pruned_runs": pruned}
+
+    # ── repo_branch_runs (TR-132 C1) ───────────────────────────────────────────────────────────────────────────
+
+    REPO_BRANCH_FIELDS = ("ref_name", "ref_kind", "surveyed_commit", "tier", "is_default", "protected", "compared_to",
+                          "changed_paths", "deleted_paths", "egeria_folder_guid", "words")
+
+    @staticmethod
+    def _branch_row_bool(value):
+        """1 / 0 for a known flag, None (stored NULL) for an unknown one: never false for "not known"."""
+        return None if value is None else (1 if value else 0)
+
+    def record_repo_branch_runs(self, slug: str, run_id: str, rows: list[dict], *, keep_runs: int | None = None) -> dict:
+        """Store one survey run's refs (all or none: one transaction). A second call for the SAME run replaces only that
+        run's rows; every other run's rows are untouched. Then the runs older than the newest `keep_runs` go. Returns
+        {rows, run_id, pruned_runs}."""
+        keep = REPO_BRANCH_RUNS_KEPT if keep_runs is None else keep_runs
+        normalized = self._normalize_slug(slug)
+        now = datetime.utcnow().isoformat()
+        cols = ("slug", "run_id", *self.REPO_BRANCH_FIELDS, "recorded_at")
+        sql = f"INSERT INTO repo_branch_runs ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})"
+        batch = []
+        for r in rows:
+            batch.append((normalized, run_id, r["ref_name"], r.get("ref_kind") or "branch", r.get("surveyed_commit") or "",
+                          r.get("tier") or "listed", 1 if r.get("is_default") else 0, self._branch_row_bool(r.get("protected")),
+                          r.get("compared_to"), r.get("changed_paths"), r.get("deleted_paths"),
+                          r.get("egeria_folder_guid"), r.get("words") or "", now))
+        with self._conn() as conn:
+            conn.execute("DELETE FROM repo_branch_runs WHERE slug = ? AND run_id = ?", (normalized, run_id))
+            if batch:
+                conn.executemany(sql, batch)
+            runs = [x[0] for x in conn.execute(
+                "SELECT DISTINCT run_id FROM repo_branch_runs WHERE slug = ? ORDER BY run_id DESC", (normalized,)).fetchall()]
+            pruned = runs[keep:] if keep >= 0 else []
+            for old in pruned:
+                conn.execute("DELETE FROM repo_branch_runs WHERE slug = ? AND run_id = ?", (normalized, old))
+        return {"rows": len(batch), "run_id": run_id, "pruned_runs": pruned}
+
+    def list_repo_branch_runs(self, slug: str, run_id: str | None = None) -> list[dict]:
+        """The refs of ONE run: `run_id`, or the newest run when it is None. Surveyed rows first, then the default branch,
+        then by name. [] when the repository has never been surveyed with this recording (never a made-up row)."""
+        normalized = self._normalize_slug(slug)
+        with self._conn() as conn:
+            if run_id is None:
+                found = conn.execute("SELECT MAX(run_id) FROM repo_branch_runs WHERE slug = ?", (normalized,)).fetchone()
+                run_id = found[0] if found else None
+                if not run_id:
+                    return []
+            cur = conn.execute(
+                "SELECT slug, run_id, " + ", ".join(self.REPO_BRANCH_FIELDS) + ", recorded_at FROM repo_branch_runs "
+                "WHERE slug = ? AND run_id = ? ORDER BY CASE tier WHEN 'surveyed' THEN 0 ELSE 1 END, "
+                "is_default DESC, ref_name", (normalized, run_id))
+            out = []
+            for row in cur.fetchall():
+                d = dict(row)
+                d["is_default"] = bool(d["is_default"])
+                d["protected"] = None if d["protected"] is None else bool(d["protected"])
+                out.append(d)
+        return out
+
+    def set_repo_branch_outcome(self, slug: str, run_id: str, ref_name: str, ref_kind: str, *, words: str,
+                                egeria_folder_guid: str | None = None) -> int:
+        """What came of setting the Branch classification on this ref's folder: the words, and the folder's GUID when there
+        was one. Returns the rows changed (0 when the run has no such row)."""
+        normalized = self._normalize_slug(slug)
+        with self._conn() as conn:
+            cur = conn.execute(
+                "UPDATE repo_branch_runs SET words = ?, egeria_folder_guid = ? "
+                "WHERE slug = ? AND run_id = ? AND ref_name = ? AND ref_kind = ?",
+                (words, egeria_folder_guid, normalized, run_id, ref_name, ref_kind))
+            return cur.rowcount or 0
 
     def replace_filesystem_file_profile(self, fs_slug: str, run_id: str, file_path: str, rows: list[dict]) -> int:
         """Replace ONE file's rows within a run (Egeria's report read back for a file that was submitted). One transaction."""

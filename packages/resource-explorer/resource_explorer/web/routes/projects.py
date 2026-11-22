@@ -517,6 +517,9 @@ class ScoutingOverview(BaseModel):
     stats_unread: list[str] = []
     # False when no project_stats row exists at all: an imported repo nobody has surveyed yet.
     stats_fetched: bool = True
+    #: TR-132 C1: the refs of the newest survey run that recorded them (repo_branch_runs): the ref it read and every branch
+    #: listed. [] when no run has recorded any (never a made-up row). The card draws one line from it.
+    branches: list[dict] = []
 
 
 _SCOUTING_STAT_FIELDS = (
@@ -624,6 +627,7 @@ async def get_scouting_overview(slug: str) -> ScoutingOverview:
         latest_deployment_ref=stats.get("latest_deployment_ref") or "",
         stats_unread=_scouting_stats_unread(stats),
         stats_fetched=bool(stats),
+        branches=registry.list_repo_branch_runs(project.slug),
     )
 
 
