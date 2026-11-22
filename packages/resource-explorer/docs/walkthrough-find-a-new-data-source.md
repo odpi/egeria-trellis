@@ -15,10 +15,9 @@ and about twenty minutes.
 - **What you need.**
   - You are signed in.
   - An investigation exists. If not, make one first (guide section 3).
-  - A portal is registered. An administrator does this in **Admin › Open data**. Section 8 of the guide covers it.
-- **What is not in place yet.** Steps 6 and 7 (profile, publish) ship in the OD3 and OD4 changes. If your
-  screen has no **Profile** or **Publish to Egeria** section, those changes are not on your server yet.
-  Steps 1 to 5 work without them.
+  - A portal is registered. An administrator does this in **Admin › Open data**. Section 8 of the guide covers it. On a fresh install, **＋ Find open data** also lists suggested portals, each with an **Add**; nothing is added until you press one.
+- **If a section is missing.** Steps 6 and 7 (profile, publish) are built. If your screen has no **Profile** or
+  **Publish to Egeria** section, your server is older than those changes; steps 1 to 5 work without them.
 
 Every number you see has a "retrieved" time and says where it came from. Where a portal gave no value, the
 screen says **not reported by this source**. That is not zero and not empty. It means the portal said nothing.

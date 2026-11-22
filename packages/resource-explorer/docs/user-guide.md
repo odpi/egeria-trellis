@@ -585,13 +585,16 @@ Where you meet it:
 
 ## 8. Admin
 
-Opened from **Admin** in the header. The dialog reads: "System configuration — not something a user does to curate a specific resource, so it lives here rather than under one of the eight intents." It has three pickers:
+Opened from **Admin** in the header. The dialog reads: "System configuration — not something a user does to curate a specific resource, so it lives here rather than under one of the eight intents." It has four pickers:
 
 - **CONFIGURE**: **Annotation Types** (the registry of metadata annotation schemas and their mapping to Egeria's property classes, with **+ Register annotation type**), **Groups**, **Repository discovery sources**, **Question Catalog**, **API fetch addresses**, **Value profile settings** and **Egeria's mounts**.
 - **RECONCILE**: **Egeria Alignment**, **Egeria Links**, **Publish Queue** and **Repair**.
 - **OBSERVE**: **Prefect**, **Feedback** and **Logs**.
+- **OPEN DATA**: **Data portals**, **Portal directories** and **Open data**. This is where a portal is registered; the walkthrough [Find a new data source](walkthrough-find-a-new-data-source.md) starts after that.
 
 **Groups** is headed "Resource Groups": "Group repos, databases and filesystems that belong together (e.g. one product's resources). Deleting a group never deletes what's in it — members return to Ungrouped." It has **+ NEW GROUP**, **SUGGESTED GROUPINGS** ("Nothing is grouped automatically; review and apply.") and **ASSIGN A RESOURCE TO A GROUP**. Each group with members is a Folio in Egeria (see Curate); deleting a group removes each member from the Folio at that member's next Publish, and the Folio itself stays in Egeria for the owner to delete by hand.
+
+**Data portals** lists the registered portals, each with its API, its cost line and when it was registered. **Register** takes a name, the API (CKAN, DCAT-AP or Zenodo), the base URL and an optional API key; **Check** reads the portal and says whether it answers. **Suggested portals** is the shipped list (`open_data_portal_seeds.yaml`): each row has one **Add**, which checks reach and registers that one portal as you. The list is offered, never applied, and there is no add-all. On a fresh install, **＋ Find open data** shows the same list, open, so the first portal can be added from there. **Portal directories** registers a directory of portals and lets you choose which of its portals to register; a portal registered for later has no search until its API is one RE can read. **Open data** lists the imported datasets.
 
 **Repository discovery sources**: "a saved GitHub search, or a curated list of repos (for foundations that spread projects across many orgs, like Eclipse, or your own enterprise repos). Running a source only shows candidates for review here — it does not register anything until you pick which ones and confirm." Each source has **▶ Run**, **🔄 Refresh** (list sources) and **🗑 Delete**; **+ ADD A SOURCE** offers Search & save, Manual list and Quick add.
 
@@ -646,7 +649,7 @@ Each item is a design, not a screen. The date is when this list was last checked
 |---|---|---|
 | Renderers for seven result kinds (the screen says "planned, not built yet") | `DESIGN-DECLARED-EXTENSIBILITY-RENDERING-CHAT-CONFIDENCE.md` | 2026-10-28 |
 | Dashboards inside RE | `DESIGN-LOCAL-DASHBOARDS-DECLARED-ANALYTICS.md` (#903) | 2026-10-28 |
-| Open data | `DESIGN-OPEN-DATA-SEARCH-AND-SURVEY.md` (#904), with `DESIGN-OPEN-DATA-RESOURCE-KIND-BRAINSTORM.md`; OD1 and OD2 built, OD3 (profile) and OD4 (publish, look again) on branches; the walkthrough is [Find a new data source](walkthrough-find-a-new-data-source.md) | 2026-10-28 |
+| Open data | `DESIGN-OPEN-DATA-SEARCH-AND-SURVEY.md` (#904), with `DESIGN-OPEN-DATA-RESOURCE-KIND-BRAINSTORM.md`; OD1 to OD4 built (search and import, scout, profile, publish and look again); the walkthrough is [Find a new data source](walkthrough-find-a-new-data-source.md) | 2026-10-28 |
 | Remote reach for file systems | `DESIGN-FILES-REMOTE-REACH.md` | 2026-10-28 |
 | An Artifacts tab on Understanding | `DESIGN-ARTIFACTS-VIEW-AND-DOC-LINKS.md` | 2026-10-28 |
 | The winnowing bench (winnowing columns on a work list, #843) | `DESIGN-WORK-LISTS-WINNOWING-AND-MIXED-KINDS.md` | 2026-10-28 |
