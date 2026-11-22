@@ -26,6 +26,14 @@ the DataClass by qualifiedName; the keyword set and keywords TYPED as `ValidValu
 definitions). A class already present is never re-created; its keywords are reconciled by one typed
 find on the keyword prefix. Nothing is ever changed or deleted.
 
+**What a DataClass is created with (TR-127).** The seed's `dataPatterns` are column-name KEYWORDS (they also
+become the keyword set and the Curate and PII keywords). They are sent to Egeria as the DataClass's
+`matchPropertyNames`; an optional per-entry `specification` (a real value regex, python `fullmatch`, validated
+at load) is sent as its `specification`; `dataPatterns` is not sent. DataClasses seeded before this change carry
+the keywords as `dataPatterns` and no specification: the bootstrap never updates them, so an owner who wants
+them tidy sets matchPropertyNames to the keywords, `specification` to the regex and clears `dataPatterns`
+by hand in Egeria (the value matcher already treats such keywords as name hints, so they do not disqualify).
+
 **Edits are not propagated.** A class, set or keyword already present by qualifiedName is never
 updated: changing an existing entry's displayName, description or dataPatterns in the seed changes
 the fingerprint, so the next pass re-checks everything, but only ADDS what is missing (a new
@@ -73,7 +81,7 @@ CANARY_PREFIX = "ValidValueDefinition::ResourceExplorer::DataClassSeed::"
 
 _NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]*$")
 _KEYWORD_RE = re.compile(r"^[a-z0-9_]+$")
-_FIELDS = ("name", "displayName", "description", "dataPatterns")
+_FIELDS = ("name", "displayName", "description", "dataPatterns", "specification")
 #: Caps on the seed: each keyword is one Egeria element and one link, created at start-up.
 MAX_DATA_CLASSES = 100
 MAX_KEYWORDS_PER_CLASS = 50
@@ -116,9 +124,20 @@ def _validate(raw: Any, source: str) -> list[dict]:
             raise SeedError(f"{where}: {len(patterns)} keywords, more than {MAX_KEYWORDS_PER_CLASS}")
         if len(set(patterns)) != len(patterns):
             raise SeedError(f"{where}: a keyword appears twice")
+        spec = entry.get("specification")
+        if spec is not None:
+            if not isinstance(spec, str) or not spec.strip():
+                raise SeedError(f"{where}: 'specification' must be a non-empty regular expression (a string)")
+            try:
+                re.compile(spec)
+            except re.error as exc:
+                raise SeedError(f"{where}: 'specification' is not a valid regular expression ({exc})") from exc
         seen.add(name)
-        out.append({"name": name, "displayName": entry["displayName"].strip(),
-                    "description": entry["description"].strip(), "dataPatterns": list(patterns)})
+        item = {"name": name, "displayName": entry["displayName"].strip(),
+                "description": entry["description"].strip(), "dataPatterns": list(patterns)}
+        if spec is not None:
+            item["specification"] = spec
+        out.append(item)
     if not out:
         raise SeedError(f"{source}: no data classes")
     if len(out) > MAX_DATA_CLASSES:
@@ -261,7 +280,12 @@ def _data_class_body(dc: dict) -> dict:
             "qualifiedName": data_class_qn(dc["name"]),
             "displayName": dc["displayName"],
             "description": dc["description"],
-            "dataPatterns": dc["dataPatterns"],
+            # TR-127: the keywords are column NAMES, so they go in matchPropertyNames. They used to be sent as
+            # dataPatterns, which the value matcher fullmatches as value regexes, so every seeded class
+            # disqualified itself on real values. A real value regex goes in `specification`, where one exists;
+            # no dataPatterns at all is sent (no keywords there, and no blank list item).
+            "matchPropertyNames": list(dc["dataPatterns"]),
+            **({"specification": dc["specification"]} if dc.get("specification") else {}),
         },
     }
 

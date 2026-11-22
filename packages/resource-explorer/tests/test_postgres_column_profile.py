@@ -39,6 +39,7 @@ from resource_explorer.surveyors.database.column_matching import (
     MATCH_NOT_SAMPLED,
     MATCH_PARTIAL,
     MATCH_UNMATCHED_PATTERNED,
+    MATCH_NAME_ONLY,
     NAME_AND_TYPE_ONLY_CONFIDENCE,
     NOT_ESTABLISHED_VERDICTS,
     KnownDataClass,
@@ -639,7 +640,8 @@ class TestDataClassMatch:
         match = self._match(
             [f"anything {i}" for i in range(40)], classes=(nameless,), column="email",
         )
-        assert match.verdict == MATCH_MATCHED
+        # TR-127 (Architect ruling 2026-11-22): name and type alone is no longer a "match": its own verdict, name_only
+        assert match.verdict == MATCH_NAME_ONLY and match.verdict != MATCH_MATCHED
         assert match.evidence == "name_and_type"
         assert match.confidence <= NAME_AND_TYPE_ONLY_CONFIDENCE
         assert match.sampled_conformance is None
