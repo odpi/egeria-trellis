@@ -45,6 +45,12 @@ class FeedbackError(ValueError):
     """A request the store refuses: an unknown status, kind, source or vote, or a missing field."""
 
 
+class SchemaNotReady(FeedbackError):
+    """`ddl="external"` and the feedback tables are missing or lack a column this version needs.
+
+    The store sends no DDL in that mode; whoever owns the schema (a schema Job) must run it first."""
+
+
 def check_cause(status: str, cause: str, secondary_cause: str) -> None:
     """Refuse a diagnosis that contradicts itself or the precedence rule (closed-loop design §2).
 
