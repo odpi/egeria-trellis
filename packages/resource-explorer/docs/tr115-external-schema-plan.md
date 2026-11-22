@@ -1,6 +1,6 @@
 # TR-115: the four other stores under `RE_SCHEMA_MODE=external` (plan, with failing tests)
 
-Status: **plan and red tests only.** The tests are `tests/test_tr115_external_stores.py`: 8 fail on purpose (each names a missing piece), 3 guards pass, 1 Postgres
+Status: **plan and red tests only.** The tests are `tests/test_tr115_external_stores.py`: 17 fail on purpose (each names a missing piece), 3 guards pass, 1 Postgres
 test skips without `RE_SCHEMA_TEST_PG_URL`. Nothing in the packages is changed yet. Phase 3 (the RE chart) needs this; Phase 3 itself waits for Dan.
 
 ## The problem
@@ -31,23 +31,43 @@ Compose must not change: the default of every new setting is today's behaviour (
    external, and read the mode through the one function the registry already uses (`RE_SCHEMA_MODE`, validated; `apply` is never accepted from the environment).
 3. **One marker, one hash.** Extend the existing `schema_version` marker rather than adding tables: the version hash already follows `_init_schema` and what it
    reaches; it must also follow the DDL of the four stores, which live in other packages (`trellis_feedback`, `trellis_vectorstore`, `trellis_artifact_tree`), so
-   `schema_fingerprint.py` learns to follow those packages' schema entry points. `require_ready` is then one `SELECT` on the marker, the same check the registry makes.
+   `schema_fingerprint.py` learns to follow those packages' schema entry points (more than one root per store, and a plain function root for `trellis_artifact_tree.create_schema_sql`;
+   today it takes one class method). `schema_stores.fingerprints()` returns the registry's, each store's own and the `combined` hash. The marker stores the combined hash and, in its detail,
+   each store's own fingerprint, so `require_ready` can say **which store drifted**, not only that something did. `require_ready` is then one `SELECT` on the marker, the same check the
+   registry makes. Red tests: a changed DDL statement in each of the four packages moves the combined hash and that store's fingerprint and no other; comments and docstrings move nothing
+   (this is the TR-112b read-back W1 miss, not repeated).
    Existence checks alone cannot see the additive `ALTER`s (metrics, feedback), so they are not enough.
 4. **`schema apply` output** counts the extra statements (`schema ready · N statements`), and its second run stays a no-op.
 5. **The extension.** `CREATE EXTENSION vector` needs privileges the runtime role may not have. The schema Job uses the owner role; external pods need only `USAGE`. The
    chart (Phase 3) gives the Job and the Deployment different database Secrets; this plan documents the requirement, the chart does not exist yet.
 
-## Decisions for Dan (not made here)
-* **D1.** Marker design above (one hash over all five) versus a marker per store. One hash is simpler to run and to reason about; a per-store marker lets stores
-  version independently, which only matters if they ship separately. Recommended: one hash.
-* **D2.** Where the stores' external check lives: libraries raise their own `SchemaNotReady`-style error (subclass of RE's) versus RE alone checking the
-  marker before it builds a store. Recommended: RE alone (the libraries stay free of RE's marker); the libraries only promise "no DDL".
-* **D3.** Egeria Advisor uses `trellis_vectorstore` and `trellis_feedback` too (`advisor/vector_store_pg.py`, `feedback_store.py`). This plan makes the
-  libraries ready for it; wiring EA's own external mode is a later step with the EA chart, not part of TR-115.
+## Finding: the vectorstore collections are dynamic
+RE names a collection `<resource slug>_<type>` (`vector_store_pg.collection_name`) and runs with `auto_provision_on_insert=True`, so today the first ingest of a NEW resource creates its
+tables and HNSW indexes at runtime. The set of tables is therefore open-ended, and in `external` mode `create_collection` is refused: a running pod's first new collection would break.
+* **A declared table lists the collections RE uses**: `schema_stores.COLLECTIONS_TABLE`, one row per collection with its name, embedding dimension, metric (cosine, RE's decision D2),
+  HNSW `m` and `ef_construction`. The schema Job creates the tables and indexes from that list (`apply_schema()`), from the registry's resources (`schema_stores.declared_collection_rows`).
+* **An insert into a collection not on the list fails loudly** before any write, with a typed error naming the collection and saying to run `resource-explorer schema apply`; no DDL is sent
+  (`PgVectorStore(..., ddl="external", declared_collections_table=...)`). Never a silent skip, never a half-written batch.
+* **Consequence to decide (D4):** adding a resource then needs a schema apply before its first ingest. Either ingestion triggers/awaits the Job (a step in the ingestion flow), or the runtime
+  role keeps a narrow right to create tables in the vector schema only (then `external` is "no DDL except declared collection tables"). Recommended: the first, because the whole point of the Job is that pods hold no DDL right.
+
+## The extension on a managed Postgres
+`CREATE EXTENSION vector` is often not allowed to the Job's role (managed Postgres). `schema_stores.ensure_extension(conn)` first looks in `pg_extension`; if `vector` is installed
+it does nothing; if not, it tries to create it, and on a privilege error it fails with a message that says **"ask the database admin to run CREATE EXTENSION vector"** (with the database
+name), not the raw permission error. Red tests: a missing extension with a refusing role, and an installed extension that is not created again.
+
+## Decisions for Dan (recommendations from the Architect; not made here)
+* **D1. Marker.** One combined hash over all five, AND each store's own fingerprint stored in the marker's detail so `require_ready` says which store drifted. (Versus a marker per store,
+  which only helps if the stores ship separately.) Recommended: one hash plus per-store detail.
+* **D2. Who checks.** RE alone checks readiness (the marker) before it builds a store. The libraries promise only "no DDL with `ddl="external"`" plus a typed refusal for the operations
+  that would need DDL (`create_collection`, `create_schema`, `auto_provision_on_insert`). They never read RE's marker or the environment. Recommended: this.
+* **D3. Egeria Advisor.** Later, with the EA chart. **Risk to carry:** EA and RE share `trellis_feedback` and `trellis_vectorstore`. In any cluster where RE runs `external`, EA must also run
+  `external`, or its DDL must be in the same schema Job; otherwise EA's `auto` mode keeps issuing DDL on the shared tables and schemas. Compose stays all-`auto`.
+* **D4. New collections** (the finding above): ingestion waits for the schema Job, or the runtime role keeps a right to create vector-schema tables. Recommended: the Job.
 
 ## Order of work (after the plan is approved)
 1. `trellis_feedback` (smallest; tests 2-3) -> 2. `MetricsCollector` (test 1) -> 3. `trellis_artifact_tree` + the sink (tests 4-5) ->
-4. `trellis_vectorstore` (tests 6-7) -> 5. `schema_stores.py`, the fingerprint extension and `schema apply` (tests 8-9, the Postgres end-to-end) ->
+4. `trellis_vectorstore`, including the declared-collections table and the typed refusal -> 5. `schema_stores.py` (apply, require_ready, `ensure_extension`, `fingerprints`, `declared_collection_rows`), the fingerprint extension and `schema apply` (the Postgres end-to-end) ->
 6. rebuild the RE image and prove it on the throwaway Postgres, then on kind with the schema Job (Phase 3).
 Each step is its own commit; the full RE suite must stay green after each (the TR-112b gate b479 lesson: run the whole suite, never dismiss a failure as flaky).
 

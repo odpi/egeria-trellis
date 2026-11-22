@@ -154,6 +154,120 @@ def test_schema_apply_creates_all_four_stores_and_external_mode_then_runs_no_ddl
     schema_stores.apply_all(f"{BASE_URL}?options=-csearch_path%3Dresource_explorer_test_{uuid.uuid4().hex[:8]}")
 
 
+# ── the fingerprint follows the four packages (the TR-112b read-back W1 miss, again) ──────────────────────────────
+
+# store -> (module whose source holds that store's DDL, one statement to change)
+STORE_DDL = {
+    "metrics": ("resource_explorer.observability.metrics_collector", "CREATE TABLE IF NOT EXISTS query_log"),
+    "feedback": ("trellis_feedback.store", 'CREATE SCHEMA IF NOT EXISTS'),
+    "vectorstore": ("trellis_vectorstore.pg", "CREATE EXTENSION IF NOT EXISTS vector"),
+    "artifact_tree": ("trellis_artifact_tree.schema", "CREATE INDEX IF NOT EXISTS artifact_node_by_artifact"),
+}
+
+
+def _src_edit(module: str, old: str):
+    """A source_of that serves the real source except `module`, in which one DDL statement is changed."""
+    from resource_explorer.schema_fingerprint import default_source
+
+    def source_of(name: str):
+        src = default_source(name)
+        if name == module:
+            assert old in src, f"{old!r} is not in {module}: update STORE_DDL"
+            src = src.replace(old, old + " /* changed */", 1)
+        return src
+    return source_of
+
+
+@pytest.mark.parametrize("store", sorted(STORE_DDL))
+def test_fingerprint_follows_each_store_and_names_which_one_moved(store):
+    """Change one DDL statement in a store's package: the combined hash AND that store's own fingerprint change, and the other stores' do not
+    (so require_ready can say which store drifted)."""
+    from resource_explorer import schema_stores
+    base = schema_stores.fingerprints()
+    module, old = STORE_DDL[store]
+    changed = schema_stores.fingerprints(source_of=_src_edit(module, old))
+    assert changed["combined"] != base["combined"], f"{module} is not in the combined schema hash"
+    assert changed[store] != base[store], f"{store} has no fingerprint of its own"
+    assert {k: v for k, v in changed.items() if k not in (store, "combined")} == \
+           {k: v for k, v in base.items() if k not in (store, "combined")}
+
+
+def test_fingerprint_ignores_comments_and_docstrings_in_the_store_packages():
+    from resource_explorer import schema_stores
+    from resource_explorer.schema_fingerprint import default_source
+    module = STORE_DDL["feedback"][0]
+
+    def source_of(name):
+        src = default_source(name)
+        return src + "\n# a comment that changes nothing\n" if name == module else src
+    assert schema_stores.fingerprints(source_of=source_of) == schema_stores.fingerprints()
+
+
+# ── the vectorstore collections are dynamic (RE: one table per resource slug and type) ───────────────────────────────
+
+def test_declared_collections_rows_carry_name_dimension_and_hnsw_settings():
+    """In external mode create_collection is refused, so the schema Job creates the tables RE will use and RECORDS them in one declared table
+    (schema_stores.COLLECTIONS_TABLE): name, embedding dimension, metric, HNSW m and ef_construction."""
+    from resource_explorer import schema_stores
+    rows = schema_stores.declared_collection_rows(["acme_corp"])
+    assert rows, "a resource has collections"
+    for r in rows:
+        assert r["name"].startswith("acme_corp_")
+        assert isinstance(r["dimension"], int) and r["dimension"] > 0
+        assert r["metric"] == "cosine"                                     # RE's decision D2
+        assert isinstance(r["hnsw_m"], int) and isinstance(r["hnsw_ef_construction"], int)
+    assert schema_stores.COLLECTIONS_TABLE
+
+
+def test_pgvectorstore_external_insert_into_an_undeclared_collection_fails_loudly_and_sends_no_ddl():
+    """Otherwise the first new collection breaks a running pod half-way (or silently skips). The error names the collection and the fix."""
+    from trellis_vectorstore import PgVectorStore, PgVectorStoreConfig
+    spy = _Spy()
+    conn = _fake_pg(spy)
+    conn.cursor.return_value.fetchone.return_value = None                  # the declared-collections table has no such row
+    cfg = PgVectorStoreConfig(host="h", port=1, dbname="d", user="u", password="p", schema="resource_explorer")
+    with mock.patch("trellis_vectorstore.pg.psycopg2.connect", return_value=conn), \
+         mock.patch("trellis_vectorstore.pg.ThreadedConnectionPool"):
+        store = PgVectorStore(cfg, metric="cosine", embeddings=mock.MagicMock(), ddl="external",
+                              declared_collections_table="vector_collections")
+        with pytest.raises(Exception, match=r"not_declared.*schema apply|schema apply.*not_declared"):
+            store.insert_with_embeddings("not_declared", ["t"], [[0.0]])
+    assert spy.ddl == [], spy.ddl
+
+
+# ── the extension: a managed Postgres often will not let the Job's role create it ───────────────────────────────────
+
+def test_missing_vector_extension_gives_an_instruction_not_a_raw_permission_error():
+    from resource_explorer import schema_stores
+    import psycopg2.errors
+    cur = mock.MagicMock()
+    cur.__enter__.return_value = cur
+    cur.fetchone.return_value = None                                       # pg_extension has no 'vector'
+
+    def execute(sql, params=None):
+        if "CREATE EXTENSION" in str(sql):
+            raise psycopg2.errors.InsufficientPrivilege("permission denied to create extension \"vector\"")
+    cur.execute.side_effect = execute
+    conn = mock.MagicMock()
+    conn.cursor.return_value = cur
+    with pytest.raises(Exception) as ei:
+        schema_stores.ensure_extension(conn)
+    msg = str(ei.value)
+    assert "ask the database admin to run CREATE EXTENSION vector" in msg
+    assert "permission denied" not in msg.lower()
+
+
+def test_existing_vector_extension_is_not_created_again():
+    from resource_explorer import schema_stores
+    cur = mock.MagicMock()
+    cur.__enter__.return_value = cur
+    cur.fetchone.return_value = (1,)                                       # already installed (by the admin)
+    conn = mock.MagicMock()
+    conn.cursor.return_value = cur
+    schema_stores.ensure_extension(conn)
+    assert not [c for c in cur.execute.call_args_list if "CREATE EXTENSION" in str(c)]
+
+
 # ── guards: pass today and must keep passing (compose and RE_SCHEMA_MODE=auto are unchanged) ───────────────────────
 
 def test_guard_feedback_store_auto_still_creates_its_tables(tmp_path):
