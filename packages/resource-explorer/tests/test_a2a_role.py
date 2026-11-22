@@ -306,19 +306,12 @@ class TestDiscovery:
         assert body["authentication"]["anonymous_allowed"] is True
         assert body["authentication"]["required"] is False
 
-    def test_index_carries_re_version_and_the_egeria_binding(self):
+    def test_index_carries_the_re_version(self):
+        """(TR-133: the Egeria binding was removed from this unauthenticated index; see the test that it names no internal address.)"""
         from resource_explorer import __version__
 
         body = _client().get("/.well-known/agents.json").json()
         assert body["version"] == __version__
-        assert body["egeria"]["view_server"] == "qs-view-server"
-        # The index reports the platform from RE's own config (get_config()), not from the
-        # A2AAuthSettings handed to build_app, so the expected value is whatever the run
-        # configures (EGERIA_PLATFORM_URL); a hard-coded localhost only held on a bare machine.
-        from resource_explorer.config import get_config
-
-        assert body["egeria"]["platform_url"] == get_config().egeria.platform_url
-        assert body["egeria"]["platform_url"]
 
     def test_exactly_one_default_agent_and_it_is_the_orchestrator(self):
         body = _client().get("/.well-known/agents.json").json()

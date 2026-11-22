@@ -18,7 +18,7 @@ Base URL below is `http://<host>:8090`.
 
 | Path | What it is | Token needed |
 |---|---|---|
-| `/.well-known/agents.json` | **Index of every agent** — names, URLs, cards, skills, auth scheme, RE version, the Egeria platform this service is bound to | no |
+| `/.well-known/agents.json` | **Index of every agent** — names, URLs, cards, skills, auth scheme, RE version. It names no internal address: every URL in it is built from `A2A_PUBLIC_URL` (TR-133) | no |
 | `/.well-known/agent-card.json` | The orchestrator's A2A agent card | no |
 | `/` | The orchestrator — the default agent | yes |
 | `/whoami` | Who the presented token says you are | yes |
@@ -127,7 +127,6 @@ found. This index closes that in one fetch:
   "version": "0.1.0",
   "base_url": "http://127.0.0.1:8090",
   "default_agent": "orchestrator",
-  "egeria": {"platform_url": "https://localhost:9443", "view_server": "qs-view-server"},
   "authentication": {
     "scheme": "Bearer",
     "required": true,
