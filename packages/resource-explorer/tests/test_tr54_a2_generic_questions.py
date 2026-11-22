@@ -153,3 +153,48 @@ def test_batch_import_still_refuses_an_open_data_row(store, reg):
     assert "open_data" not in batch_io.RESOURCE_TYPES
     rows = batch_io.parse_csv_text("resource_type,address\nopen_data,doi:10.5281/zenodo.1\n")
     assert rows and "unknown resource_type 'open_data'" in " ".join(rows[0].errors)
+
+
+# ── Architect read-back: Q-0041 and Q-0055 are asked of a dataset; M = 20 ────────────────────────────────────────
+
+def test_two_generic_questions_stay_excluded_and_m_is_twenty(store):
+    assert set(dq.GENERIC_DOES_NOT_APPLY) == {"Q-0054", "Q-0098"}
+    assert {"Q-0041", "Q-0055"} <= dq.GENERIC_APPLIES
+    out = dq.build(_imported(store))
+    assert out["total"] == 20 == len(out["questions"]) and {n["id"] for n in out["not_applicable"]} == {"Q-0054", "Q-0098"}
+
+
+def test_q0041_is_no_reader_with_the_rulings_words(store):
+    row = {r["id"]: r for r in dq.build(_imported(store))["questions"]}["Q-0041"]
+    assert row["state"] == "no_reader" and row["answer"] == ""
+    assert row["words"] == ("no reader yet: OD4's look-again re-reads the record; comparing it with the record at import "
+                            "is not built")
+
+
+@pytest.mark.parametrize("record,said", [
+    ({"country": "IE"}, "IE"),
+    ({"spatial": "Dublin City"}, "Dublin City"),
+    ({"geographic_coverage": "Ireland"}, "Ireland"),
+    ({"dct:spatial": "https://publications.europa.eu/resource/authority/country/IRL"}, "country/IRL"),
+    ({"jurisdiction": "Republic of Ireland"}, "Republic of Ireland"),
+    ({"extras": [{"key": "spatial_text", "value": "Cork"}, {"key": "other", "value": "x"}]}, "Cork"),
+])
+def test_q0055_is_partial_when_the_record_states_a_place(store, record, said):
+    d = dict(_imported(store), record=record)
+    row = {r["id"]: r for r in dq.build(d)["questions"]}["Q-0055"]
+    assert row["state"] == "partial" and said in row["answer"]
+    assert "publisher's record" in row["answer"]                                     # it says where the place came from
+
+
+def test_q0055_is_no_reader_when_no_place_is_stated_with_the_rulings_words(store):
+    d = dict(_imported(store), record={"country": "", "spatial": "not_reported", "extras": [{"key": "x", "value": "y"}]})
+    row = {r["id"]: r for r in dq.build(d)["questions"]}["Q-0055"]
+    assert row["state"] == "no_reader" and row["answer"] == ""
+    assert row["words"] == "the publisher's jurisdiction and any transfer terms are not read yet"
+
+
+def test_q0005_stays_no_reader_because_the_egeria_match_is_not_kept_on_the_row(store):
+    d = _imported(store)
+    assert not any(k for k in d if "egeria" in k.lower() and "match" in k.lower())   # nothing to read it from
+    row = {r["id"]: r for r in dq.build(d)["questions"]}["Q-0005"]
+    assert row["state"] == "no_reader"

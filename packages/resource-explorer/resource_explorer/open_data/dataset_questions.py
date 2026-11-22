@@ -36,15 +36,15 @@ GENERIC_APPLIES = frozenset({
     "Q-0029",   # fit with governance frameworks
     "Q-0030",   # explicit license and non-standard terms: the record's licence
     "Q-0038",   # already surveyed at any tier (scout, profile)
+    "Q-0041",   # how much has changed since the last survey (Architect read-back: asked, no reader yet)
     "Q-0040",   # worth a full survey (a profile)
+    "Q-0055",   # where it is, under which jurisdiction (Architect read-back: partial when the record names a place)
     "Q-0057",   # restrictions beyond the license
     "Q-0058",   # ready to be offered as a data product
     "Q-0059",   # demand: subscriptions, requests, feedback, use
 })
 GENERIC_DOES_NOT_APPLY = {
-    "Q-0041": "RE has no survey of a dataset to measure change against; looking again re-reads the publisher's record (OD4)",
     "Q-0054": "Egeria's survey engine does not survey a dataset on a data portal; there is nothing for it to reach",
-    "Q-0055": "RE holds no physical location for a published dataset; the publisher's jurisdiction is a different question",
     "Q-0098": "asks about the estate's own platforms, monitoring and security controls, which a published dataset does not run on",
 }
 _GENERIC_WILL = {
@@ -55,6 +55,14 @@ _GENERIC_WILL = {
     "analysis": "an analysis that is declared and not built for datasets",
     "partial": "only part of it can be read, and not yet for a dataset",
 }
+
+
+# Words the Architect ruled for a question whose reader does not exist: used as they are, in place of the generic sentence.
+_GENERIC_WORDS = {
+    "Q-0041": "no reader yet: OD4's look-again re-reads the record; comparing it with the record at import is not built",
+    "Q-0055": "the publisher's jurisdiction and any transfer terms are not read yet",
+}
+_PLACE_KEYS = ("spatial", "dct:spatial", "geographic_coverage", "geographicCoverage", "country", "jurisdiction")
 
 
 def _text(v) -> str | None:
@@ -123,7 +131,29 @@ def _cadence_partial(d: dict) -> str | None:
 _PARTIAL = {"od_licence_usable": _licence_partial, "od_cadence_kept": _cadence_partial}
 
 
-_GENERIC_PARTIAL = {"Q-0002": _description_partial, "Q-0003": _publisher_partial, "Q-0030": _licence_generic_partial}
+def _place_partial(d: dict) -> str | None:
+    """A place the publisher's own record states (a country, spatial or jurisdiction field, at the top level or in a CKAN
+    extra). A structured value (a GeoJSON object) is not read: it says no more than "a spatial extent is stated"."""
+    rec = d.get("record") or {}
+    found: list[tuple[str, str]] = []
+    for key in _PLACE_KEYS:
+        v = _text(rec.get(key))
+        if v:
+            found.append((key, v))
+    for ex in rec.get("extras") or []:
+        if isinstance(ex, dict) and any(k in str(ex.get("key", "")).lower() for k in ("spatial", "country", "jurisdiction")):
+            v = _text(ex.get("value"))
+            if v:
+                found.append((str(ex["key"]), v))
+    if not found:
+        return None
+    said = "; ".join(f"{k}: {v[:120]}{'…' if len(v) > 120 else ''}" for k, v in found[:3])
+    return (f"The publisher's record states a place — {said} — {_source(d)}. Jurisdiction, residency and transfer "
+            "terms are not read from it.")
+
+
+_GENERIC_PARTIAL = {"Q-0002": _description_partial, "Q-0003": _publisher_partial, "Q-0030": _licence_generic_partial,
+                    "Q-0055": _place_partial}
 
 
 def _generic_rows(d: dict) -> list[dict]:
@@ -139,8 +169,8 @@ def _generic_rows(d: dict) -> list[dict]:
             "id": qid, "kind": "generic", "question": e["question"], "stage": e["stage"], "perspectives": e["perspectives"],
             "purposes": e["purposes"], "analysis_ids": e["answering"]["analysis_ids"], "rationale": e["rationale"],
             "state": "partial" if partial else "no_reader", "answer": partial or "",
-            "words": ("Answered in part by the record alone; " if partial else f"{NO_MECHANISM} — ")
-                     + f"{_GENERIC_WILL.get(kind, 'no reader yet')}.",
+            "words": ("Answered in part by the record alone; " + f"{_GENERIC_WILL.get(kind, 'no reader yet')}." if partial
+                      else _GENERIC_WORDS.get(qid) or f"{NO_MECHANISM} — {_GENERIC_WILL.get(kind, 'no reader yet')}."),
         })
     return rows
 
