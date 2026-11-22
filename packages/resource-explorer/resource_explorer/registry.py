@@ -16045,6 +16045,24 @@ class ProjectRegistry:
             result.append(d)
         return self._attach_publish_proofs(result)
 
+    def rfa_row_exists_for_finding_key(self, entity_slug: str, key: str) -> bool:
+        """Whether an RFA activity row for this file-system finding key exists (TR-109 W3), however old. Asked of the
+        store by key, not by scanning the newest N entries. The key is a substring of the row's annotations JSON, so the
+        SQL narrows (LIKE, escaped) and the JSON confirms: a key that only looks like another's never matches."""
+        like = json.dumps(key).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT annotations_json FROM activity_log WHERE entity_slug = ? AND operation = 'rfa' "
+                "AND annotations_json LIKE ? ESCAPE '\\'", (entity_slug, f"%{like}%")).fetchall()
+        for r in rows:
+            try:
+                anns = json.loads(dict(r)["annotations_json"] or "[]")
+            except ValueError:
+                continue
+            if any(isinstance(a, dict) and a.get("finding_key") == key for a in anns):
+                return True
+        return False
+
     def get_activity(self, entry_id: str) -> dict | None:
         with self._conn() as conn:
             row = conn.execute(
