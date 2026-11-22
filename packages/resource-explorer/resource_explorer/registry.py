@@ -304,6 +304,15 @@ class SchemaNotReady(RuntimeError):
 SCHEMA_MODES = ("auto", "external")
 
 
+def schema_mode_from_env() -> str:
+    """RE_SCHEMA_MODE, validated: "auto" (default) or "external". "apply" is never accepted from the environment (TR-112b)."""
+    import os as _os
+    mode = (_os.environ.get("RE_SCHEMA_MODE") or "auto").strip().lower()
+    if mode not in SCHEMA_MODES:
+        raise ValueError(f"RE_SCHEMA_MODE must be one of {', '.join(SCHEMA_MODES)}, not {mode!r}")
+    return mode
+
+
 class ConnectionWrapper:
     def __init__(self, raw_conn, is_postgres: bool, statement_counter: "list[int] | None" = None):
         self.raw_conn = raw_conn

@@ -75,7 +75,15 @@ def shared_collector() -> MetricsCollector:
 
 
 class MetricsCollector:
-    def __init__(self, database_url: str | None = None) -> None:
+    def __init__(self, database_url: str | None = None, *, ddl: str | None = None) -> None:
+        """`ddl="auto"` creates and migrates the tables on open (the default when RE_SCHEMA_MODE is unset). `ddl="external"` sends no DDL: the
+        tables must already exist (`apply_schema`, run by the schema Job), else `SchemaNotReady` (TR-115)."""
+        if ddl is None:      # RE's own facade: follow RE_SCHEMA_MODE (unset means auto, today's behaviour)
+            from resource_explorer.registry import schema_mode_from_env
+            ddl = schema_mode_from_env()
+        if ddl not in ("auto", "external"):
+            raise ValueError(f"ddl must be 'auto' or 'external', not {ddl!r}")
+        self.ddl = ddl
         cfg = get_config().observability
         self.database_url = database_url if database_url is not None else resolve_metrics_url(cfg)
 
@@ -85,7 +93,39 @@ class MetricsCollector:
             if path_str and path_str != ":memory:":
                 Path(path_str).parent.mkdir(parents=True, exist_ok=True)
         self.engine = create_engine(self.database_url, pool_pre_ping=True)
+        if ddl == "auto":
+            self._init_schema()
+        else:
+            self.check_schema()
+
+    #: table -> columns this version reads or writes (the additive migrations in `_init_schema` included).
+    _REQUIRED = {
+        "query_log": ("id", "timestamp", "query_hash", "chunk_refs", "derivation", "compile_id", "feedback"),
+        "chunk_feedback": ("chunk_ref", "positive_count", "neutral_count", "total_count"),
+    }
+
+    def apply_schema(self) -> None:
+        """Create and migrate the tables: the schema Job's entry point (works in either mode)."""
         self._init_schema()
+
+    def check_schema(self) -> None:
+        """Read-only: raise `SchemaNotReady` unless both tables and every column this version needs exist."""
+        from sqlalchemy import inspect
+
+        from resource_explorer.registry import SchemaNotReady
+        insp = inspect(self.engine)
+        names = set(insp.get_table_names())
+        missing = []
+        for table, cols in self._REQUIRED.items():
+            if table not in names:
+                missing.append(table)
+                continue
+            have = {c["name"] for c in insp.get_columns(table)}
+            missing += [f"{table}.{c}" for c in cols if c not in have]
+        if missing:
+            raise SchemaNotReady(
+                f"metrics schema is not ready (missing: {', '.join(missing)}); "
+                "RE_SCHEMA_MODE=external sends no DDL: run `resource-explorer schema apply` first")
 
     @contextmanager
     def _conn(self):

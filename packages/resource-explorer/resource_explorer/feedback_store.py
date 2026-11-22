@@ -92,7 +92,8 @@ def _library_store(url: str) -> _LibraryStore:
     with _stores_lock:
         store = _stores.get(url)
         if store is None:
-            store = _LibraryStore(url, APP, external_sources=EXTERNAL_SOURCES)
+            from resource_explorer.registry import schema_mode_from_env
+            store = _LibraryStore(url, APP, external_sources=EXTERNAL_SOURCES, ddl=schema_mode_from_env())
             migrate_legacy_feedback(store)
             _stores[url] = store
         return store
