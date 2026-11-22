@@ -145,9 +145,9 @@ export function seedAddHelp(row) {
 
 /** "Suggested portals · N": the shipped list, folded (a table starts closed). Offered, never applied: one Add per row,
  *  no bulk. A row that did not answer is greyed with its date; one RE cannot read yet has no Add. */
-export function suggestedPortalsHtml(res) {
+export function suggestedPortalsHtml(res, { open = false } = {}) {
   if (!res.rows.length) return `<p data-od-seeds-none class="text-provenance text-ink-muted">${SEEDS_ALL_REGISTERED}</p>`;
-  return `<details data-od-seeds-fold><summary class="cursor-pointer text-caveat text-ink">Suggested portals · ${res.rows.length}</summary>
+  return `<details data-od-seeds-fold${open ? ' open' : ''}><summary class="cursor-pointer text-caveat text-ink">Suggested portals · ${res.rows.length}</summary>
     <div class="mt-s2 overflow-x-auto"><table class="w-full text-left" data-rc-id="od-portal-seeds">
       <thead><tr class="border-b border-rule text-caps uppercase tracking-caps text-ink-muted">
         <th class="pb-s2 pr-s3 font-normal">Portal</th><th class="pb-s2 pr-s3 font-normal">API</th><th class="pb-s2 pr-s3 font-normal">Size</th><th class="pb-s2 pr-s3 font-normal">Why</th><th class="pb-s2 pr-s3 font-normal">Checked</th><th class="pb-s2 pr-s3 font-normal"></th></tr></thead>
@@ -161,18 +161,24 @@ export function suggestedPortalsHtml(res) {
       </tr>`).join('')}</tbody></table></div></details>`;
 }
 
+/** One Add per row, nothing without a press: the click is the only thing that registers a portal. `afterAdd` is what the
+ *  caller does once it is registered (Admin redraws its list; the Find dialog turns into the search). */
+export function wirePortalSeedAdd(slot, afterAdd) {
+  slot.querySelectorAll('[data-od-seed-add]').forEach((b) => b.addEventListener('click', async () => {
+    const state = b.parentElement.querySelector('[data-od-seed-state]');
+    b.disabled = true; state.textContent = 'checking reach…';
+    try { await addPortalSeed(b.dataset.odSeedAdd); await afterAdd(); }
+    catch (e) { b.disabled = false; state.innerHTML = `<span class="text-state-warn">${errText(e)}</span>`; }
+  }));
+}
+
 async function drawPortalSeeds(host) {
   const slot = q(host, '[data-od-seeds]');
   let res;
   try { res = await listPortalSeeds(); } catch (e) { slot.innerHTML = `<p class="text-state-warn">${errText(e)}</p>`; return; }
   slot.innerHTML = suggestedPortalsHtml(res);
   watchTables(slot);
-  slot.querySelectorAll('[data-od-seed-add]').forEach((b) => b.addEventListener('click', async () => {
-    const state = b.parentElement.querySelector('[data-od-seed-state]');
-    b.disabled = true; state.textContent = 'checking reach…';
-    try { await addPortalSeed(b.dataset.odSeedAdd); await renderDataPortals(host); }
-    catch (e) { b.disabled = false; state.innerHTML = `<span class="text-state-warn">${errText(e)}</span>`; }
-  }));
+  wirePortalSeedAdd(slot, () => renderDataPortals(host));
 }
 
 /** The discovery-source pane for one portal: terms, filters, the price line, candidates, preview, Import. */

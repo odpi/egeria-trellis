@@ -199,3 +199,45 @@ def test_n1_the_import_result_says_how_many_were_added_and_each_rows_reason():
     assert "r.investigation_members" in body and "added to <span" in body    # "N added to <investigation>"
     assert "r.investigation_note" in body                                    # the named investigation does not exist
     assert "o.investigation" in body                                         # each row's own reason, not silence
+
+
+# ── A2: a fresh install's "Find open data" offers the suggested portals, one press each, never applied ───────────
+
+OD_KIND_JS = (NEXT / "open-data-kind.js").read_text(encoding="utf-8")
+
+
+def _fn(src: str, head: str) -> str:
+    body = src[src.index(head):]
+    return body[:body.index("\n}\n")]
+
+
+def test_a2_the_empty_find_dialog_lists_the_suggested_portals_open_with_an_add_each():
+    body = _fn(OD_KIND_JS, "export async function openFindOpenDataDialog")
+    empty = body[body.index("if (!portals.length)"):body.index("body.innerHTML = `<label")]
+    assert "listPortalSeeds" in empty and "suggestedPortalsHtml(" in empty
+    assert "{ open: true }" in empty                                   # a fresh install sees them, not a closed fold
+    assert "wirePortalSeedAdd(" in empty                                # one press each, through the shared wiring
+
+
+def test_a2_adding_a_suggested_portal_reopens_the_find_dialog_so_it_can_be_searched():
+    body = _fn(OD_KIND_JS, "export async function openFindOpenDataDialog")
+    empty = body[body.index("if (!portals.length)"):body.index("body.innerHTML = `<label")]
+    assert "wirePortalSeedAdd(slot, showFind)" in empty                   # after an Add the dialog is the search
+
+
+def test_a2_nothing_is_added_without_a_press():
+    # the only caller of addPortalSeed is the click handler: a render, a load or an empty list never registers a portal
+    assert OD_KIND_JS.count("addPortalSeed") == 0
+    wire = _fn(OD_JS, "export function wirePortalSeedAdd")
+    assert wire.count("addPortalSeed(") == 1 and "addEventListener('click'" in wire
+    assert "${SEEDS_ALL_REGISTERED}" in OD_JS                           # an exhausted list says so
+
+
+def test_a2_the_suggested_table_can_start_open_and_still_starts_closed_in_admin():
+    fn = _fn(OD_JS, "export function suggestedPortalsHtml")
+    assert "{ open = false } = {}" in fn and "<details data-od-seeds-fold${open ? ' open' : ''}>" in fn
+    assert "suggestedPortalsHtml(res)" in OD_JS                          # Admin's own call is unchanged: folded
+
+
+def test_a2_the_no_portals_sentence_no_longer_sends_the_person_away_before_offering_the_list():
+    assert "Suggested portals are listed below" in OD_KIND_JS
