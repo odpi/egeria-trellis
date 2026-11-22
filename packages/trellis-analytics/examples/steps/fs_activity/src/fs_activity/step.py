@@ -112,7 +112,8 @@ def run(inputs) -> list[dict]:
         v = {**common, **_bands(mod, hot, cold), "Files Without A Modified Time": no_mtime, "basis": MODIFY_BASIS}
         out.append({"scope": slug, "state": "measured", "value": v,
                     "summary": (f"{_n(v['Hot Files'], 'file')} modified within {hot} days; {v['Cold Files']:,} not "
-                                f"modified for over {cold} days ({v['Cold Bytes']:,} bytes)"
+                                f"modified for over {cold} days ({v['Cold Bytes']:,} bytes) "
+                                f"on the walk of {_stamp(walk['run_id'])}"
                                 + (f"; {no_mtime:,} without a modified time" if no_mtime else ""))})
     out.append(_access(slug, walk, runs[1] if len(runs) > 1 else None, rows, age, hot, cold, common, inputs))
     return out
@@ -162,4 +163,4 @@ def _access(slug, walk, previous, rows, age, hot, cold, common, inputs) -> dict:
     caveat = (f"; {len(ours):,} last read possibly by Resource Explorer's previous walk, not counted" if ours else "")
     return {"scope": slug, "state": "measured", "measure": ACCESS, "value": v,
             "summary": (f"{_n(v['Hot Files'], 'file')} read within {hot} days; {v['Cold Files']:,} not read for over "
-                        f"{cold} days{caveat}")}
+                        f"{cold} days on the walk of {_stamp(walk['run_id'])}{caveat}")}
