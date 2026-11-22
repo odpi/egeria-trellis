@@ -64,7 +64,7 @@ class TreeBuildResult:
         return self.stored > 0
 
 
-def _store():
+def _store(ddl: str | None = None):
     from trellis_artifact_tree import ArtifactTreeConfig, ArtifactTreeStore
 
     from resource_explorer.config import get_config, require_pgvector_password
@@ -80,7 +80,7 @@ def _store():
         # package's plain dataclass has no such problem, so translate here.
         user=pg.db_user, password=pg.password,
         schema=cfg.artifact_tree.schema_name,
-    ), ddl=schema_mode_from_env())
+    ), ddl=ddl or schema_mode_from_env())
 
 
 def build_trees(

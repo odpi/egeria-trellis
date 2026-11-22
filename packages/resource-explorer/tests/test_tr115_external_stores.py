@@ -146,12 +146,48 @@ def test_schema_stores_module_exists_with_apply_and_require_ready():
 
 
 @needs_pg
-def test_schema_apply_creates_all_four_stores_and_external_mode_then_runs_no_ddl_anywhere():
-    """The end-to-end proof, in the shape of the existing TR-112b test: one `schema apply` brings the registry AND the four stores to
-    version; a second process in external mode sends no DDL at all (registry, metrics, feedback, vectorstore, artifact tree), and
-    a database that was never applied makes every one of them refuse with SchemaNotReady."""
+def test_schema_apply_creates_all_four_stores_and_external_mode_then_runs_no_ddl_anywhere(monkeypatch):
+    """The end-to-end proof: one `schema apply` brings the registry AND the four stores to version; a second run sends nothing;
+    a process in external mode then constructs every store without DDL, an insert into an undeclared collection fails loudly,
+    and a database that was never applied makes require_ready refuse."""
+    import psycopg2
+    from urllib.parse import urlsplit
     from resource_explorer import schema_stores
-    schema_stores.apply_all(f"{BASE_URL}?options=-csearch_path%3Dresource_explorer_test_{uuid.uuid4().hex[:8]}")
+    from resource_explorer.registry import SchemaNotReady
+    sch = f"re_tr115_{uuid.uuid4().hex[:8]}"
+    q = f"?options=-csearch_path%3D{sch}"
+    u = urlsplit(re.sub(r"\+\w+", "", BASE_URL))
+    for k, v in {"PGVECTOR_HOST": u.hostname, "PGVECTOR_PORT": str(u.port or 5432), "PGVECTOR_DBNAME": u.path.lstrip("/"),
+                 "PGVECTOR_USER": u.username, "PGVECTOR_PASSWORD": u.password or "", "PGVECTOR_SCHEMA": sch,
+                 "METRICS_DATABASE_URL": BASE_URL + q, "FEEDBACK_DATABASE_URL": BASE_URL + q, "REGISTRY_DATABASE_URL": BASE_URL + q}.items():
+        monkeypatch.setenv(k, v)
+    from resource_explorer import config as cfgmod
+    getattr(cfgmod, "reset_config", lambda: None)()
+    try:
+        first = schema_stores.apply_all(BASE_URL + q)
+        assert first["stores"] == 4
+        second = schema_stores.apply_all(BASE_URL + q)
+        assert second["stores"] == 0 and {k: v for k, v in second.items() if k != "stores"} == {k: v for k, v in first.items() if k != "stores"}   # a no-op that reports the same counts
+        monkeypatch.setenv("RE_SCHEMA_MODE", "external")
+        schema_stores._ready.clear()
+        schema_stores.require_ready(BASE_URL + q)
+        from resource_explorer.observability.metrics_collector import MetricsCollector
+        MetricsCollector()                                                               # no DDL, no error
+        from resource_explorer.vector_store_pg import PgVectorStore
+        v = PgVectorStore()
+        v.connect()
+        with pytest.raises(Exception, match="not declared.*schema apply"):
+            v.insert_with_embeddings("nope_docs", ["t"], [[0.0] * 384])
+        empty = f"re_tr115_empty_{uuid.uuid4().hex[:6]}"
+        c = psycopg2.connect(re.sub(r"\+\w+", "", BASE_URL))
+        c.autocommit = True
+        c.cursor().execute(f'CREATE SCHEMA "{empty}"')
+        with pytest.raises(SchemaNotReady, match="schema apply"):
+            schema_stores.require_ready(BASE_URL + f"?options=-csearch_path%3D{empty}")
+    finally:
+        c2 = psycopg2.connect(re.sub(r"\+\w+", "", BASE_URL))
+        c2.autocommit = True
+        c2.cursor().execute(f'DROP SCHEMA IF EXISTS "{sch}" CASCADE')
 
 
 # ── the fingerprint follows the four packages (the TR-112b read-back W1 miss, again) ──────────────────────────────

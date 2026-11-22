@@ -1,6 +1,8 @@
 # TR-115: the four other stores under `RE_SCHEMA_MODE=external` (plan, with failing tests)
 
-Status: **plan and red tests only.** The tests are `tests/test_tr115_external_stores.py`: 17 fail on purpose (each names a missing piece), 3 guards pass, 1 Postgres
+Status: **implemented** (D1-D4 decided by Dan, 2026-11-22: the recommendations below). The note after this line is the original plan status.
+
+Original status: **plan and red tests only.** The tests are `tests/test_tr115_external_stores.py`: 17 fail on purpose (each names a missing piece), 3 guards pass, 1 Postgres
 test skips without `RE_SCHEMA_TEST_PG_URL`. Nothing in the packages is changed yet. Phase 3 (the RE chart) needs this; Phase 3 itself waits for Dan.
 
 ## The problem
@@ -56,7 +58,9 @@ tables and HNSW indexes at runtime. The set of tables is therefore open-ended, a
 it does nothing; if not, it tries to create it, and on a privilege error it fails with a message that says **"ask the database admin to run CREATE EXTENSION vector"** (with the database
 name), not the raw permission error. Red tests: a missing extension with a refusing role, and an installed extension that is not created again.
 
-## Decisions for Dan (recommendations from the Architect; not made here)
+## Decisions (Dan chose the recommendations on 2026-11-22)
+
+**As built (D1):** the registry's marker row (`id=1`) is unchanged; each store has its own row (`id` 2 metrics, 3 feedback, 4 vectorstore, 5 artifact_tree) and a `combined` row (`id` 6) over all five. `require_ready` compares every row and names the stores that drifted. Same effect as one hash plus per-store detail, without altering the marker table.
 * **D1. Marker.** One combined hash over all five, AND each store's own fingerprint stored in the marker's detail so `require_ready` says which store drifted. (Versus a marker per store,
   which only helps if the stores ship separately.) Recommended: one hash plus per-store detail.
 * **D2. Who checks.** RE alone checks readiness (the marker) before it builds a store. The libraries promise only "no DDL with `ddl="external"`" plus a typed refusal for the operations
