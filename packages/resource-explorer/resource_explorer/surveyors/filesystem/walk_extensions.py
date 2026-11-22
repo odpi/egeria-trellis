@@ -475,9 +475,27 @@ def _clean(text: str, limit: int) -> str:
     return text[:limit]
 
 
+_HTML_COMMENT = re.compile(r"<!--.*?(?:-->|\Z)", re.S)      # an unterminated comment (a cut read) runs to the end
+#: A licence or copyright header line, whatever comment leader it wears (`# `, `// `, `* `, `-- `): SPDX tags, "Copyright 2024",
+#: "Copyright (c)", "Copyright by", "Copyright Contributors", "(c) 2024", "©". A heading that merely STARTS with the word
+#: ("# Copyright and licence terms") is not one.
+_LICENCE_HEADER_LINE = re.compile(
+    r"^[\W_]*(?:SPDX-[\w.-]+\s*:|copyright\s*(?:\(c\)|©|\d{4}|by\b|contributors\b)|\(c\)\s*\d{4}|©)", re.I)
+
+
+def strip_header_noise(text: str) -> str:
+    """The text with its HTML comments and SPDX/copyright header lines removed, for choosing a title and a description
+    (TR-124). An Egeria-style README opens with `<!-- SPDX-License-Identifier: CC-BY-4.0 -->` and a copyright comment, which
+    were being proposed as the folder's description. The licence is still read from the FULL text, never from this."""
+    text = _HTML_COMMENT.sub(" ", text)
+    return "\n".join(l for l in text.splitlines() if not _LICENCE_HEADER_LINE.match(l))
+
+
 def extract_narrative(text: str, file_name: str, folder_files: list[str]) -> dict:
-    """Title, first paragraph, licence, stated owner, source, dates and the folder's files the text names. All proposals."""
-    lines = text.splitlines()
+    """Title, first paragraph, licence, stated owner, source, dates and the folder's files the text names. All proposals.
+    The title and description skip the file's HTML comments and licence/copyright header lines (`strip_header_noise`); if
+    nothing else is left both are empty, so nothing is proposed."""
+    lines = strip_header_noise(text).splitlines()
     title = ""
     body_start = 0
     for i, line in enumerate(lines):
