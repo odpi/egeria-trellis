@@ -436,3 +436,78 @@ def test_a_site_collection_is_declared_after_schema_apply_and_an_external_insert
         c.autocommit = True
         for n in (sch, f"{sch}_tree"):
             c.cursor().execute(f'DROP SCHEMA IF EXISTS "{n}" CASCADE')
+
+
+# ── TR-129/130 read-back W1: tables first, then declare; reconcile on what physically exists ───────────────────────────
+
+def _pg_env(monkeypatch, tag):
+    """Point every store at one throwaway schema of the test Postgres; returns (schema, url-with-search-path)."""
+    from urllib.parse import urlsplit
+    sch = f"re_{tag}_{uuid.uuid4().hex[:8]}"
+    q = f"?options=-csearch_path%3D{sch}"
+    u = urlsplit(re.sub(r"\+\w+", "", BASE_URL))
+    for k, v in {"PGVECTOR_HOST": u.hostname, "PGVECTOR_PORT": str(u.port or 5432), "PGVECTOR_DBNAME": u.path.lstrip("/"),
+                 "PGVECTOR_USER": u.username, "PGVECTOR_PASSWORD": u.password or "", "PGVECTOR_SCHEMA": sch, "ARTIFACT_TREE_SCHEMA": f"{sch}_tree",
+                 "METRICS_DATABASE_URL": BASE_URL + q, "FEEDBACK_DATABASE_URL": BASE_URL + q, "REGISTRY_DATABASE_URL": BASE_URL + q}.items():
+        monkeypatch.setenv(k, v)
+    from resource_explorer import config as cfgmod
+    monkeypatch.setattr(cfgmod, "_config", None)
+    return sch, BASE_URL + q
+
+
+def _pg(sql, *params, fetch=False):
+    import psycopg2
+    c = psycopg2.connect(re.sub(r"\+\w+", "", BASE_URL))
+    c.autocommit = True
+    try:
+        cur = c.cursor()
+        cur.execute(sql, params)
+        return cur.fetchall() if fetch else None
+    finally:
+        c.close()
+
+
+def _drop(sch):
+    for n in (sch, f"{sch}_tree"):
+        _pg(f'DROP SCHEMA IF EXISTS "{n}" CASCADE')
+
+
+@needs_pg
+def test_a_failed_apply_never_leaves_a_name_declared_without_its_table(monkeypatch):
+    """W1: the names were declared (and committed) before their tables were made. A Job that died in between left names declared with no table,
+    every later apply skipped them, and the pods then failed on insert. Tables first, then declare: a failure leaves nothing declared."""
+    from resource_explorer import schema_stores
+    from resource_explorer.registry import Project, ProjectRegistry
+    from resource_explorer.vector_store_pg import PgVectorStore
+    sch, url = _pg_env(monkeypatch, "w1a")
+    try:
+        schema_stores.apply_all(url)
+        ProjectRegistry(database_url=url).add(Project(slug="acme", display_name="Acme", github_url="https://github.com/acme/acme",
+                                                     homepage_url="https://docs.acme.example/"))
+        with mock.patch.object(PgVectorStore, "apply_schema", side_effect=RuntimeError("the Job was killed")):
+            with pytest.raises(RuntimeError, match="killed"):
+                schema_stores.apply_all(url)
+        orphans = _pg(f'SELECT name FROM "{sch}".vector_collections WHERE to_regclass(quote_ident(%s) || chr(46) || quote_ident(name)) IS NULL', sch, fetch=True)
+        assert orphans == [], f"declared without a table: {orphans}"
+        schema_stores.apply_all(url)                                             # the next apply finishes the job
+        monkeypatch.setenv("RE_SCHEMA_MODE", "external")
+        v = PgVectorStore()
+        v.connect()
+        assert v.insert_with_embeddings("web_docs_docs_acme_example", ["t"], [[0.0] * 384]) == 1
+    finally:
+        _drop(sch)
+
+
+@needs_pg
+def test_apply_creates_the_table_of_a_name_that_was_declared_without_one(monkeypatch):
+    """Repair of what the old order could leave behind: reconcile on physical existence, not on 'not yet declared'."""
+    from resource_explorer import schema_stores
+    sch, url = _pg_env(monkeypatch, "w1b")
+    try:
+        schema_stores.apply_all(url)
+        _pg(f'INSERT INTO "{sch}".vector_collections (name, dimension, metric, hnsw_m, hnsw_ef_construction) VALUES (%s, 384, %s, 16, 64)', "web_docs_ghost", "cosine")
+        assert _pg(f'SELECT to_regclass(%s)', f'"{sch}"."web_docs_ghost"', fetch=True) == [(None,)]
+        schema_stores.apply_all(url)
+        assert _pg(f'SELECT to_regclass(%s) IS NOT NULL', f'"{sch}"."web_docs_ghost"', fetch=True) == [(True,)]
+    finally:
+        _drop(sch)
