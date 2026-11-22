@@ -119,6 +119,9 @@ class _ReEmbeddingProvider:
         return embed_one(text)
 
 
+COLLECTIONS_TABLE = "vector_collections"     # schema_stores.COLLECTIONS_TABLE (kept here: schema_stores imports this module)
+
+
 class PgVectorStore(_SharedPgVectorStore):
     """pgvector implementation of BaseVectorStore. One table per collection,
     all in the `resource_explorer` schema (migration plan decision D1).
@@ -141,7 +144,11 @@ class PgVectorStore(_SharedPgVectorStore):
         max_connections: int | None = None,
         ef_search: int | None = None,
         connect_timeout: int | None = None,
+        ddl: str | None = None,
     ):
+        if ddl is None:     # follow RE_SCHEMA_MODE; unset means auto, today's behaviour (TR-115)
+            from resource_explorer.registry import schema_mode_from_env
+            ddl = schema_mode_from_env()
         cfg = get_config().pgvector
         config = PgVectorStoreConfig(
             host=host or cfg.host,
@@ -158,7 +165,11 @@ class PgVectorStore(_SharedPgVectorStore):
             config,
             metric="cosine",  # decision D2 — do not "fix" to match EA's L2 default
             embeddings=_ReEmbeddingProvider(),
-            auto_provision_on_insert=True,  # RE's insert_with_embeddings always self-provisions
+            # RE's insert_with_embeddings self-provisions in auto mode; in external mode the schema Job created every
+            # declared collection and an insert into an undeclared one fails loudly (TR-115, plan "Finding").
+            auto_provision_on_insert=(ddl == "auto"),
+            ddl=ddl,
+            declared_collections_table=COLLECTIONS_TABLE if ddl == "external" else None,
         )
 
     def connect(self) -> None:

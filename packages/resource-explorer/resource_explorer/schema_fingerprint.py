@@ -14,6 +14,8 @@ import importlib.util
 from typing import Callable
 
 ROOT_PACKAGE = "resource_explorer"
+#: Packages whose definitions are followed. TR-115 adds the three trellis libraries whose stores run their own DDL.
+FOLLOWED_PACKAGES = (ROOT_PACKAGE, "trellis_feedback", "trellis_vectorstore", "trellis_artifact_tree")
 
 
 def default_source(modname: str) -> str | None:
@@ -40,8 +42,9 @@ class _DropDocstrings(ast.NodeTransformer):
 
 
 class _Module:
-    def __init__(self, name: str, source: str):
+    def __init__(self, name: str, source: str, packages: tuple[str, ...] = (ROOT_PACKAGE,)):
         self.name = name
+        self.packages = packages
         self.tree = ast.parse(source)
         self.defs: dict[str, ast.AST] = {}
         self.aliases: dict[str, tuple[str, str | None]] = {}   # local name -> (module, attr or None)
@@ -62,28 +65,32 @@ class _Module:
             for child in ast.iter_child_nodes(node):
                 if isinstance(child, ast.stmt):
                     self._index(child)
-        self.collect_imports(node, self.aliases, self.name)
+        self.collect_imports(node, self.aliases, self.name, self.packages)
 
     @staticmethod
-    def collect_imports(node, into: dict, current: str) -> None:
+    def collect_imports(node, into: dict, current: str, packages: tuple[str, ...] = (ROOT_PACKAGE,)) -> None:
         for sub in ast.walk(node):
             if isinstance(sub, ast.ImportFrom):
                 mod = sub.module or ""
                 if sub.level:
                     base = current.rsplit(".", sub.level)[0] if "." in current else ""
                     mod = f"{base}.{mod}".strip(".")
-                if mod.split(".")[0] != ROOT_PACKAGE:
+                if mod.split(".")[0] not in packages:
                     continue
                 for a in sub.names:
                     into[a.asname or a.name] = (mod, a.name)
             elif isinstance(sub, ast.Import):
                 for a in sub.names:
-                    if a.name.split(".")[0] == ROOT_PACKAGE:
+                    if a.name.split(".")[0] in packages:
                         into[a.asname or a.name.split(".")[0]] = (a.name, None)
 
 
-def fingerprint(entry_module: str, class_name: str, root: str = "_init_schema",
-                source_of: Callable[[str], str | None] = default_source) -> str:
+def fingerprint(entry_module: str, class_name: str | None, root: str = "_init_schema",
+                source_of: Callable[[str], str | None] = default_source, *,
+                roots: tuple[str, ...] | None = None, packages: tuple[str, ...] = (ROOT_PACKAGE,)) -> str:
+    """`roots` names several entry points (methods of `class_name`, or module-level functions when `class_name` is None);
+    `packages` lists the top-level packages whose imports are followed (default: only resource_explorer, as in TR-112b)."""
+    roots = roots or (root,)
     mods: dict[str, _Module] = {}
 
     def load(name: str) -> _Module | None:
@@ -91,16 +98,18 @@ def fingerprint(entry_module: str, class_name: str, root: str = "_init_schema",
             src = source_of(name)
             if src is None:
                 return None
-            mods[name] = _Module(name, src)
+            mods[name] = _Module(name, src, packages)
         return mods[name]
 
     entry = load(entry_module)
-    klass = entry.defs[class_name]
-    members = {n.name: n for n in klass.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
-    members.update({t.id: n for n in klass.body if isinstance(n, ast.Assign) for t in n.targets if isinstance(t, ast.Name)})
+    members: dict[str, ast.AST] = {}
+    if class_name is not None:
+        klass = entry.defs[class_name]
+        members = {n.name: n for n in klass.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+        members.update({t.id: n for n in klass.body if isinstance(n, ast.Assign) for t in n.targets if isinstance(t, ast.Name)})
 
     parts: dict[str, str] = {}
-    todo: list[tuple[str, str]] = [(entry_module, f"{class_name}.{root}")]
+    todo: list[tuple[str, str]] = [(entry_module, f"{class_name}.{r}" if class_name else r) for r in roots]
 
     def add(key: str, node: ast.AST) -> None:
         parts[key] = ast.dump(_DropDocstrings().visit(ast.parse(ast.unparse(node)).body[0]))
@@ -114,7 +123,7 @@ def fingerprint(entry_module: str, class_name: str, root: str = "_init_schema",
         if m is None:
             parts[key] = "unreadable"
             continue
-        if ref.startswith(f"{class_name}.") and modname == entry_module:
+        if class_name and ref.startswith(f"{class_name}.") and modname == entry_module:
             node = members.get(ref.split(".", 1)[1])
         else:
             node = m.defs.get(ref)
@@ -123,7 +132,7 @@ def fingerprint(entry_module: str, class_name: str, root: str = "_init_schema",
             continue
         add(key, node)
         local = dict(m.aliases)
-        _Module.collect_imports(node, local, modname)
+        _Module.collect_imports(node, local, modname, packages)
         for sub in ast.walk(node):
             if isinstance(sub, ast.Attribute) and isinstance(sub.value, ast.Name):
                 base = sub.value.id

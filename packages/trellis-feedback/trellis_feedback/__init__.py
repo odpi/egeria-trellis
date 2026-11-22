@@ -14,6 +14,7 @@ from trellis_feedback.models import (
     VOTES,
     FeedbackError,
     FeedbackItem,
+    SchemaNotReady,
     TriageEvent,
     TriageState,
 )
@@ -32,6 +33,7 @@ __all__ = [
     "FeedbackItem",
     "FeedbackStore",
     "NotFound",
+    "SchemaNotReady",
     "TriageEvent",
     "TriageState",
 ]
