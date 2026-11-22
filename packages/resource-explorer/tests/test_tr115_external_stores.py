@@ -325,3 +325,114 @@ def test_guard_default_schema_mode_is_auto(monkeypatch):
     from resource_explorer.registry import SCHEMA_MODES
     monkeypatch.delenv("RE_SCHEMA_MODE", raising=False)
     assert SCHEMA_MODES[0] == "auto"
+
+
+# ── TR-129: website collections, TR-130: a new resource needs the schema Job, the statement counts ────────────────────
+
+def test_declared_names_cover_site_collections_from_the_project_urls_and_recorded_collections():
+    """Website ingestion writes `site_collection_name(<docs_url or homepage_url>)`, keyed on the HOST, not on a repo slug. In external mode
+    every such collection must be declared, or every website ingest fails. Declared from the project's own URL fields (known before the first
+    ingest) plus the collection names a project has recorded (a site shared with a sibling repo, a host that was renamed)."""
+    from resource_explorer import schema_stores
+    names = schema_stores.declared_collection_names([
+        {"slug": "egeria_git", "homepage_url": "https://www.egeria-project.org/", "docs_url": "", "collections": ["egeria_git_code"]},
+        {"slug": "docling", "homepage_url": "https://docling.ai", "docs_url": "https://docling-project.github.io/docling/", "collections": ["web_docs_old_host"]},
+    ])
+    assert {"web_docs_egeria_project_org", "web_docs_docling_ai", "web_docs_docling_project_github_io",
+            "web_docs_old_host", "egeria_git_code"} <= set(names)
+    assert any(n.startswith("egeria_git_") for n in names) and len(names) == len(set(names))
+
+
+def test_declared_names_ignore_a_missing_or_blank_url():
+    from resource_explorer import schema_stores
+    names = schema_stores.declared_collection_names([{"slug": "p", "homepage_url": "", "docs_url": "   ", "collections": []}])
+    assert not [n for n in names if n.startswith("web_docs_")]
+
+
+def test_the_undeclared_collection_refusal_says_a_new_resource_needs_the_schema_job():
+    """TR-130 (D4, 'fail loudly'): the words must tell an operator on Kubernetes what to do."""
+    from trellis_vectorstore import PgVectorStore, PgVectorStoreConfig
+    spy = _Spy()
+    conn = _fake_pg(spy)
+    conn.cursor.return_value.fetchone.return_value = None
+    cfg = PgVectorStoreConfig(host="h", port=1, dbname="d", user="u", password="p", schema="resource_explorer")
+    with mock.patch("trellis_vectorstore.pg.psycopg2.connect", return_value=conn), \
+         mock.patch("trellis_vectorstore.pg.ThreadedConnectionPool"):
+        store = PgVectorStore(cfg, metric="cosine", embeddings=mock.MagicMock(), ddl="external", declared_collections_table="vector_collections")
+        with pytest.raises(Exception) as ei:
+            store.insert_with_embeddings("web_docs_new_site", ["t"], [[0.0]])
+    msg = str(ei.value)
+    assert "a new resource needs the schema Job" in msg and "helm upgrade" in msg and "resource-explorer schema apply" in msg and "web_docs_new_site" in msg
+
+
+def test_metrics_apply_schema_returns_the_statements_it_sent(tmp_path):
+    """apply_all used to record a constant 6 for the metrics store whatever it did. The count is what `_init_schema` sent."""
+    from resource_explorer.observability.metrics_collector import MetricsCollector
+    from resource_explorer.registry import ConnectionWrapper
+    m = MetricsCollector(database_url=f"sqlite:///{tmp_path}/c.db", ddl="auto")
+    seen = []
+    real = ConnectionWrapper.execute
+    with mock.patch.object(ConnectionWrapper, "execute", lambda self, sql, params=None: (seen.append(sql), real(self, sql, params) if params is not None else real(self, sql))[1]):
+        n = m.apply_schema()
+    assert n == len(seen) and n > 0, (n, len(seen))
+
+
+def test_feedback_apply_schema_returns_the_statements_it_sent(tmp_path):
+    from trellis_feedback import FeedbackStore
+    from sqlalchemy import create_engine
+    url = f"sqlite:///{tmp_path}/fb.db"
+    spy = _Spy()
+    eng = create_engine(url)
+    store = FeedbackStore(url, "re", engine=eng)               # auto: creates the tables
+    _spy_engine(eng, spy)
+    n = store.apply_schema()
+    assert n == len(spy.sql) and n > 0, (n, len(spy.sql))
+
+
+def test_artifact_tree_apply_schema_returns_the_statements_it_sent():
+    from trellis_artifact_tree import ArtifactTreeConfig, ArtifactTreeStore
+    ran = []
+    cur = mock.MagicMock()
+    cur.__enter__.return_value = cur
+    cur.execute.side_effect = lambda sql, params=None: ran.append(sql)
+    conn = mock.MagicMock()
+    conn.cursor.return_value = cur
+    store = ArtifactTreeStore(ArtifactTreeConfig(host="x", port=1, dbname="d", user="u", password="p", schema="s"), connection_factory=lambda: conn)
+    assert store.apply_schema() == len(ran) and len(ran) > 0
+
+
+@needs_pg
+def test_a_site_collection_is_declared_after_schema_apply_and_an_external_insert_succeeds(monkeypatch):
+    """The TR-129 end-to-end proof. A project with a homepage is added AFTER the first apply; the next apply must reconcile (the markers are
+    current, so it used to do nothing), create the site collection and declare it; then an external insert into it succeeds, and one into a
+    host nobody declared is still refused."""
+    import psycopg2
+    from urllib.parse import urlsplit
+    from resource_explorer import schema_stores
+    from resource_explorer.registry import Project, ProjectRegistry
+    sch = f"re_tr129_{uuid.uuid4().hex[:8]}"
+    q = f"?options=-csearch_path%3D{sch}"
+    u = urlsplit(re.sub(r"\+\w+", "", BASE_URL))
+    for k, v in {"PGVECTOR_HOST": u.hostname, "PGVECTOR_PORT": str(u.port or 5432), "PGVECTOR_DBNAME": u.path.lstrip("/"),
+                 "PGVECTOR_USER": u.username, "PGVECTOR_PASSWORD": u.password or "", "PGVECTOR_SCHEMA": sch, "ARTIFACT_TREE_SCHEMA": f"{sch}_tree",
+                 "METRICS_DATABASE_URL": BASE_URL + q, "FEEDBACK_DATABASE_URL": BASE_URL + q, "REGISTRY_DATABASE_URL": BASE_URL + q}.items():
+        monkeypatch.setenv(k, v)
+    from resource_explorer import config as cfgmod
+    monkeypatch.setattr(cfgmod, "_config", None)
+    try:
+        schema_stores.apply_all(BASE_URL + q)
+        ProjectRegistry(database_url=BASE_URL + q).add(Project(slug="acme", display_name="Acme", github_url="https://github.com/acme/acme",
+                                                              homepage_url="https://docs.acme.example/"))
+        schema_stores.apply_all(BASE_URL + q)                                      # markers are current: it must still reconcile
+        monkeypatch.setenv("RE_SCHEMA_MODE", "external")
+        from resource_explorer.vector_store_pg import PgVectorStore
+        v = PgVectorStore()
+        v.connect()
+        assert v.insert_with_embeddings("web_docs_docs_acme_example", ["t"], [[0.0] * 384]) == 1
+        with pytest.raises(Exception, match="a new resource needs the schema Job"):
+            v.insert_with_embeddings("web_docs_nobody_declared", ["t"], [[0.0] * 384])
+    finally:
+        c = psycopg2.connect(re.sub(r"\+\w+", "", BASE_URL))
+        c.autocommit = True
+        for n in (sch, f"{sch}_tree"):
+            c.cursor().execute(f'DROP SCHEMA IF EXISTS "{n}" CASCADE')
