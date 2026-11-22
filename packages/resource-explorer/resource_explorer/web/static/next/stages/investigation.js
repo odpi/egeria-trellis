@@ -699,7 +699,7 @@ function egeriaSectionHtml(inv) {
     </div>`;
 }
 
-const ENTITY_TYPES = [['repo', 'Repo'], ['database', 'Database'], ['filesystem', 'Filesystem']];
+const ENTITY_TYPES = [['repo', 'Repo'], ['database', 'Database'], ['filesystem', 'Filesystem'], ['open_data', 'Open data']];
 
 // The add-member slug field is an autocomplete, not a hard picker (a member
 // can be added by slug even if its list hasn't loaded), but the datalist
@@ -717,6 +717,7 @@ function slugListSourceType(entityType) {
 function slugListRows(entityType) {
   if (entityType === 'database') return state.databases || [];
   if (entityType === 'filesystem') return state.filesystems || [];
+  if (entityType === 'open_data') return state.openData || [];
   return state.projects || [];
 }
 
