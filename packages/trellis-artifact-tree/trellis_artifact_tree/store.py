@@ -20,8 +20,20 @@ from trellis_artifact_tree.model import ArtifactTree, Node, Provenance, Rung
 from trellis_artifact_tree.schema import _q, create_schema_sql
 
 
+class SchemaNotReady(RuntimeError):
+    """`ddl="external"` and the artifact-tree tables are missing: someone with DDL rights must run `apply_schema` first."""
+
+
+_TABLES = ("artifact", "artifact_node", "artifact_node_rung", "artifact_node_chunk")
+
+
 class ArtifactTreeStore:
-    def __init__(self, config: ArtifactTreeConfig, connection_factory=None) -> None:
+    def __init__(self, config: ArtifactTreeConfig, connection_factory=None, *, ddl: str = "auto") -> None:
+        """`ddl="auto"` (default) is today's behaviour. `ddl="external"` means this instance never sends DDL:
+        `create_schema()` is refused (the schema Job calls `apply_schema()`) and `check_schema()` is the read-only check."""
+        if ddl not in ("auto", "external"):
+            raise ValueError(f"ddl must be 'auto' or 'external', not {ddl!r}")
+        self.ddl = ddl
         self.config = config
         # Injectable so tests can drive a fake or an already-open connection.
         # The default import is deferred: psycopg2 is a dependency, but a
@@ -54,9 +66,31 @@ class ArtifactTreeStore:
             conn.close()
 
     def create_schema(self) -> None:
+        if self.ddl == "external":
+            raise RuntimeError(
+                "create_schema() is refused with ddl='external': the schema Job runs apply_schema(); "
+                "a running process only calls check_schema()")
+        self.apply_schema()
+
+    def apply_schema(self) -> None:
+        """Create the tables and indexes (the schema Job's entry point; allowed in either mode)."""
         with self._conn() as conn, conn.cursor() as cur:
             for stmt in create_schema_sql(self.config.schema):
                 cur.execute(stmt)
+
+    def check_schema(self) -> None:
+        """Read-only: raise `SchemaNotReady` unless the four tables exist."""
+        with self._conn() as conn, conn.cursor() as cur:
+            missing = []
+            for t in _TABLES:
+                cur.execute("SELECT to_regclass(%s) AS r", (_q(self.config.schema, t),))
+                row = cur.fetchone()
+                if not (row and (row["r"] if isinstance(row, dict) else row[0])):
+                    missing.append(t)
+        if missing:
+            raise SchemaNotReady(
+                f"artifact-tree schema is not ready (missing: {', '.join(missing)}); "
+                "ddl='external' sends no DDL: run `resource-explorer schema apply` first")
 
     def put(self, tree: ArtifactTree) -> None:
         """Replace an artifact's tree wholesale, in one transaction.
