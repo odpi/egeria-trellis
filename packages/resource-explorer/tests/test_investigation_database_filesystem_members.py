@@ -105,7 +105,10 @@ def test_link_status_agrees_with_relink(world):
 def test_unknown_kind_has_its_own_reason_and_empty_pointer_is_not_attached(world):
     eg, reg = world["eg"], world["registry"]
     _register(reg, db_guid="", fs_guid="")
-    slug = _investigation(world, [("database", "coco"), ("widget", "w1")])
+    slug = _investigation(world, [("database", "coco")])
+    # The route refuses a kind that is not a member kind (TR-54 A1, 422), so a row of an unknown kind is written the way a
+    # legacy one got there: straight into the Folio.
+    reg.add_working_set_member(reg.get_or_create_working_set(slug)["slug"], "widget", "w1")
     out = _promote(world, slug)
 
     st = _status(world, slug)

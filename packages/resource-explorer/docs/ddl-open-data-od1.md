@@ -1,12 +1,12 @@
 # DDL record: open data slice OD1, three new registry tables (re/od1-open-data)
 
-**Status:** branch pushed, not merged. This is the deployment record for three NEW tables in RE's shared registry.
+**Status:** merged (OD1 is on `main`); this page is kept as the deployment record for three NEW tables in RE's shared registry.
 **Decision (project owner, 2026-10-28):** "start OD1 after the runs, approve the DDL" (the three tables below).
 Design: `design-notes/DESIGN-OPEN-DATA-SEARCH-AND-SURVEY.md` §3, §9 (OD1 row), §11.
 
-Nothing in this branch has run against the shared registry (localhost:5442). The tables are created only by RE's own
-schema init, the first time a process running this code opens the shared registry, and only after the owner's word
-for that restart. Merging is not enough.
+When this was written nothing had run against the shared registry (localhost:5442). The tables are created only by RE's
+own schema init, the first time a process running this code opens the shared registry, and only after the owner's word
+for that restart. Merging is not enough; whether a given server has restarted onto this code is not recorded here.
 
 ## The exact Postgres DDL
 

@@ -62,10 +62,11 @@ def _by(res):
 
 def test_a_dataset_with_nothing_stated_is_three_no_reader_rows_and_says_why():
     res = dataset_questions.build(_dataset())
-    assert [q["state"] for q in res["questions"]] == ["no_reader"] * 3
-    assert all(q["answer"] == "" and q["words"].startswith("No mechanism exists for this yet — ") for q in res["questions"])
-    assert res["answered"] == 0 and res["partial"] == 0 and res["total"] == 3
-    assert [s["stage"] for s in res["stages"]] == ["Scouting", "Discovery", "Assessment"]
+    od = [q for q in res["questions"] if q["kind"] == "open_data"]       # the page also asks the generic questions (TR-54 A2)
+    assert [q["state"] for q in od] == ["no_reader"] * 3
+    assert all(q["answer"] == "" and q["words"].startswith("No mechanism exists for this yet — ") for q in od)
+    assert res["answered"] == 0 and len(od) == 3
+    assert [s["stage"] for s in res["stages"]][:3] == ["Scouting", "Discovery", "Assessment"]
 
 
 def test_licence_and_modified_in_the_record_make_the_two_rows_partial_with_their_source():
@@ -119,10 +120,11 @@ def test_the_route_returns_the_three_with_and_without_the_record_fields(client):
     _add(client.store, "stated", licence_id="cc-by-4.0", licence={"attribution": True, "share_alike": False, "commercial": True},
          modified="2026-10-30", record={"accrualPeriodicity": "R/P1M"})
     bare = client.get("/api/open-data/datasets/bare/questions").json()
-    assert [q["state"] for q in bare["questions"]] == ["no_reader"] * 3 and bare["partial"] == 0
+    od = lambda res: [q for q in res["questions"] if q["kind"] == "open_data"]       # noqa: E731  (the generic ones are A2's)
+    assert [q["state"] for q in od(bare)] == ["no_reader"] * 3
     stated = client.get("/api/open-data/datasets/stated/questions").json()
-    assert {q["id"]: q["state"] for q in stated["questions"]} == {"Q-0113": "partial", "Q-0114": "partial", "Q-0115": "no_reader"}
-    assert stated["partial"] == 2 and stated["total"] == 3
+    assert {q["id"]: q["state"] for q in od(stated)} == {"Q-0113": "partial", "Q-0114": "partial", "Q-0115": "no_reader"}
+    assert sum(1 for q in od(stated) if q["state"] == "partial") == 2
     assert client.get("/api/open-data/datasets/nope/questions").status_code == 404
 
 
