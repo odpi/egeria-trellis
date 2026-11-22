@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from resource_explorer.config import egeria_platform_url, egeria_view_server  # noqa: E402,F401
@@ -886,10 +886,10 @@ class EgeriaFileSystemSurveyor:
             if not fs_guid:
                 raise EgeriaFileSystemSurveyorError(
                     f"FileSystem '{fs_name}' is not yet published to Egeria — there is no asset to attach the report to.")
-            at = datetime.utcnow().isoformat()
+            at = datetime.now(timezone.utc).isoformat()
             props = {"step": spec.step, "finding": spec.finding, "run": run, "asOf": found.get("as_of", ""),
                      "count": count, "requestedBy": requested_by, "requestedAt": at}
-            if found.get("files"):
+            if spec.publishes_names and found.get("files"):     # TR-109 W1: the sender's own guard, whatever the caller handed it
                 props["files"] = list(found["files"])
                 if found.get("more"):
                     props["files"].append(f"and {found['more']} more")
@@ -899,7 +899,8 @@ class EgeriaFileSystemSurveyor:
                 check_name=f"fs_finding_rfa::{spec.finding}", item_key=key,
                 action_requested=spec.action, action_target_name=self.root_folder_qualified_name(
                     fs_entity.slug, (fs_entity.canonical_mount_point or fs_entity.local_mount_point or "").rstrip("/")),
-                explanation=f"Requested by {requested_by} on {at} from Resource Explorer's {spec.step} run {run}",
+                explanation=(f"Requested by {requested_by} on {at} from Resource Explorer's {spec.step} run {run}"
+                             + (f"; {spec.list_words}" if spec.list_words else "")),
                 json_properties=props)
             qualified_name = f"SurveyReport::FileSystem::{fs_entity.slug}::{spec.step}::{run}"
             report_guid = self._find_element_guid(qualified_name, type_name="SurveyReport", qualified_name=True)

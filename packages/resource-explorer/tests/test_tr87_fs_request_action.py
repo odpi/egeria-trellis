@@ -225,13 +225,62 @@ def test_the_annotation_says_what_to_review_and_names_the_file_system(registry, 
     assert jp["count"] == 4 and jp["requestedBy"] == "dan" and jp["requestedAt"] and "files" not in jp
 
 
-def test_named_files_are_capped_at_20_with_and_n_more(registry, tmp_path, monkeypatch):
+def test_world_readable_sensitive_never_sends_file_names(registry, tmp_path, monkeypatch):
+    """TR-109 W1: fs_permissions promises "the names are in Resource Explorer, not published". Even if a stored result
+    carried a file list, the finding sends none, and says where the names are."""
     _register(registry, _tree(tmp_path))
     egeria = install(monkeypatch, FakeEgeria())
     _surveyor_press(registry, "fs_permissions", "world_readable_sensitive", "World Readable Secret Named Files",
                     "world_readable_sensitive", count=25, extra={"files": [f"f{i}.pem" for i in range(25)]})
-    files = json.loads(next(iter(egeria.annotations.values()))["body"]["properties"]["jsonProperties"])["files"]
-    assert len(files) == 21 and files[:20] == [f"f{i}.pem" for i in range(20)] and files[20] == "and 5 more"
+    props = next(iter(egeria.annotations.values()))["body"]["properties"]
+    jp = json.loads(props["jsonProperties"])
+    assert "files" not in jp
+    assert "f0.pem" not in json.dumps(props)
+    assert "names are in Resource Explorer, not published" in props["explanation"]
+
+
+@pytest.mark.usefixtures("signed_in_caller")
+def test_the_guard_is_the_senders_not_only_the_readers(registry, tmp_path, monkeypatch):
+    """A `found` handed to the surveyor with names on it (any caller) still sends none for a finding that does not publish them."""
+    _register(registry, _tree(tmp_path))
+    egeria = install(monkeypatch, FakeEgeria())
+    from resource_explorer.surveyors.filesystem.egeria_filesystem_surveyor import EgeriaFileSystemSurveyor
+
+    _store(registry)
+    found = {**fs_findings.reread(registry, "walkme", "fs_permissions", "world_readable_sensitive", RUN),
+             "files": ["id_rsa", "prod.env"], "more": 3}
+    EgeriaFileSystemSurveyor().request_action_for_finding(registry.get_filesystem("walkme"), found, "dan", registry)
+    assert "id_rsa" not in json.dumps(next(iter(egeria.annotations.values()))["body"])
+
+
+def test_the_reread_returns_no_names_for_a_finding_that_does_not_publish_them(registry, tmp_path, monkeypatch):
+    _register(registry, _tree(tmp_path))
+    _store(registry, extra={"files": ["id_rsa"]})
+    found = fs_findings.reread(registry, "walkme", "fs_permissions", "world_readable_sensitive", RUN)
+    assert found["files"] == [] and found["more"] == 0
+
+
+def test_the_request_time_is_timezone_aware_utc(registry, tmp_path, monkeypatch):
+    _register(registry, _tree(tmp_path))
+    egeria = install(monkeypatch, FakeEgeria())
+    _surveyor_press(registry, "fs_permissions", "world_readable_sensitive", "World Readable Secret Named Files", "world_readable_sensitive")
+    at = json.loads(next(iter(egeria.annotations.values()))["body"]["properties"]["jsonProperties"])["requestedAt"]
+    assert at.endswith("+00:00"), at
+
+
+def test_an_existing_rfa_row_is_found_past_the_500_newest_entries(registry, tmp_path):
+    """TR-109 W3: the dedupe looked at the 500 newest RFA entries only, so an older row was missed and a second one written."""
+    from resource_explorer.activity_logger import log_rfa
+    from resource_explorer.web.routes.filesystems import _local_rfa_row_exists
+
+    _register(registry, _tree(tmp_path))
+    key = f"fs_permissions::world_readable_sensitive::{RUN}"
+    log_rfa(registry, "filesystem", "walkme", "walkme", "local", "old", extra={"finding_key": key})
+    for i in range(520):
+        log_rfa(registry, "filesystem", "walkme", "walkme", "local", f"newer {i}", extra={"finding_key": f"other::{i}"})
+    assert _local_rfa_row_exists(registry, "walkme", key) is True
+    assert _local_rfa_row_exists(registry, "walkme", key + "x") is False
+    assert _local_rfa_row_exists(registry, "walkme", "fs_permissions::world_readable_sensitive::%") is False
 
 
 def test_fs_activity_carries_no_file_list_and_says_cold_data(registry, tmp_path, monkeypatch):
@@ -240,6 +289,7 @@ def test_fs_activity_carries_no_file_list_and_says_cold_data(registry, tmp_path,
     _surveyor_press(registry, "fs_activity", "fs_activity", "Cold Files", "fs_activity", count=9)
     props = next(iter(egeria.annotations.values()))["body"]["properties"]
     assert "files" not in json.loads(props["jsonProperties"]) and props["actionRequested"] == "Review cold data: keep, archive or delete"
+    assert "no file list" in props["explanation"]
     assert egeria.report_creates == [f"SurveyReport::FileSystem::walkme::fs_activity::{RUN}"]
 
 
