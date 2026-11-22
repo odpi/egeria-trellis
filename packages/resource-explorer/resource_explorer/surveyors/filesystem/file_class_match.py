@@ -143,9 +143,21 @@ def _display(m, file_path: str) -> dict:
     return d
 
 
+#: TR-128(b): what a kept row is worth, by VERDICT. A real match (matched, partial_match) outranks a proposal, which
+#: outranks a no_match; anything not established comes last. The old key put `established` first and then confidence, and
+#: a no_match carries confidence 100, so no_match rows pushed real matches past MAX_KEPT (6 of 12 cut on egeria_v6).
+_VERDICT_RANK = {"matched": 0, "partial_match": 0, "unmatched_patterned": 1, "no_match": 2}
+
+
 def _rank(d: dict) -> tuple:
-    return (not d["privacy_relevant"], not d["established"], d["verdict"] != "unmatched_patterned", -d["confidence"],
-            d["file_path"], d["column"])
+    return (not d["privacy_relevant"], _VERDICT_RANK.get(d["verdict"], 3), -d["confidence"], d["file_path"], d["column"])
+
+
+def matching(verdicts: dict | None) -> int:
+    """TR-128(a): the columns that MATCH a data class: matched and partial_match, by verdict. Not `established`, which
+    also counts no_match and unmatched_patterned (both are findings, neither is a match)."""
+    v = verdicts or {}
+    return int(v.get("matched", 0)) + int(v.get("partial_match", 0))
 
 
 def run_file_class_match(fs_entity, registry, *, catalog_loader: Callable[[], object] | None = None) -> dict:
@@ -229,6 +241,7 @@ def run_file_class_match(fs_entity, registry, *, catalog_loader: Callable[[], ob
             "profile_run": profile_run, "ran_at": _now(), "columns": len(matches),
             "files": sum(1 for f in files_out if f["outcome"] != "no_columns"),
             "verdicts": dict(verdicts), "established": sum(1 for d in matches if d["established"]),
+            "matching": matching(verdicts),
             "privacy_relevant": sum(1 for d in matches if d["privacy_relevant"] and d["established"]),
             "proposals": verdicts.get("unmatched_patterned", 0),
             "files_detail": files_out[:200], "files_not_shown": max(0, len(files_out) - 200),
@@ -258,7 +271,7 @@ def run_words(m: dict) -> str:
     if not cat.get("available", True):
         parts.append(f"nothing established · {cat.get('unavailable_reason') or 'Egeria’s data classes could not be read'}")
     else:
-        parts.append(f"{_plural(m.get('established', 0), 'column')} match a data class"
+        parts.append(f"{_plural(matching(v), 'column')} match a data class"
                      f" ({m.get('privacy_relevant', 0):,} privacy-relevant)")
         parts.append(f"against {_plural(cat.get('data_class_count', 0), 'data class', 'data classes')} Egeria holds")
     if m.get("proposals"):
