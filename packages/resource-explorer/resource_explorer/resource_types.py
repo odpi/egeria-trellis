@@ -67,8 +67,16 @@ SURVEYED_RESOURCE_TYPES: tuple[str, ...] = tuple(
 #: The kinds a registry table holds that nothing surveys yet (OD1: registration, search and import only). They are
 #: NOT in SURVEYED_RESOURCE_TYPES, which claims a `ResourceTypeAdapter` and an analysis catalog section: adding
 #: them there would make `*` in the question catalog expand to kinds with no questions and would fail
-#: `test_every_surveyed_type_has_a_registered_adapter`. OD2 promotes `open_data` when its scout earns it.
+#: `test_every_surveyed_type_has_a_registered_adapter`. `open_data` answers the generic questions through
+#: `GENERIC_QUESTION_KINDS` below without being surveyed; promoting it to a surveyed kind is TR-119.
 REGISTERED_ONLY_RESOURCE_TYPES: tuple[str, ...] = ("open_data", "open_data_portal", "portal_directory")
+
+#: TR-54 A2, ruling (b): the registered kinds that ANSWER the generic (`*`) questions on their own page without being
+#: surveyed. A kind here is in none of `SURVEYED_RESOURCE_TYPES`' loops (coverage sweep, inventory export, batch import,
+#: tier resolution, ...): each stays excluded on purpose, and `tests/test_tr54_a2_generic_questions.py` pins it, so a new
+#: user of this constant is a decision and not an accident. Full promotion to a surveyed kind (an adapter, steps, and a
+#: decision at each of the ~39 call sites) is deferred as TR-119.
+GENERIC_QUESTION_KINDS: tuple[str, ...] = ("open_data",)
 
 #: The kinds a work list's members may be: the surveyed ones plus `open_data` (a portal and a directory are
 #: sources, not things a person works through, so they are not members).

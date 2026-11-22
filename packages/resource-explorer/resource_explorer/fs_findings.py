@@ -27,13 +27,20 @@ class FsFinding:
     action: str           # actionRequested
     step_name: str        # the step's display name
     why_listed: str       # one line for the 400 message
+    #: Whether this finding's request may carry file names to Egeria. False for every finding (TR-109 W1): fs_permissions
+    #: promises "the names are in Resource Explorer, not published", and no step stores a file list today. The reader and
+    #: the sender both check it, so a list that appears later in a stored result still goes nowhere.
+    publishes_names: bool = False
+    #: What the request says about the file list, so a reader of the annotation is not left to guess whether it was dropped.
+    list_words: str = ""
 
 
 FS_RFA_FINDINGS: dict[tuple[str, str], FsFinding] = {(f.step, f.finding): f for f in (
     FsFinding("fs_permissions", "world_readable_sensitive", "world_readable_sensitive", "World Readable Secret Named Files",
               "secret-looking files readable by others",
               "Review file permissions: secret-looking files are world-readable", "File Permissions",
-              "secret-looking files readable by others"),
+              "secret-looking files readable by others",
+              list_words="the names are in Resource Explorer, not published"),
     FsFinding("fs_permissions", "world_writable", "fs_permissions", "World Writable Files",
               "world-writable files", "Review file permissions: files are world-writable", "File Permissions",
               "world-writable files"),
@@ -42,7 +49,8 @@ FS_RFA_FINDINGS: dict[tuple[str, str], FsFinding] = {(f.step, f.finding): f for 
               "duplicate content sets within this file system"),
     FsFinding("fs_activity", "fs_activity", "fs_activity", "Cold Files",
               "cold files", "Review cold data: keep, archive or delete", "File Activity",
-              "cold files (not modified for longer than cold_days)"),
+              "cold files (not modified for longer than cold_days)",
+              list_words="no file list"),
 )}
 
 
@@ -101,7 +109,7 @@ def reread(registry, slug: str, step: str, finding: str, run_id: str) -> dict:
         count = _count(values.get(spec.field))
         if state != "measured" or not count or count <= 0:
             continue
-        named = values.get("files") if isinstance(values.get("files"), list) else []
+        named = values.get("files") if spec.publishes_names and isinstance(values.get("files"), list) else []
         files = [str(x) for x in named[:FILE_CAP]]
         return {"spec": spec, "key": finding_key(step, finding, str(run)), "count": count, "run_id": str(run),
                 "as_of": str(values.get("asOf") or ""), "files": files, "more": max(0, len(named) - FILE_CAP)}

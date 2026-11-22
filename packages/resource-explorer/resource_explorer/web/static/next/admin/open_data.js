@@ -145,9 +145,9 @@ export function seedAddHelp(row) {
 
 /** "Suggested portals · N": the shipped list, folded (a table starts closed). Offered, never applied: one Add per row,
  *  no bulk. A row that did not answer is greyed with its date; one RE cannot read yet has no Add. */
-export function suggestedPortalsHtml(res) {
+export function suggestedPortalsHtml(res, { open = false } = {}) {
   if (!res.rows.length) return `<p data-od-seeds-none class="text-provenance text-ink-muted">${SEEDS_ALL_REGISTERED}</p>`;
-  return `<details data-od-seeds-fold><summary class="cursor-pointer text-caveat text-ink">Suggested portals · ${res.rows.length}</summary>
+  return `${open ? '<details data-od-seeds-fold>'.replace('>', ' open>') : '<details data-od-seeds-fold>'}<summary class="cursor-pointer text-caveat text-ink">Suggested portals · ${res.rows.length}</summary>
     <div class="mt-s2 overflow-x-auto"><table class="w-full text-left" data-rc-id="od-portal-seeds">
       <thead><tr class="border-b border-rule text-caps uppercase tracking-caps text-ink-muted">
         <th class="pb-s2 pr-s3 font-normal">Portal</th><th class="pb-s2 pr-s3 font-normal">API</th><th class="pb-s2 pr-s3 font-normal">Size</th><th class="pb-s2 pr-s3 font-normal">Why</th><th class="pb-s2 pr-s3 font-normal">Checked</th><th class="pb-s2 pr-s3 font-normal"></th></tr></thead>
@@ -161,18 +161,24 @@ export function suggestedPortalsHtml(res) {
       </tr>`).join('')}</tbody></table></div></details>`;
 }
 
+/** One Add per row, nothing without a press: the click is the only thing that registers a portal. `afterAdd` is what the
+ *  caller does once it is registered (Admin redraws its list; the Find dialog turns into the search). */
+export function wirePortalSeedAdd(slot, afterAdd) {
+  slot.querySelectorAll('[data-od-seed-add]').forEach((b) => b.addEventListener('click', async () => {
+    const state = b.parentElement.querySelector('[data-od-seed-state]');
+    b.disabled = true; state.textContent = 'checking reach…';
+    try { await addPortalSeed(b.dataset.odSeedAdd); await afterAdd(); }
+    catch (e) { b.disabled = false; state.innerHTML = `<span class="text-state-warn">${errText(e)}</span>`; }
+  }));
+}
+
 async function drawPortalSeeds(host) {
   const slot = q(host, '[data-od-seeds]');
   let res;
   try { res = await listPortalSeeds(); } catch (e) { slot.innerHTML = `<p class="text-state-warn">${errText(e)}</p>`; return; }
   slot.innerHTML = suggestedPortalsHtml(res);
   watchTables(slot);
-  slot.querySelectorAll('[data-od-seed-add]').forEach((b) => b.addEventListener('click', async () => {
-    const state = b.parentElement.querySelector('[data-od-seed-state]');
-    b.disabled = true; state.textContent = 'checking reach…';
-    try { await addPortalSeed(b.dataset.odSeedAdd); await renderDataPortals(host); }
-    catch (e) { b.disabled = false; state.innerHTML = `<span class="text-state-warn">${errText(e)}</span>`; }
-  }));
+  wirePortalSeedAdd(slot, () => renderDataPortals(host));
 }
 
 /** The discovery-source pane for one portal: terms, filters, the price line, candidates, preview, Import. */
@@ -323,7 +329,9 @@ const WRAP = 'overflow-wrap:anywhere;word-break:break-word';
 export function importResultHtml(r) {
   const cue = (o) => (o.outcome === 'imported' ? '✓' : o.outcome === 'already_in_catalog' ? '=' : '✗');
   return `<p class="mb-s2 text-answer text-ink tnum" style="${WRAP}">${r.imported} imported · ${r.already_in_catalog} already in the catalog${r.refused ? ` · ${r.refused} refused` : ''}
-      ${r.work_list ? ` · work list <span class="font-mono">${esc(r.work_list)}</span>` : ''}</p>
+      ${r.work_list ? ` · work list <span class="font-mono">${esc(r.work_list)}</span>` : ''}
+      ${r.investigation && !r.investigation_note ? ` · ${r.investigation_members || 0} added to <span class="font-mono">${esc(r.investigation)}</span>` : ''}</p>
+    ${r.investigation_note ? `<p class="mb-s2 text-caveat text-state-warn" style="${WRAP}">${esc(r.investigation_note)}</p>` : ''}
     <div data-od-import-scroll class="overflow-x-auto overflow-y-auto" style="max-height:60vh">
     <table class="w-full table-fixed text-left" style="min-width:36rem" data-rc-id="od-import-result"><thead><tr class="border-b border-rule text-caps uppercase tracking-caps text-ink-muted">
       ${RESULT_COLS.map(([label, w]) => `<th class="pb-s2 pr-s3 font-normal" style="width:${w}">${label}</th>`).join('')}</tr></thead>
@@ -331,7 +339,7 @@ export function importResultHtml(r) {
       <td class="py-s2 pr-s3 text-caveat align-top" style="${WRAP}">${cue(o)}</td><td class="py-s2 pr-s3 text-caveat align-top" style="${WRAP}">${show(o.title)}</td>
       <td class="py-s2 pr-s3 text-caveat align-top font-mono text-provenance" style="${WRAP}">${esc(o.identifier || o.dataset_id || '')}</td>
       <td class="py-s2 pr-s3 text-caveat align-top text-ink-muted" style="${WRAP}">${esc((o.portals || [o.portal]).join(', '))}</td>
-      <td class="py-s2 pr-s3 text-caveat align-top ${o.outcome === 'refused' ? 'text-state-warn' : ''}" style="${WRAP}">${esc(o.words)}</td>
+      <td class="py-s2 pr-s3 text-caveat align-top ${o.outcome === 'refused' ? 'text-state-warn' : ''}" style="${WRAP}">${esc(o.words)}${o.investigation ? `<span class="block text-ink-muted">${esc(o.investigation)}</span>` : ''}</td>
       <td class="py-s2 pr-s3 text-caveat align-top text-ink-muted" style="${WRAP}">${esc(o.datacite || '')}</td></tr>`).join('')}</tbody></table></div>`;
 }
 

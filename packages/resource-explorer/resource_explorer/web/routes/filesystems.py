@@ -1182,11 +1182,7 @@ def _request_action_words(r: dict) -> str:
 
 def _local_rfa_row_exists(registry: ProjectRegistry, slug: str, key: str) -> bool:
     """Whether a local RFA row for this finding key is already in the Activity log (deduped by key, never by summary)."""
-    for entry in registry.list_activity(entity_slug=slug, operation="rfa", limit=500):
-        for ann in entry.get("annotations") or []:
-            if ann.get("finding_key") == key:
-                return True
-    return False
+    return registry.rfa_row_exists_for_finding_key(slug, key)
 
 
 @router.post("/{slug}/findings/request-action")

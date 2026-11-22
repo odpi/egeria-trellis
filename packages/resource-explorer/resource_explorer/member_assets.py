@@ -41,8 +41,9 @@ def _entity(registry, entity_type: str, slug: str):
     if entity_type == "filesystem":
         return registry.get_filesystem(slug)
     if entity_type == "open_data":
-        # Registered in RE only: its own pointer is always empty (nothing publishes it in OD1), so it reads
-        # "not in Egeria yet", never "cannot link this kind".
+        # Registered in RE only: the dataset row has no Egeria pointer. OD4 does publish a dataset and records the
+        # asset GUID in its step-run proof, but not on this row, so a member still reads "not in Egeria yet", never
+        # "cannot link this kind". Putting the GUID on the row is its own change.
         from resource_explorer.open_data.store import OpenDataStore
 
         return OpenDataStore(registry).get_dataset(slug) and _NoAsset()
