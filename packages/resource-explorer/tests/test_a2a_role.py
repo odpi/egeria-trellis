@@ -270,6 +270,29 @@ class TestDiscovery:
             assert entry["card_url"].endswith("/.well-known/agent-card.json")
             assert entry["endpoints"]["rest_message_send"].endswith("/v1/message:send")
 
+    def test_the_public_index_carries_no_url_but_the_public_one_and_no_egeria_block(self, monkeypatch):
+        """TR-133: /.well-known/agents.json needs no token, so it must not publish the Egeria platform's internal URL (or view server name).
+        Every URL in it is built from A2A_PUBLIC_URL; a client that needs the binding can get it from an authenticated endpoint later."""
+        monkeypatch.setenv("A2A_PUBLIC_URL", "https://a2a.example.org")
+        body = _client().get("/.well-known/agents.json").json()
+        assert "egeria" not in body, body.get("egeria")
+        urls = []
+
+        def walk(node):
+            if isinstance(node, dict):
+                for v in node.values():
+                    walk(v)
+            elif isinstance(node, list):
+                for v in node:
+                    walk(v)
+            elif isinstance(node, str) and "://" in node:
+                urls.append(node)
+        walk(body)
+        assert urls, "the index has URLs (the agents)"
+        assert all(u.startswith("https://a2a.example.org") for u in urls), [u for u in urls if not u.startswith("https://a2a.example.org")]
+        text = str(body)
+        assert "localhost:9443" not in text and "qs-view-server" not in text
+
     def test_index_names_the_required_auth_scheme(self):
         body = _client().get("/.well-known/agents.json").json()
         auth = body["authentication"]
