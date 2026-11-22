@@ -96,6 +96,14 @@ def test_a_column_matches_a_class_stated_against_its_sample_and_named_by_file_an
     assert out["established"] >= 1 and out["catalog"]["data_class_count"] == 1
 
 
+def test_the_run_records_when_it_began_not_only_when_it_ended(registry, tmp_path):
+    """TR-114: `ran_at` is the END of the run, after the sampled files were read; the START is what fs_activity needs."""
+    fs = _register(registry, _tree(tmp_path))
+    _profiles(registry)
+    out = fcm.run_file_class_match(fs, registry, catalog_loader=catalog())
+    assert out["started_at"] and out["started_at"] <= out["ran_at"]
+
+
 def test_a_pattern_no_class_has_is_a_proposal_and_nothing_is_created_in_egeria(registry, tmp_path):
     fs = _register(registry, _tree(tmp_path))
     _profiles(registry)

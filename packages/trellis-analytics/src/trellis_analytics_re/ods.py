@@ -360,6 +360,27 @@ class OdsReader:
                 return {str(k): int(v) for k, v in by_name.items() if isinstance(v, int)}
         return None
 
+    #: The step runs that open a file system's files after the walk (the walk's own hashing is in the walk rows).
+    OWN_READ_STEPS = ("file_profiles", "narrative_docs", "file_data_class_match")
+
+    def filesystem_own_reads(self, slug: str, since: str = "") -> list[dict]:
+        """The runs in which Resource Explorer itself opened this file system's files, oldest first, recorded at or after
+        `since` ("" = every run): `[{"step", "surveyed_at", "started_at"}]`. `surveyed_at` is the time the run was
+        recorded; for a data-file profile that is its start, for the narrative and data-class runs it is their end, so
+        `started_at` (from the run's own metrics, where the run kept it, else None) is when the files began to be read.
+        Times only. One parameterised statement; an unreadable store raises `OdsUnreadable`, never `[]`."""
+        marks = ", ".join("?" for _ in self.OWN_READ_STEPS)
+        rows = self.query(
+            f"SELECT step_key, surveyed_at, metrics FROM step_runs WHERE entity_type = 'filesystem' AND slug = ? "
+            f"AND step_key IN ({marks}) AND surveyed_at >= ? ORDER BY surveyed_at, step_key",
+            (normalize_slug(slug), *self.OWN_READ_STEPS, str(since or "")))
+        out = []
+        for r in rows:
+            started = _json_dict(r.get("metrics")).get("started_at")
+            out.append({"step": r["step_key"], "surveyed_at": r["surveyed_at"],
+                        "started_at": started if isinstance(started, str) and started else None})
+        return out
+
     def filesystem_hash_matches(self, slug: str, run_id: str) -> dict:
         """What the OTHER registered file systems hold of this run's content, by (hash, size), from each one's newest
         walk run: `{"peers": [{filesystem_slug, run_id, hashed}], "matches": [{filesystem_slug, content_hash,

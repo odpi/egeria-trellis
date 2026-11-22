@@ -167,7 +167,8 @@ def run_file_class_match(fs_entity, registry, *, catalog_loader: Callable[[], ob
     if not root.is_dir():
         raise NotReachable(f"The mount point {fs_entity.local_mount_point} cannot be reached from here · nothing read.")
     claim_key = f"{STEP_KEY}:{registry._normalize_slug(slug)}"
-    holder = f"{fp.machine()}:{os.getpid()}:{_now()}"
+    started_at = _now()      # `ran_at` below is the end of the run; fs_activity needs when the files began to be read (TR-114)
+    holder = f"{fp.machine()}:{os.getpid()}:{started_at}"
     if not registry.take_claim(claim_key, holder, stale_after_seconds=CLAIM_STALE_SECONDS):
         raise AlreadyRunning(ALREADY_RUNNING_WORDS.format(slug=slug))
     try:
@@ -226,7 +227,7 @@ def run_file_class_match(fs_entity, registry, *, catalog_loader: Callable[[], ob
         summary = {
             # Only files with a profiled column (the set `price()` counts): `by_file` holds a row for every file of the
             # profile run in every state, so len(by_file) said "of 4,847 profiled files" when 1,889 were profiled (D7).
-            "profile_run": profile_run, "ran_at": _now(), "columns": len(matches),
+            "profile_run": profile_run, "started_at": started_at, "ran_at": _now(), "columns": len(matches),
             "files": sum(1 for f in files_out if f["outcome"] != "no_columns"),
             "verdicts": dict(verdicts), "established": sum(1 for d in matches if d["established"]),
             "privacy_relevant": sum(1 for d in matches if d["privacy_relevant"] and d["established"]),
