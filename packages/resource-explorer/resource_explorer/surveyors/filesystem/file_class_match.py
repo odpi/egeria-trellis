@@ -79,7 +79,9 @@ def name_signals(file_path: str) -> list[str]:
 
 def sample_values(path: Path, ext: str, *, limit: int = SAMPLE_BYTES, max_values: int = MAX_VALUES):
     """({column: [values]} or None, rows read, why-not). Reads the head of the file only: a delimited or JSON-lines file
-    up to `limit` bytes cut at its last whole line, a Parquet file's first row group. None with the reason when the file
+    up to `limit` bytes cut at its last whole line, a Parquet file's first row group, a workbook's first `max_values` rows
+    (xlsx/xlsm/xls/ods: opened only if the file is within `limit` bytes, since a workbook cannot be cut at a line, and
+    only when its library is installed). None with the reason when the file
     cannot be opened or parsed; never raises."""
     import pandas as pd
 
@@ -109,6 +111,18 @@ def sample_values(path: Path, ext: str, *, limit: int = SAMPLE_BYTES, max_values
                         df = pd.read_csv(io.BytesIO(data), sep=fp._DELIMITED[ext], low_memory=False)
                     except UnicodeDecodeError:
                         df = pd.read_csv(io.BytesIO(data), sep=fp._DELIMITED[ext], low_memory=False, encoding="latin-1")
+            elif ext in fp._SPREADSHEETS:
+                # TR-125: the head rows of a workbook, under the same limits. A workbook is a zip and cannot be cut at
+                # a line, so the byte limit decides whether it is opened at all (file_profiles reads one whole, and
+                # calls one over its limit OVER_LIMIT, so such a file has no profiled columns to match anyway); the row
+                # limit is `max_values`, read by pandas (`nrows`), which stops after them.
+                lib = fp._LIBRARY[ext]
+                if not fp._has(lib):
+                    return None, 0, f"values are not sampled from .{ext} files here: the {lib} library is not installed"
+                if os.fstat(fh.fileno()).st_size > limit:
+                    return None, 0, (f"a .{ext} workbook over the {limit}-byte sample limit is not opened "
+                                     f"(a workbook cannot be cut at a line)")
+                df = pd.read_excel(fh, nrows=max_values)
             else:
                 return None, 0, f"values are not sampled from .{ext} files here (read whole only)"
     except Exception as exc:  # noqa: BLE001 -- a file that cannot be parsed says so, never a silent skip

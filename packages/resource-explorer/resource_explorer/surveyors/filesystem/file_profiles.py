@@ -304,6 +304,7 @@ EGERIA_HALF_FS_NAME_UNKNOWN = "file_system_name_unknown"
 
 _DELIMITED = {"csv": ",", "tsv": "\t", "tab": "\t", "psv": "|"}
 _LINES_JSON = {"jsonl", "ndjson"}
+_SPREADSHEETS = {"xlsx", "xlsm", "xls", "ods"}
 _WHOLE_ONLY = {"json", "xlsx", "xlsm", "xls", "ods", "feather", "arrow", "avro"}
 _LIBRARY = {"xlsx": "openpyxl", "xlsm": "openpyxl", "xls": "xlrd", "ods": "odf", "avro": "fastavro"}
 
