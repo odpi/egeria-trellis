@@ -1149,6 +1149,8 @@ def publish_filesystem_data_classes(slug: str) -> dict:
     run, confirmed = fs_review.confirmed_classes(registry, slug)
     if not confirmed:
         raise HTTPException(status_code=409, detail="No data-class match is confirmed on the newest run. Confirm one on Curate first.")
+    if not fs.egeria_asset_guid:      # TR-128(c): a conflict the person can resolve, not a server fault (was a 502)
+        raise HTTPException(status_code=409, detail="publish the file system to Egeria first")
     from resource_explorer.egeria_clients import Caller
     from resource_explorer.egeria_clients import refusal as egeria_refusal
     from resource_explorer.surveyors.filesystem.egeria_filesystem_surveyor import EgeriaFileSystemSurveyor
