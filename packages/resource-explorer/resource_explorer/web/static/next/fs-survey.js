@@ -589,8 +589,10 @@ export function classMatchHtml(cm, fold = null) {
     m.privacy_relevant ? 'yes' : '', m.statement]);
   const names = (run.name_signals || []).map((n) => [n.file_path, (n.words || []).join(', ')]);
   const notOpened = (run.file_outcomes || {}).egeria_profiled;
+  const readForMatching = (run.file_outcomes || {}).egeria_profiled_sampled;
   const body = `<div data-fs-class-run class="text-caveat text-ink">${esc(W.classAt(day(run.ran_at)))} · <span data-fs-class-words>${esc(run.words || '')}</span></div>
-    ${notOpened ? `<div data-fs-class-egeria class="text-provenance text-ink-muted">${esc(`${num(notOpened)} file${notOpened === 1 ? '' : 's'} profiled by Egeria · not opened here, so not sampled`)}</div>` : ''}
+    ${readForMatching ? `<div data-fs-class-egeria-read class="text-provenance text-ink-muted">${esc(`${num(readForMatching)} file${readForMatching === 1 ? '' : 's'} profiled by Egeria · values read by Resource Explorer for matching only`)}</div>` : ''}
+    ${notOpened ? `<div data-fs-class-egeria class="text-provenance text-ink-muted">${esc(`${num(notOpened)} file${notOpened === 1 ? '' : 's'} profiled by Egeria · could not be read here, so not sampled`)}</div>` : ''}
     <div class="text-provenance text-ink-muted">${esc(run.rule || '')}</div>
     ${rows.length ? measureTableHtml('class-match', 'Proposals', ['File', 'Column', 'Verdict', 'Class or pattern', 'Privacy', 'Statement'], rows) : ''}
     ${names.length ? `<div data-fs-class-names class="text-provenance text-ink">${esc(W.classNames(run.name_signal_files))}</div>

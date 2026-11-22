@@ -832,9 +832,12 @@ class EgeriaFileSystemSurveyor:
                     confidence=int(c.get("confidence") or 0), check_name="data_class_match",
                     item_key=f"{c['file']} › {c['column']}", label="confirmed",
                     candidate_data_class_names=[c["data_class_guid"]],
-                    explanation=f"Confirmed by {v.get('by', '')} on {v.get('at', '')} from Resource Explorer's match run {run_id}.",
+                    explanation=(f"Confirmed by {v.get('by', '')} on {v.get('at', '')} from Resource Explorer's match run {run_id}."
+                                 + (f" {c['read_note'][:1].upper()}{c['read_note'][1:]}." if c.get("read_note") else "")),
                     json_properties={"file": c["file"], "column": c["column"], "dataClass": c["data_class"],
-                                     "confirmedBy": v.get("by", ""), "confirmedAt": v.get("at", ""), "matchRun": run_id}))
+                                     "confirmedBy": v.get("by", ""), "confirmedAt": v.get("at", ""), "matchRun": run_id,
+                                     # TR-126: the values were read by Resource Explorer for matching only, not Egeria's profile
+                                     **({"readNote": c["read_note"]} if c.get("read_note") else {})}))
             qualified_name = f"SurveyReport::FileSystem::{fs_entity.slug}::class_match::{run_id}"
             report_guid = self._find_element_guid(qualified_name, type_name="SurveyReport", qualified_name=True)
             reused = bool(report_guid)

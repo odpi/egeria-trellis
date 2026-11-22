@@ -51,8 +51,9 @@ PERSONAL_NAME_WORDS = ("patient", "patients", "customer", "customers", "employee
                        "students", "dob", "birth", "address", "addresses", "people", "persons", "users", "staff", "hr",
                        "pii", "gdpr", "phi")
 
-EGERIA_NOT_OPENED = ("Egeria's CSV Survey Service profiled this file, so Resource Explorer does not open it; Egeria's value "
-                     "counts are not read by this step yet")
+#: TR-126: a file Egeria's CSV Survey Service profiled has its head read for MATCHING ONLY. Egeria's profile stays the
+#: profile (nothing is written to it); the match says where its values came from.
+EGERIA_READ_FOR_MATCHING_WORDS = "values read by Resource Explorer for matching only; Egeria profiled this file"
 
 
 class NothingToMatch(RuntimeError):
@@ -218,14 +219,18 @@ def run_file_class_match(fs_entity, registry, *, catalog_loader: Callable[[], ob
                 continue
             source = cols[0].get("stats_source") or ""
             name = PurePosixPath(file_path).name
-            values, rows_read, why = None, 0, ""
-            if source.startswith(fp.EGERIA_SOURCE_PREFIX):
-                why, outcome = EGERIA_NOT_OPENED, "egeria_profiled"
-            elif looks_secret(name):
+            values, rows_read, why, read_note = None, 0, "", ""
+            if looks_secret(name):
                 why, outcome = "a secret-looking name: never opened", "secret_name"
             else:
                 values, rows_read, why = sample_values(root / file_path, fp.ext_of(file_path))
-                outcome = "sampled" if values is not None else "not_sampled"
+                egeria = source.startswith(fp.EGERIA_SOURCE_PREFIX)
+                if values is not None:
+                    outcome = "egeria_profiled_sampled" if egeria else "sampled"
+                    if egeria:
+                        why = read_note = EGERIA_READ_FOR_MATCHING_WORDS
+                else:
+                    outcome = "egeria_profiled" if egeria else "not_sampled"
             sampled = values is not None
             total = None
             if sampled and all((c.get("sample_ratio") in (None, 1, 1.0)) for c in cols):
@@ -246,6 +251,9 @@ def run_file_class_match(fs_entity, registry, *, catalog_loader: Callable[[], ob
                     m.matched_qualified_name = m.matched_display_name = ""
                     m.not_established_reason = catalog.unavailable_reason or "Egeria's data classes could not be read"
                 d = _display(m, file_path)
+                if read_note:
+                    d["read_note"] = read_note
+                    d["statement"] = f"{d['statement']} ({read_note})"
                 d["header_suspect"] = c.get("state") == fp.HEADER_SUSPECT
                 matches.append(d)
         matches.sort(key=_rank)
@@ -321,7 +329,8 @@ def price(registry, slug: str) -> dict:
     return {"priced": True, "files": len(files), "columns": len(cols), "run": runs[0],
             "words": (f"matches {_plural(len(cols), 'column')} of {_plural(len(files), 'profiled file')} against the data "
                       f"classes Egeria holds (read from Egeria) · reads the first {SAMPLE_BYTES // (1024 * 1024)} MB of "
-                      f"{_plural(len(by_re), 'file')} Resource Explorer profiled; files Egeria profiled are not opened")}
+                      f"{_plural(len(files), 'file')}"
+                      + (f"; the {len(files) - len(by_re):,} Egeria profiled are read for matching only" if len(files) > len(by_re) else ""))}
 
 
 def view(registry, slug: str) -> dict:
