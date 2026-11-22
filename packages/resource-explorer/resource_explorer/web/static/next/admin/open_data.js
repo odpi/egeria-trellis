@@ -147,7 +147,7 @@ export function seedAddHelp(row) {
  *  no bulk. A row that did not answer is greyed with its date; one RE cannot read yet has no Add. */
 export function suggestedPortalsHtml(res, { open = false } = {}) {
   if (!res.rows.length) return `<p data-od-seeds-none class="text-provenance text-ink-muted">${SEEDS_ALL_REGISTERED}</p>`;
-  return `<details data-od-seeds-fold${open ? ' open' : ''}><summary class="cursor-pointer text-caveat text-ink">Suggested portals · ${res.rows.length}</summary>
+  return `${open ? '<details data-od-seeds-fold>'.replace('>', ' open>') : '<details data-od-seeds-fold>'}<summary class="cursor-pointer text-caveat text-ink">Suggested portals · ${res.rows.length}</summary>
     <div class="mt-s2 overflow-x-auto"><table class="w-full text-left" data-rc-id="od-portal-seeds">
       <thead><tr class="border-b border-rule text-caps uppercase tracking-caps text-ink-muted">
         <th class="pb-s2 pr-s3 font-normal">Portal</th><th class="pb-s2 pr-s3 font-normal">API</th><th class="pb-s2 pr-s3 font-normal">Size</th><th class="pb-s2 pr-s3 font-normal">Why</th><th class="pb-s2 pr-s3 font-normal">Checked</th><th class="pb-s2 pr-s3 font-normal"></th></tr></thead>

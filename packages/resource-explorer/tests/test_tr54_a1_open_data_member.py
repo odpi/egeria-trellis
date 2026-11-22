@@ -235,7 +235,7 @@ def test_a2_nothing_is_added_without_a_press():
 
 def test_a2_the_suggested_table_can_start_open_and_still_starts_closed_in_admin():
     fn = _fn(OD_JS, "export function suggestedPortalsHtml")
-    assert "{ open = false } = {}" in fn and "<details data-od-seeds-fold${open ? ' open' : ''}>" in fn
+    assert "{ open = false } = {}" in fn and "'<details data-od-seeds-fold>'.replace('>', ' open>')" in fn
     assert "suggestedPortalsHtml(res)" in OD_JS                          # Admin's own call is unchanged: folded
 
 
