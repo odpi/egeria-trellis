@@ -244,6 +244,8 @@ def run_file_class_match(fs_entity, registry, *, catalog_loader: Callable[[], ob
             "matching": matching(verdicts),
             "privacy_relevant": sum(1 for d in matches if d["privacy_relevant"] and d["established"]),
             "proposals": verdicts.get("unmatched_patterned", 0),
+            "proposals_privacy_relevant": sum(1 for d in matches
+                                              if d["verdict"] == "unmatched_patterned" and d["privacy_relevant"]),
             "files_detail": files_out[:200], "files_not_shown": max(0, len(files_out) - 200),
             "file_outcomes": dict(Counter(f["outcome"] for f in files_out)),
             "name_signals": names[:200], "name_signal_files": len(names),
@@ -271,11 +273,14 @@ def run_words(m: dict) -> str:
     if not cat.get("available", True):
         parts.append(f"nothing established · {cat.get('unavailable_reason') or 'Egeria’s data classes could not be read'}")
     else:
-        parts.append(f"{_plural(matching(v), 'column')} match a data class"
-                     f" ({m.get('privacy_relevant', 0):,} privacy-relevant)")
+        parts.append(f"{_plural(matching(v), 'column')} match a data class")
         parts.append(f"against {_plural(cat.get('data_class_count', 0), 'data class', 'data classes')} Egeria holds")
     if m.get("proposals"):
-        parts.append(f"{_plural(m['proposals'], 'column')} with a pattern no class has · a proposal for a new class")
+        # `privacy_relevant` is set on a PROPOSAL (a column whose values follow a pattern RE knows to be personal), never on a
+        # match, so the count belongs here and not beside the matches (Architect read-back, TR-128).
+        priv = m.get("proposals_privacy_relevant", m.get("privacy_relevant", 0))
+        parts.append(f"{_plural(m['proposals'], 'column')} with a pattern no class has ({priv:,} privacy-relevant)"
+                     f" · a proposal for a new class")
     for key, words in (("no_match", "matched no class"), ("inconclusive", "inconclusive on their sample"),
                        ("not_sampled", "not sampled"), ("not_applicable", "of a type no data class describes")):
         if v.get(key):

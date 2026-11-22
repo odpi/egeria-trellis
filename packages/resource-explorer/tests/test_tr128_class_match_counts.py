@@ -50,6 +50,22 @@ def test_a_real_run_counts_what_matched(registry, tmp_path):
     assert f"{matched} column" in fcm.run_words(out) and out["matching"] == matched
 
 
+def test_privacy_relevant_proposals_are_not_counted_next_to_the_matches():
+    """Architect read-back: privacy_relevant is set on unmatched_patterned PROPOSALS (RE's pattern library), not on
+    matches, so '12 columns match a data class (2 privacy-relevant)' put the 2 beside the wrong 12."""
+    run = _run({"matched": 12, "unmatched_patterned": 2, "no_match": 30}, privacy_relevant=2, proposals=2)
+    words = fcm.run_words(run)
+    assert "12 columns match a data class" in words
+    assert "match a data class (2 privacy-relevant)" not in words and "match a data class (" not in words
+    assert "2 columns with a pattern no class has (2 privacy-relevant) · a proposal for a new class" in words
+
+
+def test_a_run_with_no_privacy_relevant_proposal_says_so_in_the_proposals_clause_only():
+    words = fcm.run_words(_run({"matched": 4, "unmatched_patterned": 3}, privacy_relevant=0, proposals=3))
+    assert "3 columns with a pattern no class has (0 privacy-relevant)" in words
+    assert "4 columns match a data class ·" in words
+
+
 # ── (b) _rank never cuts a real match for a no_match ────────────────────────────────────────────────────────────
 
 def _d(verdict, confidence, column, *, established=True, privacy=False):
