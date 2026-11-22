@@ -211,7 +211,9 @@ def apply_all(url: str | None = None) -> dict[str, int]:
         detail["feedback"] = LibraryFeedbackStore(cfg.feedback.database_url, APP, external_sources=EXTERNAL_SOURCES, ddl="auto").apply_schema()
         from resource_explorer.ingestion.artifact_tree_sink import _store as _tree_store
         detail["artifact_tree"] = _tree_store(ddl="auto").apply_schema()
-    # the vector store's own schema, the declared-collections table and the collections: reconciled every run
+    # The vector store's own schema, the declared-collections table and the collections: reconciled EVERY run, on what physically exists.
+    # Tables first, then declare: a Job that dies in between leaves tables nobody declared (harmless, found again next run), never a
+    # declared name without its table (the pods would pass the declaration check and then fail on insert; nothing would repair it).
     table = f'"{pg.schema_name}"."{COLLECTIONS_TABLE}"' if pg.schema_name else f'"{COLLECTIONS_TABLE}"'
     sent = 0
     conn = _pg_connect(pg)
@@ -224,20 +226,35 @@ def apply_all(url: str | None = None) -> dict[str, int]:
             cur.execute(_COLLECTIONS_DDL.format(table=table))
             sent += 1
             cur.execute(f"SELECT name FROM {table}")
-            existing = {r[0] for r in cur.fetchall()}
-        new_rows = [r for r in declared_collection_rows([], declared_collection_names(projects)) if r["name"] not in existing]
-        with conn.cursor() as cur:
-            for r in new_rows:
-                cur.execute(
-                    f"INSERT INTO {table} (name, dimension, metric, hnsw_m, hnsw_ef_construction) VALUES (%s, %s, %s, %s, %s) "
-                    "ON CONFLICT (name) DO NOTHING",
-                    (r["name"], r["dimension"], r["metric"], r["hnsw_m"], r["hnsw_ef_construction"]))
+            declared = {r[0] for r in cur.fetchall()}
+            wanted = list(dict.fromkeys(declared_collection_names(projects) + sorted(declared)))   # declared names keep their tables too
+            # missing: no table, or no vector index (a run killed between the two)
+            qual = "quote_ident(%s) || chr(46) || " if pg.schema_name else ""
+            params = [wanted, pg.schema_name, pg.schema_name] if pg.schema_name else [wanted]
+            cur.execute(
+                f"SELECT n FROM unnest(%s::text[]) AS t(n) WHERE to_regclass({qual}quote_ident(n)) IS NULL "
+                f"OR to_regclass({qual}quote_ident(n || '_embedding_idx')) IS NULL",
+                params)
+            missing = [r[0] for r in cur.fetchall()]
         conn.commit()
     finally:
         conn.close()
     from resource_explorer.vector_store_pg import PgVectorStore
-    applied = PgVectorStore(ddl="auto").apply_schema([r["name"] for r in new_rows])
+    applied = PgVectorStore(ddl="auto").apply_schema(missing)      # tables and indexes first
     sent += applied
+    new_rows = [r for r in declared_collection_rows([], wanted) if r["name"] not in declared]
+    if new_rows:
+        conn = _pg_connect(pg)
+        try:
+            with conn.cursor() as cur:
+                for r in new_rows:
+                    cur.execute(
+                        f"INSERT INTO {table} (name, dimension, metric, hnsw_m, hnsw_ef_construction) VALUES (%s, %s, %s, %s, %s) "
+                        "ON CONFLICT (name) DO NOTHING",
+                        (r["name"], r["dimension"], r["metric"], r["hnsw_m"], r["hnsw_ef_construction"]))
+            conn.commit()                                           # declared only now that their tables exist
+        finally:
+            conn.close()
     if drifted:
         detail["vectorstore"] = sent
         _write_markers(reg, fps, detail)
