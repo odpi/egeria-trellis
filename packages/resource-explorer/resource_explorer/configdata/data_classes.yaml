@@ -22,7 +22,9 @@
 #                   (sent to Egeria as matchPropertyNames; the name `dataPatterns` is kept for existing files)
 # Optional:
 #   specification - a regular expression a VALUE of this class fully matches (python `re.fullmatch`). Give one
-#                   only where the class has a recognisable value shape; leave it out otherwise (a password has none)
+#                   only where the shape is specific to the class. A generic shape (nine digits, a long number, any
+#                   date) matches columns that are not the class at all, so Phone, SSN, Credit Card and Date of
+#                   Birth ship with none and stay name-only until a value-AND-name rule exists (TR-131).
 #
 # A second file may add entries without editing this one: set RE_DATA_CLASSES_FILE to its path (the
 # same shape). A name in both files is an error, not an override.
@@ -38,19 +40,16 @@ data_classes:
     displayName: Phone Number
     description: Telephone contact number.
     dataPatterns: [phone, phone_number, telephone, mobile, tel_num]
-    specification: '\+?[0-9(][0-9 ().\-]{5,}[0-9]'
 
   - name: SocialSecurityNumber
     displayName: Social Security Number
     description: Government issued social security identification number.
     dataPatterns: [ssn, socialsec, social_security, ssn_num]
-    specification: '[0-9]{3}-?[0-9]{2}-?[0-9]{4}'
 
   - name: CreditCardNumber
     displayName: Credit Card Number
     description: Financial credit or debit card identifier.
     dataPatterns: [creditcard, credit_card, cc_num, card_number]
-    specification: '[0-9](?:[ -]?[0-9]){12,18}'
 
   - name: Password
     displayName: Password
@@ -61,4 +60,3 @@ data_classes:
     displayName: Date of Birth
     description: Individual date or anniversary of birth.
     dataPatterns: [dob, dateofbirth, birth_date, birthdate]
-    specification: '[0-9]{4}-[0-9]{1,2}-[0-9]{1,2}|[0-9]{1,2}/[0-9]{1,2}/[0-9]{4}'

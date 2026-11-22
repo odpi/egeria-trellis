@@ -77,43 +77,38 @@ def test_name_hints_come_from_matchPropertyNames_and_the_name_hint_dataPatterns(
 # ── the seed ────────────────────────────────────────────────────────────────
 
 SEED = {d["name"]: d for d in bdc.STANDARD_DATA_CLASSES}
-WITH_SPEC = {"EmailAddress", "PhoneNumber", "SocialSecurityNumber", "CreditCardNumber", "DateOfBirth"}
-EXAMPLES = {
-    "EmailAddress": (["jane.doe@example.com", "a_b+c@sub.example.org"], ["jane.doe", "not an email", "12345"]),
-    "PhoneNumber": (["+44 20 7946 0958", "(555) 123-4567", "555-123-4567"], ["hello", "12", "jane@example.com"]),
-    "SocialSecurityNumber": (["123-45-6789", "123456789"], ["12-345-6789", "hello", "1234"]),
-    "CreditCardNumber": (["4111 1111 1111 1111", "4111-1111-1111-1111", "4111111111111111"], ["1234", "hello"]),
-    "DateOfBirth": (["1990-04-17", "04/17/1990"], ["hello", "17 April", "1990"]),
-}
-
-
-#: 40 distinct, real-looking values per class (the matcher's sample floor is 20 values and 8 distinct).
-MANY = {
-    "EmailAddress": lambda n: [f"user{i}@example.com" for i in range(n)],
-    "PhoneNumber": lambda n: [f"+44 20 7946 {i:04d}" for i in range(n)],
-    "SocialSecurityNumber": lambda n: [f"{100 + i:03d}-45-{6000 + i:04d}" for i in range(n)],
-    "CreditCardNumber": lambda n: [f"4111 1111 1111 {1000 + i:04d}" for i in range(n)],
-    "DateOfBirth": lambda n: [f"1990-04-{(i % 28) + 1:02d}" for i in range(n)],
-}
+#: Architect read-back 2026-11-22: a value regex alone (weight 0.70, 0.95 threshold) makes a MATCH whatever the column
+#: is called, so a generic shape matched far too much on real data (any date as Date of Birth, any 9-digit id as SSN,
+#: NAICS codes and salaries as Phone). Only Email's shape is specific enough to ship. The others stay name-only until
+#: a value-AND-name rule exists (TR-131); their regexes are NOT in the seed.
+WITH_SPEC = {"EmailAddress"}
+NO_SPEC = {"PhoneNumber", "SocialSecurityNumber", "CreditCardNumber", "DateOfBirth", "Password"}
+EMAIL_EXAMPLES = (["jane.doe@example.com", "a_b+c@sub.example.org"], ["jane.doe", "not an email", "12345"])
+MANY = {"EmailAddress": lambda n: [f"user{i}@example.com" for i in range(n)]}
 
 
 def test_the_seed_still_lists_the_same_six_classes_and_keywords():
-    assert set(SEED) == WITH_SPEC | {"Password"}
+    assert set(SEED) == WITH_SPEC | NO_SPEC
     assert "email" in SEED["EmailAddress"]["dataPatterns"] and "pwd" in SEED["Password"]["dataPatterns"]
 
 
-@pytest.mark.parametrize("name", sorted(WITH_SPEC))
-def test_a_class_with_a_value_shape_carries_a_real_regex_as_its_specification(name):
-    spec = SEED[name].get("specification")
-    assert spec, f"{name} has a recognisable value shape"
+def test_email_carries_a_real_regex_as_its_specification():
+    spec = SEED["EmailAddress"].get("specification")
+    assert spec
     rx = re.compile(spec)
-    good, bad = EXAMPLES[name]
-    assert all(rx.fullmatch(v) for v in good), [v for v in good if not rx.fullmatch(v)]
-    assert not any(rx.fullmatch(v) for v in bad), [v for v in bad if rx.fullmatch(v)]
+    good, bad = EMAIL_EXAMPLES
+    assert all(rx.fullmatch(v) for v in good) and not any(rx.fullmatch(v) for v in bad)
 
 
-def test_password_has_no_specification_because_a_password_has_no_value_shape():
-    assert "specification" not in SEED["Password"]
+def test_the_shipped_seed_has_a_specification_only_for_email():
+    assert {n for n, d in SEED.items() if d.get("specification")} == {"EmailAddress"}
+    assert set(SEED) == WITH_SPEC | NO_SPEC
+
+
+@pytest.mark.parametrize("name", sorted(NO_SPEC))
+def test_a_class_with_a_generic_value_shape_ships_no_specification_so_it_stays_name_only(name):
+    assert "specification" not in SEED[name]
+    assert "specification" not in bdc._data_class_body(SEED[name])["properties"]
 
 
 @pytest.mark.parametrize("name", sorted(SEED))
