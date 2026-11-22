@@ -117,14 +117,15 @@ def ensure_extension(conn, dbname: str = "") -> int:
         conn.commit()
         return 1
     except psycopg2.errors.InsufficientPrivilege as exc:
+        note = ""
         try:
             conn.rollback()
-        except Exception:  # noqa: BLE001
-            pass
+        except psycopg2.Error as rollback_error:      # a broken connection: say so in the message instead of dropping it
+            note = f" (the connection also failed to roll back: {type(rollback_error).__name__})"
         where = f" in database {dbname!r}" if dbname else ""
         raise SchemaNotReady(
             f"the pgvector extension is not installed{where} and this role may not create it: "
-            "ask the database admin to run CREATE EXTENSION vector, then run `resource-explorer schema apply` again") from exc
+            "ask the database admin to run CREATE EXTENSION vector, then run `resource-explorer schema apply` again" + note) from exc
 
 
 # ── markers ────────────────────────────────────────────────────────────────────────────────────────────────────────
