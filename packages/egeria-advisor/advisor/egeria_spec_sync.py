@@ -230,10 +230,48 @@ def sync_now(*, client_factory: Optional[Callable[[], Any]] = None, _claimed: bo
         _state.update(state="ok", finished_at=_now(), error=None, report=report.to_dict(),
                       identity=str(getattr(client, "user_id", "") or "?"))
     _after_sync()
+    held = egeria_held_status()
     logger.info(f"Report spec sync from Egeria as {account} ({', '.join(folders) or 'no folders'}): "
                 f"{len(report.added)} added, {len(report.updated)} updated, {len(report.unchanged)} unchanged, "
-                f"{len(report.pruned)} pruned, {len(report.skipped)} skipped")
-    return egeria_held_status()
+                f"{len(report.pruned)} pruned, {len(report.skipped)} skipped; {read_words(held, account)}")
+    return held
+
+
+def _plural(n: int, one: str, many: str) -> str:
+    return f"{n} {one if n == 1 else many}"
+
+
+def read_words(held: Dict[str, Any], account: str) -> str:
+    """What the last sync READ, folder by folder (TR-59): found and how many members were read, not found (or not
+    visible to `account`), or could not be read. Without this, "0 added ... 0 skipped" reads the same for a folder
+    that holds nothing and a folder nobody could read (absence-as-answer)."""
+    results = held.get("folder_results") or []
+    if not results:
+        return "no folder configured; nothing read"
+    with _lock:
+        report = dict(_state.get("report") or {})
+    folders = set(held.get("folders") or [])
+    member_skips = [s for s in (report.get("skipped") or []) if s and s[0] not in folders]
+    read_total = (len(report.get("added") or []) + len(report.get("updated") or [])
+                  + len(report.get("unchanged") or []) + len(member_skips))
+    found = [r for r in results if r["result"] in ("empty", "ok")]
+    parts = []
+    for r in results:
+        if r["result"] == "not_found":
+            parts.append(f"{r['folder']}: not found, or not visible to {account}; nothing read")
+        elif r["result"] == "unreadable":
+            parts.append(f"{r['folder']}: could not be read ({r['detail']}); nothing read")
+        elif r["result"] == "not_synced":
+            parts.append(f"{r['folder']}: not read")
+        else:
+            holds = ("holds no active report specs" if not r["count"]
+                     else f"holds {_plural(r['count'], 'active report spec', 'active report specs')}")
+            # The report counts members across folders; one folder found gets the whole count.
+            read = (f"{_plural(read_total, 'member', 'members')} read, " if len(found) == 1 else "")
+            parts.append(f"{r['folder']}: found, {read}{holds}")
+    if len(found) > 1:
+        parts.append(f"{_plural(read_total, 'member', 'members')} read in all")
+    return "; ".join(parts)
 
 
 def _after_sync() -> None:
