@@ -78,13 +78,33 @@ def test_name_hints_come_from_matchPropertyNames_and_the_name_hint_dataPatterns(
 
 SEED = {d["name"]: d for d in bdc.STANDARD_DATA_CLASSES}
 #: Architect read-back 2026-11-22: a value regex alone (weight 0.70, 0.95 threshold) makes a MATCH whatever the column
-#: is called, so a generic shape matched far too much on real data (any date as Date of Birth, any 9-digit id as SSN,
-#: NAICS codes and salaries as Phone). Only Email's shape is specific enough to ship. The others stay name-only until
-#: a value-AND-name rule exists (TR-131); their regexes are NOT in the seed.
-WITH_SPEC = {"EmailAddress"}
-NO_SPEC = {"PhoneNumber", "SocialSecurityNumber", "CreditCardNumber", "DateOfBirth", "Password"}
+#: is called, so a generic shape matched far too much on real data. TR-131: the four generic classes ship their regexes
+#: again, each marked requiresNameMatch (the value-AND-name rule, test_tr131_value_and_name.py); Password has no value
+#: shape and ships none, so it stays name_only (ruling (b)).
+WITH_SPEC = {"EmailAddress", "PhoneNumber", "SocialSecurityNumber", "CreditCardNumber", "DateOfBirth"}
+GENERIC = {"PhoneNumber", "SocialSecurityNumber", "CreditCardNumber", "DateOfBirth"}
+NO_SPEC = {"Password"}
 EMAIL_EXAMPLES = (["jane.doe@example.com", "a_b+c@sub.example.org"], ["jane.doe", "not an email", "12345"])
-MANY = {"EmailAddress": lambda n: [f"user{i}@example.com" for i in range(n)]}
+
+
+def _luhn_complete(body: str) -> str:
+    """`body` plus the check digit that makes it pass Luhn."""
+    for d in "0123456789":
+        digits = body + d
+        total = sum((int(c) * 2 - 9 if int(c) * 2 > 9 else int(c) * 2) if i % 2 else int(c)
+                    for i, c in enumerate(reversed(digits)))
+        if total % 10 == 0:
+            return digits
+    raise AssertionError("unreachable")
+
+
+MANY = {
+    "EmailAddress": lambda n: [f"user{i}@example.com" for i in range(n)],
+    "PhoneNumber": lambda n: [f"555-{200 + i:03d}-{1000 + i:04d}" for i in range(n)],
+    "SocialSecurityNumber": lambda n: [f"{100 + i:03d}-{10 + i % 80:02d}-{1000 + i:04d}" for i in range(n)],
+    "CreditCardNumber": lambda n: [_luhn_complete(f"4111{i:011d}") for i in range(n)],
+    "DateOfBirth": lambda n: [f"19{50 + i % 49:02d}-{1 + i % 12:02d}-{1 + i % 28:02d}" for i in range(n)],
+}
 
 
 def test_the_seed_still_lists_the_same_six_classes_and_keywords():
@@ -100,15 +120,25 @@ def test_email_carries_a_real_regex_as_its_specification():
     assert all(rx.fullmatch(v) for v in good) and not any(rx.fullmatch(v) for v in bad)
 
 
-def test_the_shipped_seed_has_a_specification_only_for_email():
-    assert {n for n, d in SEED.items() if d.get("specification")} == {"EmailAddress"}
+def test_the_shipped_seed_has_a_specification_for_every_class_but_password():
+    assert {n for n, d in SEED.items() if d.get("specification")} == WITH_SPEC
     assert set(SEED) == WITH_SPEC | NO_SPEC
 
 
-@pytest.mark.parametrize("name", sorted(NO_SPEC))
-def test_a_class_with_a_generic_value_shape_ships_no_specification_so_it_stays_name_only(name):
-    assert "specification" not in SEED[name]
-    assert "specification" not in bdc._data_class_body(SEED[name])["properties"]
+def test_password_ships_no_specification_so_it_stays_name_only():
+    assert "specification" not in SEED["Password"]
+    assert "specification" not in bdc._data_class_body(SEED["Password"])["properties"]
+
+
+@pytest.mark.parametrize("name", sorted(GENERIC))
+def test_a_class_with_a_generic_value_shape_ships_marked_requires_name_match(name):
+    """TR-131: its specification ships again, but only with the value-AND-name marking."""
+    props = bdc._data_class_body(SEED[name])["properties"]
+    assert props["specification"] and props["specificationDetails"]["requiresNameMatch"] == "true"
+
+
+def test_email_is_not_marked_generic():
+    assert "specificationDetails" not in bdc._data_class_body(SEED["EmailAddress"])["properties"]
 
 
 @pytest.mark.parametrize("name", sorted(SEED))
@@ -124,7 +154,8 @@ def test_what_the_seed_would_create_does_not_disqualify_itself_on_real_values(na
     props = bdc._data_class_body(SEED[name])["properties"]
     cls = KnownDataClass(guid="g", qualified_name=props["qualifiedName"], display_name=props["displayName"],
                          data_type="string", specification=props.get("specification", ""),
-                         match_property_names=tuple(props["matchPropertyNames"]))
+                         match_property_names=tuple(props["matchPropertyNames"]),
+                         specification_details=tuple(sorted((props.get("specificationDetails") or {}).items())))
     values = MANY[name](40) if name in MANY else [f"value{i}" for i in range(40)]
     m = _match(values, cls, column=SEED[name]["dataPatterns"][0])
     # a class with a value shape is tested on values; one with none (Password) is name_only, never "matched"
