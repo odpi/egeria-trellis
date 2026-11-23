@@ -407,6 +407,10 @@ def apply_token(client: Any, token: Optional[str]) -> None:
         # NO_PASSWORD (tests/unit/test_client_constructors_explicit.py), so pyegeria has no identity to fill.
         from advisor.config import NO_SERVICE_ACCOUNT
         raise PermissionError(f"No Egeria identity for this call: no sign-in token, and {NO_SERVICE_ACCOUNT}")
+    if not token:
+        # TR-42: a mint is a sign-in to Egeria with a password, so the log names who signed in (never the password).
+        # A caller's own bearer token is not a mint and logs nothing here.
+        logger.info(f"Egeria token minted for {getattr(client, 'user_id', '') or '(no user)'} (password sign-in)")
     _trellis_apply_token(client, token)
 
 
