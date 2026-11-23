@@ -1557,6 +1557,11 @@ def survey_definition(
         UnsupportedSurveyDefinitionError,
     )
 
+    # TR-61: the definition is read from Egeria, so this runs as the person who logged in (exit 2 without a session),
+    # like every other Egeria command; without it a fresh login read "no one is signed in".
+    from resource_explorer.cli import session as cli_session
+    cli_session.require_and_activate(console)
+
     registry = ProjectRegistry()
     project = registry.get(slug)
     if not project:
@@ -2316,6 +2321,11 @@ def database_survey_definition(
         UnsupportedSurveyDefinitionError,
     )
 
+    # TR-61: the definition is read from Egeria, so this runs as the person who logged in (exit 2 without a session),
+    # like every other Egeria command; without it a fresh login read "no one is signed in".
+    from resource_explorer.cli import session as cli_session
+    cli_session.require_and_activate(console)
+
     registry = ProjectRegistry()
     if not registry.database_exists(slug):
         console.print(f"[red]Database '{slug}' not found. Register it first with 'database register'.[/red]")
@@ -2811,6 +2821,11 @@ def filesystem_survey_definition(
         SurveyDefinitionReaderError,
         UnsupportedSurveyDefinitionError,
     )
+
+    # TR-61: the definition is read from Egeria, so this runs as the person who logged in (exit 2 without a session),
+    # like every other Egeria command; without it a fresh login read "no one is signed in".
+    from resource_explorer.cli import session as cli_session
+    cli_session.require_and_activate(console)
 
     registry = ProjectRegistry()
     if not registry.get_filesystem(slug):
