@@ -40,7 +40,7 @@ from typing import TYPE_CHECKING, Any
 
 from resource_explorer.github.repo_names import repo_display_name
 from resource_explorer.egeria_timing import time_egeria_call
-from resource_explorer.surveyors.survey_report import SurveyResult
+from resource_explorer.surveyors.survey_report import SurveyResult, ref_metrics
 from resource_explorer.config import egeria_platform_url, egeria_view_server  # noqa: E402,F401
 
 if TYPE_CHECKING:
@@ -1437,6 +1437,8 @@ class EgeriaPublisher:
                 "additionalProperties": {
                     "annotation_count": str(len(result.annotations)),
                     "error_count": str(len(result.errors)),
+                    # TR-132 C1: which ref of the repository this report is about (its subject stays the repository).
+                    **ref_metrics(result),
                 },
             },
         }
@@ -1867,6 +1869,8 @@ class EgeriaPublisher:
                 results[path] = existing_guid
                 self._registry.set_sub_resource_egeria_guid("repo", resource_slug, path, existing_guid)
                 self._rename_forward(existing_guid, entry["display_name"])
+                if path == "":
+                    self.classify_default_branch(resource_slug, github_url, existing_guid)
                 continue
 
             parent_path = path.rsplit("/", 1)[0] if "/" in path else ""
@@ -1908,8 +1912,136 @@ class EgeriaPublisher:
                 guids_by_path[path] = guid
                 results[path] = guid
                 self._registry.set_sub_resource_egeria_guid("repo", resource_slug, path, guid)
+                if path == "":
+                    self.classify_default_branch(resource_slug, github_url, guid)
 
         return results
+
+    # ── TR-132 C1: the Branch classification on the default branch's root folder ──────────────────────────────
+
+    BRANCH_PURPOSE = "the branch Resource Explorer surveyed"
+    BRANCH_SCOPE = "default branch"
+    NO_BRANCH_CLASSIFICATION_WORDS = "Egeria {version} has no Branch classification"
+    UNKNOWN_VERSION_WORDS = "Egeria's version could not be read, so the Branch classification was not set"
+    OLD_PYEGERIA_WORDS = "pyegeria older than 6.3.2 has no set_element_as_branch"
+    TAG_WORDS = "a tag is not a branch"
+    COMMIT_WORDS = "a commit is not a branch"
+    NOT_DEFAULT_WORDS = "the surveyed branch is not the default branch"
+    NO_SURVEYED_REF_WORDS = "no survey has recorded which ref it read, so no Branch classification was set"
+
+    @staticmethod
+    def _branch_url(github_url: str, branch: str) -> str:
+        from urllib.parse import quote
+
+        base = (github_url or "").rstrip("/")
+        if base.endswith(".git"):
+            base = base[:-4]
+        return f"{base}/tree/{quote(branch, safe='/')}"
+
+    def _egeria_carries_6_4(self):
+        """(carries: True | False | None, version): whether the platform has the 6.4 additions. Read SYNCHRONOUSLY: the platform's
+        own origin answer (name, version, time) through the publisher's sync client, then pyegeria's sync `carries_6_4`. Never
+        pyegeria's async gate, which would drive a client whose async transport belongs to another event loop. Never raises: an
+        unreadable answer is (None, ""), which the gate reports in words and never takes for "no"."""
+        try:
+            from pyegeria.core.egeria_6_4_gate import carries_6_4
+
+            about = self._metadata_expert.get_platform_origin()
+            return carries_6_4(about) if about else (None, "")
+        except Exception as exc:  # noqa: BLE001
+            log.warning("could not read the platform's version for the Branch gate: %s", exc)
+            return None, ""
+
+    def _branch_client(self):
+        """pyegeria's DevopsPipeline client, or None when this pyegeria has no `set_element_as_branch` (older than 6.3.2)."""
+        try:
+            from pyegeria.omvs.devops_pipeline import DevopsPipeline
+        except Exception:  # noqa: BLE001 -- an older pyegeria
+            return None
+        if not hasattr(DevopsPipeline, "set_element_as_branch"):
+            return None
+        return self._clients.of(DevopsPipeline)
+
+    def _read_branch_classification(self, folder_guid: str):
+        """("absent", None) | ("present", {displayName, scope, purpose, url}) | ("unreadable", None), from the folder's own read.
+        Unreadable only when the answer is not an element at all, so a blind write is never made over what could not be read."""
+        try:
+            element = self._metadata_expert.get_metadata_element_by_guid(folder_guid, graph_query_depth=0)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("could not read the classifications of %s: %s", folder_guid, exc)
+            return "unreadable", None
+        if not isinstance(element, dict) or not (element.get("elementHeader") or element.get("properties")):
+            return "unreadable", None
+        # Egeria 6.4 gives Branch no header key of its own, so it arrives under otherClassifications; scan EVERY header value (a
+        # list of classifications, or one), as the Portal's branch_of does, plus the older top-level shapes.
+        header = element.get("elementHeader") or {}
+        candidates: list = []
+        for value in header.values():
+            candidates.extend(value if isinstance(value, list) else [value])
+        candidates.extend(element.get("classifications") or [])
+        for c in candidates:
+            if not isinstance(c, dict):
+                continue
+            name = c.get("classificationName") or (c.get("type") or {}).get("typeName") or c.get("typeName") or ""
+            if name == "Branch":
+                props = c.get("classificationProperties") or c.get("properties") or {}
+                return "present", {k: props.get(k) for k in ("displayName", "scope", "purpose", "url")}
+        return "absent", None
+
+    def classify_default_branch(self, resource_slug: str, github_url: str, folder_guid: str) -> str:
+        """Set Egeria 6.4's Branch classification on the repository's EXISTING root folder when (and only when) the last survey
+        read the DEFAULT BRANCH, the platform carries 6.4 and this pyegeria has `set_element_as_branch`. Idempotent: the same four
+        values make no call; a changed value (a renamed default) updates them and the folder keeps its name. A gate that fails
+        sets nothing and says which, in words. The words (and the folder's GUID) are stored on the default branch's
+        repo_branch_runs row. Returns the words; never raises."""
+        words = ""
+        row = None
+        try:
+            surveyed = [r for r in self._registry.list_repo_branch_runs(resource_slug) if r["tier"] == "surveyed"]
+            row = surveyed[0] if surveyed else None
+            if row is None:
+                return self.NO_SURVEYED_REF_WORDS
+            if row["ref_kind"] == "tag":
+                words = self.TAG_WORDS
+            elif row["ref_kind"] == "commit":
+                words = self.COMMIT_WORDS
+            elif not row["is_default"]:
+                words = self.NOT_DEFAULT_WORDS
+            else:
+                words = self._set_branch_if_gates_pass(row, github_url, folder_guid)
+        except Exception as exc:  # noqa: BLE001 -- best-effort, like the folder publish around it
+            log.warning("Branch classification of %s failed: %s", folder_guid, exc)
+            words = f"the Branch classification could not be set: {exc}"[:300]
+        if row is not None:
+            try:
+                self._registry.set_repo_branch_outcome(resource_slug, row["run_id"], row["ref_name"], row["ref_kind"],
+                                                       words=words, egeria_folder_guid=folder_guid)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("could not store the Branch outcome for %s: %s", resource_slug, exc)
+                words = f"{words}; the outcome could not be stored: {exc}"[:400]          # said in the returned words, not only logged
+        return words
+
+    def _set_branch_if_gates_pass(self, row: dict, github_url: str, folder_guid: str) -> str:
+        devops = self._branch_client()
+        if devops is None:
+            return self.OLD_PYEGERIA_WORDS
+        carries, version = self._egeria_carries_6_4()
+        if carries is None:
+            return self.UNKNOWN_VERSION_WORDS
+        if not carries:
+            return self.NO_BRANCH_CLASSIFICATION_WORDS.format(version=version)
+        wanted = {"displayName": row["ref_name"], "scope": self.BRANCH_SCOPE, "purpose": self.BRANCH_PURPOSE,
+                  "url": self._branch_url(github_url, row["ref_name"])}
+        state, current = self._read_branch_classification(folder_guid)
+        if state == "unreadable":
+            return "the folder's classifications could not be read, so the Branch classification was not changed"
+        if state == "present" and all(current.get(k) == v for k, v in wanted.items()):
+            return f"Branch classification already set to {row['ref_name']}; nothing changed"
+        devops.set_element_as_branch(folder_guid, display_name=wanted["displayName"], scope=wanted["scope"],
+                                     purpose=wanted["purpose"], url=wanted["url"])
+        if state == "present":
+            return f"Branch classification updated to {row['ref_name']} (was {current.get('displayName') or 'unnamed'})"
+        return f"Branch classification set on the root folder: {row['ref_name']}"
 
     def _create_sub_resource(
         self,

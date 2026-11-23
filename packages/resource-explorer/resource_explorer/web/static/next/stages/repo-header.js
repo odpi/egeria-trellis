@@ -182,6 +182,24 @@ export function scoutingTilesHtml(ov) {
   return `<div data-scouting-tiles class="mt-s2 flex flex-wrap items-start gap-s1">${tiles.join('')}</div>`;
 }
 
+/** TR-132 C1: the refs of the newest survey run, as ONE line, "Branches: main surveyed · 4 listed", with the list (name, kind,
+ *  short head SHA, protected) only when the person opens it. Nothing else is added by default (TR-71). `ov.branches` is `[]` when
+ *  no run recorded any, and then there is no line: never "0 branches". `protected` unknown (null) reads "not read", not "no". */
+export function branchesLineHtml(ov) {
+  const rows = Array.isArray(ov?.branches) ? ov.branches : [];
+  if (!rows.length) return '';
+  const surveyed = rows.find((r) => r.tier === 'surveyed');
+  const listed = rows.filter((r) => r.tier === 'listed').length;
+  const what = surveyed ? `${esc(surveyed.ref_name)}${surveyed.ref_kind && surveyed.ref_kind !== 'branch' ? ` (${esc(surveyed.ref_kind)})` : ''} surveyed` : 'no ref read';
+  const prot = (r) => (r.protected === true ? 'protected' : r.protected === false ? 'not protected' : 'not read');
+  const list = rows.map((r) => `<tr><td class="pr-s3 font-mono">${esc(r.ref_name)}</td><td class="pr-s3">${esc(r.ref_kind)}</td>
+      <td class="pr-s3 font-mono">${esc(String(r.surveyed_commit || '').slice(0, 7)) || '<span class="text-ink-muted">not read</span>'}</td>
+      <td>${prot(r)}</td></tr>`).join('');
+  return `<details data-repo-branches class="mt-s1 text-provenance text-ink-muted">
+    <summary class="cursor-pointer" title="Show the branches">Branches: <span data-repo-branches-line>${what} · ${listed} listed</span></summary>
+    <table data-repo-branches-list class="mt-s1"><thead><tr><th class="pr-s3 text-left font-normal">Ref</th><th class="pr-s3 text-left font-normal">Kind</th><th class="pr-s3 text-left font-normal">Head</th><th class="text-left font-normal">Protected</th></tr></thead><tbody>${list}</tbody></table></details>`;
+}
+
 /** The scouting signal chips. `sig` is `{tiles}` on success, `{error}` when the read failed, null before the read. */
 export function scoutingSignalHtml(sig) {
   if (!sig) return '';
