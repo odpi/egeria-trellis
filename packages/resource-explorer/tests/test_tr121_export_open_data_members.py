@@ -10,6 +10,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent))
 
 from test_open_data import FakeTransport, _chosen, _register_demo, reg, store  # noqa: E402,F401  (fixtures are shared)
@@ -94,3 +96,38 @@ def test_verify_catches_a_hand_edited_dangling_open_data_member(store, reg):
 
 def test_the_format_version_says_the_shape_changed():
     assert ie.FORMAT_VERSION == 2
+
+
+# ── W-121-1 (Architect's read-back): a v1 backup from before TR-121 still verifies, and says what it lacks ──────────
+
+def _as_v1(payload):
+    """A v1 export as the code before TR-121 wrote it: no open_data, no refused_members, open_data members kept."""
+    p = dict(payload, format_version=1)
+    p.pop("open_data", None)
+    p.pop("refused_members", None)
+    p["manifest"] = {k: v for k, v in payload["manifest"].items() if k not in ("open_data", "refused_members")}
+    return p
+
+
+def test_a_v1_export_is_accepted_and_says_its_datasets_are_not_included(store, reg):
+    _with_repo(reg)
+    inv = reg.create_investigation("Water study")["slug"]
+    _import_into(store, reg, inv, n=2)
+    v1 = _as_v1(ie.export_inventory(reg, generated_at="t"))
+    assert ie.verify(v1) == []
+    (note,) = ie.notes(v1)
+    assert note.startswith("v1 export (before TR-121): open_data datasets not included")
+    assert "2 open_data member(s)" in note
+
+
+def test_a_v2_export_is_ok_with_no_notes(store, reg):
+    _with_repo(reg)
+    p = ie.export_inventory(reg, generated_at="t")
+    assert p["format_version"] == 2 and ie.verify(p) == [] and ie.notes(p) == []
+
+
+@pytest.mark.parametrize("version", [0, 3, 99, None, "2"])
+def test_an_unknown_version_is_refused(store, reg, version):
+    _with_repo(reg)
+    p = dict(ie.export_inventory(reg, generated_at="t"), format_version=version)
+    assert any(f"format_version {version!r}" in m and "1 or 2" in m for m in ie.verify(p))

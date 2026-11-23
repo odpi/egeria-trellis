@@ -29,6 +29,12 @@ from resource_explorer.resource_types import SURVEYED_RESOURCE_TYPES
 
 #: 2 (TR-121): adds `open_data` (the dataset rows investigation members point at) and `refused_members`.
 FORMAT_VERSION = 2
+#: Versions verify() accepts. A v1 backup (before TR-121) is still a valid backup of what it holds; notes() says what
+#: it lacks (W-121-1).
+KNOWN_VERSIONS = (1, 2)
+#: Manifest keys a v1 export never had.
+_V2_KEYS = ("open_data", "refused_members")
+V1_NOTE = "v1 export (before TR-121): open_data datasets not included"
 
 # Kinds of resource in the inventory. `entity_type` elsewhere carries these same
 # values -- "repo" is a KIND of resource, not an older word for one, which is why
@@ -155,14 +161,18 @@ def verify(payload: dict) -> list[str]:
     everything wrong at once, not the first thing.
     """
     problems: list[str] = []
-    if payload.get("format_version") != FORMAT_VERSION:
+    version = payload.get("format_version")
+    if type(version) is not int or version not in KNOWN_VERSIONS:
         problems.append(
-            f"format_version {payload.get('format_version')!r}, expected {FORMAT_VERSION}"
+            f"format_version {version!r}, expected one of {' or '.join(map(str, KNOWN_VERSIONS))}"
         )
+    v1 = version == 1
 
     recomputed = _manifest(payload)
     stated = payload.get("manifest") or {}
     for key, count in recomputed.items():
+        if v1 and key in _V2_KEYS:
+            continue                       # a v1 export never counted these; notes() says what that means
         if stated.get(key) != count:
             problems.append(f"manifest {key}={stated.get(key)!r} but found {count}")
 
@@ -182,9 +192,20 @@ def verify(payload: dict) -> list[str]:
     for inv in payload["investigations"]:
         for member in inv.get("members", []):
             pair = (member.get("entity_type"), member.get("entity_slug"))
+            if v1 and pair[0] == OPEN_DATA_KIND:
+                continue                   # v1 never exported the datasets: said by notes(), not a v1 defect
             if pair not in known:
                 problems.append(
                     f"investigation {inv.get('slug')!r} references unknown "
                     f"{pair[0]} {pair[1]!r}"
                 )
     return problems
+
+
+def notes(payload: dict) -> list[str]:
+    """What an export that verifies does not hold (W-121-1): words for a reader, not problems."""
+    if payload.get("format_version") != 1:
+        return []
+    members = sum(1 for inv in payload.get("investigations", []) for m in inv.get("members", [])
+                  if m.get("entity_type") == OPEN_DATA_KIND)
+    return [f"{V1_NOTE}; {members} open_data member(s) in it point at datasets it does not hold"]
