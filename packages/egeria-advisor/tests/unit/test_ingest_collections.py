@@ -49,6 +49,27 @@ from advisor.collection_config import (
 _SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "ingest_collections.py"
 
 
+class _FakeSymbolStore:
+    """Stands in for CodeSymbolStore (TR-102): the script clears a collection's code symbols before ingesting it, and
+    the real store is a psycopg2 pool on EA's configured database, so these tests DELETED from it (the shared PG on
+    laz) whenever its password was set."""
+
+    def __init__(self):
+        self.cleared: list[str] = []
+
+    def clear_collection(self, collection: str) -> None:
+        self.cleared.append(collection)
+
+
+@pytest.fixture(autouse=True)
+def symbol_store(monkeypatch):
+    from advisor import code_symbol_store
+
+    store = _FakeSymbolStore()
+    monkeypatch.setattr(code_symbol_store, "get_symbol_store", lambda: store)
+    return store
+
+
 @pytest.fixture(scope="module")
 def ingest_script() -> ModuleType:
     """Import scripts/ingest_collections.py by path (scripts/ is not a package)."""
@@ -237,6 +258,13 @@ def test_empty_provisioned_table_is_ingested_not_skipped(ingest_script, wired):
     assert result.files == 8 and result.chunks == 16
     assert result.reason is None
     assert store.dropped == []
+
+
+def test_an_ingest_clears_the_collections_code_symbols_once_through_the_store(ingest_script, wired, symbol_store):
+    # TR-102: the clear goes to the (here fake) symbol store, once per collection, before its source paths.
+    wired({"pyegeria": 0})
+    ingest_script.ingest_collection(PYEGERIA_COLLECTION)
+    assert symbol_store.cleared == [PYEGERIA_COLLECTION.name]
 
 
 def test_populated_table_is_skipped_with_reason_unless_forced(ingest_script, wired):
