@@ -82,7 +82,8 @@ pod_dkan2_head.json                   https://data.healthcare.gov/data.json  (DK
     5 of 347 datasets. `license` is a URL on 106 of 347 entries (104 usa.gov public-domain label, 2 usa.gov government-works);
     accrualPeriodicity on 122; NO landingPage on any. data.healthcare.gov is listed on drupal.org's "Sites that use DKAN".
 dkan2_ckan_package_search_404.html    https://data.healthcare.gov/api/3/action/package_search?rows=1  HTTP 404 text/html
-    The CKAN API does not exist on DKAN 2; the whole 8 kB body, verbatim. Also 404 on data.medicaid.gov, datos.cadiz.es,
+    The CKAN API does not exist on DKAN 2: the portal answered HTTP 404 with an 8 kB HTML page. The file keeps the status and a
+    minimal body only (the page carried the portal's admin e-mail address, which is public and not needed here). Also 404 on data.medicaid.gov, datos.cadiz.es,
     opendata.langenhagen.de and www.offenedaten-koeln.de (all DKAN 2); data.nasa.gov, opendata.hawaii.gov, data.sanjoseca.gov
     and open.alberta.ca answer the CKAN API too, but none showed a DKAN marker (alberta is Drupal 10 in front of a CKAN API), so
     none was taken as the DKAN case.

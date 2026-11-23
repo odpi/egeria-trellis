@@ -5,11 +5,12 @@ reads / partial (what is missing) / fails. These tests CHARACTERISE what the ada
 When a native adapter lands for a family that fell short, its row changes here on purpose.
 
     ArcGIS Hub (DCAT-US data.json)   READS (a site with a licence URL: licence read, flags judged) or PARTIAL (a site whose
-                                     `license` is a free-text HTML disclaimer: it is kept as the licence_id, flags not_reported)
+                                     `license` is a free-text HTML disclaimer: licence_text, no licence_id, flags not_reported;
+                                     before the E1 fixes the disclaimer was taken for the id)
     Socrata (/data.json)             PARTIAL: reads title, publisher, modified, formats; NO licence in the feed at all
     OpenDataSoft                     FAILS at the root (/data.json is 77.9 MB, over RE's 64 MiB read limit; its DCAT export is
                                      RDF/XML); READS the portal's own Project Open Data export when given its URL, PARTIAL:
-                                     the licence is in `rights` (free text), which the adapter does not read
+                                     the licence is in `rights` (free text), read as licence_text (E1 fixes), never judged
     DKAN 2 (CKAN API)                the CKAN adapter FAILS (no /api/3/action: HTTP 404); the DCAT adapter READS its data.json,
                                      PARTIAL: no landingPage so no url, licence on about 30 % of entries, a URL RE's table lacks
 """
@@ -77,13 +78,14 @@ def test_arcgis_hub_with_a_licence_url_reads_in_full_but_for_size():
     assert first["url"].startswith("https://") and first["formats"] != NOT_REPORTED
 
 
-def test_arcgis_hub_with_a_free_text_licence_is_partial_the_disclaimer_becomes_the_licence_id():
-    """153 of 153 licences on data-cotgis.opendata.arcgis.com are free-text HTML disclaimers (measured on the full feed)."""
+def test_arcgis_hub_with_a_free_text_licence_is_partial_the_disclaimer_is_stated_text_not_an_id():
+    """153 of 153 licences on data-cotgis.opendata.arcgis.com are free-text HTML disclaimers (measured on the full feed).
+    Before the E1 fixes the disclaimer became the licence_id; now it is licence_text and the id is not reported."""
     _, rows = _rows("https://data-cotgis.opendata.arcgis.com", "pod_arcgis_hub_head.json")
     row = rows[0]
-    assert len(str(row["licence_id"])) > 200 and "as is" in str(row["licence_id"])       # TODAY: text taken as an identifier
+    assert row["licence_id"] == NOT_REPORTED and len(str(row["licence_text"])) > 200 and "as is" in str(row["licence_text"])
     assert row["licence"] == {"attribution": "not_reported", "share_alike": "not_reported", "commercial": "not_reported"}
-    assert _missing(row) == {"size"}                           # everything else is read
+    assert _missing(row, ("title", "publisher", "modified", "formats", "size", "url")) == {"size"}   # everything else is read
 
 
 # ── Socrata ──────────────────────────────────────────────────────────────────
@@ -122,15 +124,15 @@ def test_opendatasoft_dcat_export_is_rdf_xml_and_the_probe_says_there_is_no_adap
     assert refused["error_code"] == "InvalidExportFormat" and "jsonld" not in refused["message"]
 
 
-def test_opendatasoft_own_project_open_data_export_reads_but_the_licence_in_rights_is_not_read():
+def test_opendatasoft_own_project_open_data_export_reads_and_the_licence_in_rights_is_text_not_an_id():
     export = "https://data.opendatasoft.com/api/explore/v2.1/catalog/exports/data.json"
     probe, rows = _rows(export, "ods_pod_export_limit3.json", feed=export)
     assert probe["shape"] == "pod" and len(rows) == 3
     for row in rows:
         assert row["title"] != NOT_REPORTED and row["modified"] != NOT_REPORTED and row["formats"] != NOT_REPORTED
-        assert row["licence_id"] == NOT_REPORTED                                   # TODAY: `rights` is ignored
+        assert row["licence_id"] == NOT_REPORTED                                   # `rights` is text, never an identifier
     stated = [e.get("rights") for e in json.loads((FIX / "ods_pod_export_limit3.json").read_text())["dataset"]]
-    assert "Licence Ouverte (Etalab)" in stated                                    # ... though the portal states one
+    assert "Licence Ouverte (Etalab)" in stated and rows[0]["licence_text"] == "Licence Ouverte (Etalab)"   # the portal states one
 
 
 def test_opendatasoft_root_head_cut_is_a_pod_catalog_of_three_entries():

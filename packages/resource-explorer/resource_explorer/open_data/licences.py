@@ -6,6 +6,9 @@ Keys are the lower-cased ids CKAN, DataCite (SPDX) and Socrata-style portals use
 """
 from __future__ import annotations
 
+import re
+from typing import NamedTuple
+
 from resource_explorer.open_data.absence import NOT_REPORTED
 
 # attribution: must credit; share_alike: derivatives must carry the same licence; commercial: commercial use allowed
@@ -86,3 +89,30 @@ def licence_id_from_iri(raw) -> str:
     if text.lower() in _FLAGS:
         return text.lower()
     return _IRIS.get(_iri_key(text), text)
+
+
+class Classified(NamedTuple):
+    id: object      # a licence identifier (an id RE may or may not know, or a URL), else NOT_REPORTED
+    text: object    # a licence STATED AS TEXT (a sentence, a name, HTML), else NOT_REPORTED
+
+
+#: A bare token a portal uses as a licence id ("cc-by-4.0", "OGL-Canada-2.0"): no spaces, no markup.
+_ID_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+\-]{0,63}$")
+_URL = re.compile(r"^https?://\S+$", re.IGNORECASE)
+
+
+def classify_licence(raw) -> Classified:
+    """What a portal's licence field is: an identifier, or text it states. A URL or an id (known to RE's table or a bare token)
+    is the id (an IRI RE maps becomes its id; one it does not stays the IRI, and `licence_flags` then judges nothing). Anything
+    else (a sentence, a name with spaces, an HTML disclaimer) is stated text, and the id is NOT_REPORTED: text is never taken for
+    an identifier (TR-54 E1, ArcGIS Hub's 2 KB disclaimer in the licence_id field)."""
+    if not isinstance(raw, str) or not raw.strip() or raw == NOT_REPORTED:
+        return Classified(NOT_REPORTED, NOT_REPORTED)
+    text = raw.strip()
+    if _URL.match(text):
+        return Classified(licence_id_from_iri(text), NOT_REPORTED)
+    if text.lower() in _FLAGS:
+        return Classified(text.lower(), NOT_REPORTED)
+    if _ID_TOKEN.match(text):
+        return Classified(text, NOT_REPORTED)
+    return Classified(NOT_REPORTED, text)

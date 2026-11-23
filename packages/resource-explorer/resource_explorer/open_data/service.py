@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 from resource_explorer.open_data import match as match_mod
 from resource_explorer.open_data.absence import NOT_REPORTED
+from resource_explorer.open_data.ckan import NotCkan
 from resource_explorer.open_data.adapters import (
     Adapter, Price, adapter_for_api_kind, discover_adapters, price)
 from resource_explorer.open_data.store import OpenDataStore, is_reserved_portal, normalise_url, now, slugify
@@ -105,7 +106,16 @@ def register_portal(store: OpenDataStore, *, display_name: str, api_kind: str, b
     if held:
         raise OpenDataError(f"Already registered as '{held['display_name']}' ({held['slug']}).")
     base_url = typed
-    probed = _probe(cls, typed, transport)
+    try:
+        probed = _probe(cls, typed, transport)
+    except NotCkan as not_ckan:
+        # TR-54 E1: a portal typed as CKAN whose /api/3/action is not there may still be a DCAT feed (DKAN 2, ArcGIS Hub ...)
+        dcat = adapter_for_api_kind("DCAT-AP", "portal")
+        try:
+            probed = {**(_probe(dcat, typed, transport) or {}), "typed_as": api_kind}
+        except OpenDataError as exc:
+            raise OpenDataError(f"{not_ckan}; and it is not a DCAT catalog either: {exc}") from exc
+        cls = dcat
     if probed:
         base_url = _check_url(probed["feed_url"])
         page_size = probed["page_size"] if isinstance(probed.get("page_size"), int) else None
@@ -145,9 +155,13 @@ def _probe(cls, base_url: str, transport) -> dict | None:
     from resource_explorer.open_data.transport import TransportError
 
     if transport is None:
+        if getattr(cls, "PROBE_OPTIONAL", False):
+            return None
         raise ValueError("registering a portal whose adapter probes needs a transport")
     try:
         return cls.probe(base_url, transport)
+    except NotCkan:
+        raise
     except TransportError as exc:
         raise OpenDataError(str(exc)) from exc
 
