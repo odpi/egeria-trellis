@@ -931,6 +931,13 @@ class MissingDatabaseSetting(RuntimeError):
     """A Postgres setting EA needs is unset (TR-12). Names the variable, never a value."""
 
 
+#: TR-60a: the libpq options every EA Postgres connection carries. EA's tables are unqualified, so without this they
+#: resolve through the role's search_path, "$user", public; since EA connects as the role egeria_advisor and a schema
+#: of that name exists (the feedback store's), EA read EMPTY copies there from 2026-11-17 to 11-18 (TR-60). A
+#: connection option overrides the role's setting, so EA reads and writes public whatever the role is called.
+EA_PG_OPTIONS = "-c search_path=public"
+
+
 def require_pgvector_password(password: "str | None" = None) -> str:
     """The pgvector password (`password`, else `settings.pgvector_password`), or MissingDatabaseSetting naming
     PGVECTOR_PASSWORD. There is no built-in default any more (TR-12)."""

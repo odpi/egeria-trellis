@@ -274,6 +274,10 @@ async def _startup():
     except Exception as exc:
         logger.warning(f"pgvector schema provisioning failed (queries needing missing collections will error): {exc}")
 
+    # TR-60a: count the enabled collections and WARN, naming them, when any is empty (in the background).
+    from advisor.knowledge_base_check import check_in_background
+    check_in_background()
+
     def _warm():
         try:
             from advisor.report_pipeline import get_report_pipeline
@@ -347,8 +351,16 @@ async def system_status() -> Dict[str, Any]:
     """The MCP servers EA is configured to use: {state, message, mcp_servers}.
 
     state: ok | none (no server enabled) | not_configured (no config file) | read_failed. It reports
-    configuration only; it does not connect to any server or check the RAG system.
+    configuration only; it does not connect to any server. `knowledge_base` (TR-60a) is startup's count of the
+    enabled collections: not_checked | ok | partly_empty | empty | unread, with the empty ones named.
     """
+    from advisor.knowledge_base_check import knowledge_base_status
+    out = _mcp_status()
+    out["knowledge_base"] = knowledge_base_status()   # TR-60a: empty collections said, not hidden
+    return out
+
+
+def _mcp_status() -> Dict[str, Any]:
     mcp_status: List[Dict[str, Any]] = []
     cfg_path = Path(__file__).parent.parent / "configdata" / "mcp_servers.json"
     if not cfg_path.exists():
