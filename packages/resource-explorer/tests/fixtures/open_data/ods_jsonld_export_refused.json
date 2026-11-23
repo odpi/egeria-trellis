@@ -1,0 +1,4 @@
+{
+  "error_code": "InvalidExportFormat",
+  "message": "Invalid export format. Available formats are csv, json, data.json, rdf, ttl, dublin_core, dcat, dcat_ap_ch, dcat_ap_de, dcat_ap_se, dcat_ap_sp, dcat_ap_it, dcat_ap_vl, dcat_ap_benap, rss, sitemap, xlsx."
+}

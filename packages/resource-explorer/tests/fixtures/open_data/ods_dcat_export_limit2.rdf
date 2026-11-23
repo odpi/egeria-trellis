@@ -1,0 +1,371 @@
+<?xml version="1.0" encoding="UTF-8"?><rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcat="http://www.w3.org/ns/dcat#" xmlns:dcatap="http://data.europa.eu/r5r/" xmlns:foaf="http://xmlns.com/foaf/0.1/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#" xmlns:vcard="http://www.w3.org/2006/vcard/ns#" xmlns:xsd="http://www.w3.org/2001/XMLSchema#" xmlns:skos="http://www.w3.org/2004/02/skos/core#"><rdf:Description rdf:about="https://data.opendatasoft.com/explore/"><rdf:type rdf:resource="http://www.w3.org/ns/dcat#Catalog" />
+<dcterms:title><![CDATA[Data hub]]></dcterms:title>
+<dcterms:description><![CDATA[Data hub catalog]]></dcterms:description>
+<dcterms:language rdf:resource="http://id.loc.gov/vocabulary/iso639-1/en" />
+<foaf:homepage><foaf:Document rdf:about="https://data.opendatasoft.com"><rdf:type rdf:resource="http://xmlns.com/foaf/0.1/Document" />
+</foaf:Document></foaf:homepage><dcat:dataset><dcat:Dataset rdf:about="https://data.opendatasoft.com/explore/dataset/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/"><dcterms:description xml:lang="fr"><![CDATA[<p>Statistiques d'usage de l'ENT (espace numérique de travail) en Corse - Taux d'utilisateurs actifs mensuels par établissement.</p><p>Comptes utilisés : au moins une connexion dans le mois.</p><p>Comptes existants :tous les comptes non desactivés.</p>]]></dcterms:description>
+<dcterms:identifier>https://data.opendatasoft.com/explore/dataset/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/</dcterms:identifier>
+<rdf:type rdf:resource="http://purl.org/dc/dcmitype/Dataset" />
+<rdf:type rdf:resource="http://www.w3.org/ns/dcat#Dataset" />
+<dcterms:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2014-02-04T00:00:00</dcterms:issued>
+<dcterms:date rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2014-02-04T00:00:00</dcterms:date>
+<dcterms:modified rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2025-03-06T10:46:36+00:00</dcterms:modified>
+<dcterms:creator rdf:resource="https://data.opendatasoft.com/explore/?refine.dcat.creator=Collectivit%C3%A9+Territoriale+de+Corse" />
+<dcterms:publisher><foaf:Agent rdf:about="https://data.opendatasoft.com/explore/?refine.publisher=Collectivit%C3%A9+de+Corse"><foaf:name>Collectivité de Corse</foaf:name>
+</foaf:Agent></dcterms:publisher><dcterms:contributor rdf:resource="https://data.opendatasoft.com/explore/?refine.publisher=Collectivit%C3%A9+de+Corse" />
+<dcterms:license><dcterms:LicenseDocument><rdfs:label>Licence Ouverte (Etalab)</rdfs:label>
+</dcterms:LicenseDocument></dcterms:license><dcat:landingPage><foaf:Document rdf:about="https://data.opendatasoft.com/explore/dataset/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/"><rdf:type rdf:resource="http://xmlns.com/foaf/0.1/Document" />
+</foaf:Document></dcat:landingPage><dcterms:title xml:lang="fr">Statistiques d&#x27;usage de l&#x27;ENT en Corse - Taux d&#x27;utilisateurs actifs</dcterms:title>
+<dcterms:language><dcterms:LinguisticSystem rdf:about="http://id.loc.gov/vocabulary/iso639-1/fr"><rdf:type rdf:resource="http://purl.org/dc/terms/LinguisticSystem" />
+</dcterms:LinguisticSystem></dcterms:language><dcat:keyword xml:lang="fr">technologie numérique</dcat:keyword>
+<dcat:theme><skos:Concept rdf:about="https://data.opendatasoft.com/explore/?refine.theme=Digital+and+Telecommunications"><rdf:type rdf:resource="http://www.w3.org/2004/02/skos/core#Concept" />
+<skos:prefLabel>Digital and Telecommunications</skos:prefLabel>
+</skos:Concept></dcat:theme><dcterms:subject rdf:resource="https://data.opendatasoft.com/explore/?refine.theme=Digital+and+Telecommunications" />
+<dcterms:spatial rdf:resource="Régionale" />
+<dcterms:coverage rdf:resource="Régionale" />
+<dcat:distribution><dcat:Distribution rdf:about="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/exports/csv?use_labels=true"><rdf:type rdf:resource="http://www.w3.org/ns/dcat#Distribution" />
+<dcterms:title xml:lang="fr">statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica.csv</dcterms:title>
+<dcterms:description xml:lang="fr">Statistiques d&#x27;usage de l&#x27;ENT en Corse - Taux d&#x27;utilisateurs actifs (csv)</dcterms:description>
+<dcat:accessURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/exports/csv?use_labels=true" />
+<dcat:downloadURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/exports/csv?use_labels=true" />
+<dcterms:format><dcterms:MediaTypeOrExtent rdf:about="https://www.iana.org/assignments/media-types/text/csv"><rdf:type rdf:resource="http://purl.org/dc/terms/MediaTypeOrExtent" />
+</dcterms:MediaTypeOrExtent></dcterms:format><dcat:mediaType rdf:resource="https://www.iana.org/assignments/media-types/text/csv" />
+<dcterms:license><dcterms:LicenseDocument><rdfs:label>Licence Ouverte (Etalab)</rdfs:label>
+</dcterms:LicenseDocument></dcterms:license><dcterms:language><dcterms:LinguisticSystem rdf:about="http://id.loc.gov/vocabulary/iso639-1/fr"><rdf:type rdf:resource="http://purl.org/dc/terms/LinguisticSystem" />
+</dcterms:LinguisticSystem></dcterms:language><dcterms:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2014-02-04T00:00:00</dcterms:issued>
+<dcterms:date rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2014-02-04T00:00:00</dcterms:date>
+<dcterms:modified rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2025-03-06T10:46:36+00:00</dcterms:modified>
+</dcat:Distribution></dcat:distribution>
+<dcat:distribution><dcat:Distribution rdf:about="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/exports/json"><rdf:type rdf:resource="http://www.w3.org/ns/dcat#Distribution" />
+<dcterms:title xml:lang="fr">statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica.json</dcterms:title>
+<dcterms:description xml:lang="fr">Statistiques d&#x27;usage de l&#x27;ENT en Corse - Taux d&#x27;utilisateurs actifs (json)</dcterms:description>
+<dcat:accessURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/exports/json" />
+<dcat:downloadURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/exports/json" />
+<dcterms:format><dcterms:MediaTypeOrExtent rdf:about="https://www.iana.org/assignments/media-types/application/json"><rdf:type rdf:resource="http://purl.org/dc/terms/MediaTypeOrExtent" />
+</dcterms:MediaTypeOrExtent></dcterms:format><dcat:mediaType rdf:resource="https://www.iana.org/assignments/media-types/application/json" />
+<dcterms:license><dcterms:LicenseDocument><rdfs:label>Licence Ouverte (Etalab)</rdfs:label>
+</dcterms:LicenseDocument></dcterms:license><dcterms:language><dcterms:LinguisticSystem rdf:about="http://id.loc.gov/vocabulary/iso639-1/fr"><rdf:type rdf:resource="http://purl.org/dc/terms/LinguisticSystem" />
+</dcterms:LinguisticSystem></dcterms:language><dcterms:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2014-02-04T00:00:00</dcterms:issued>
+<dcterms:date rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2014-02-04T00:00:00</dcterms:date>
+<dcterms:modified rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2025-03-06T10:46:36+00:00</dcterms:modified>
+</dcat:Distribution></dcat:distribution>
+<dcat:distribution><dcat:Distribution rdf:about="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/exports/jsonl"><rdf:type rdf:resource="http://www.w3.org/ns/dcat#Distribution" />
+<dcterms:title xml:lang="fr">statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica.jsonl</dcterms:title>
+<dcterms:description xml:lang="fr">Statistiques d&#x27;usage de l&#x27;ENT en Corse - Taux d&#x27;utilisateurs actifs (jsonl)</dcterms:description>
+<dcat:accessURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/exports/jsonl" />
+<dcat:downloadURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/exports/jsonl" />
+<dcterms:format><dcterms:MediaTypeOrExtent rdf:about="https://www.iana.org/assignments/media-types/application/json"><rdf:type rdf:resource="http://purl.org/dc/terms/MediaTypeOrExtent" />
+</dcterms:MediaTypeOrExtent></dcterms:format><dcat:mediaType rdf:resource="https://www.iana.org/assignments/media-types/application/json" />
+<dcterms:license><dcterms:LicenseDocument><rdfs:label>Licence Ouverte (Etalab)</rdfs:label>
+</dcterms:LicenseDocument></dcterms:license><dcterms:language><dcterms:LinguisticSystem rdf:about="http://id.loc.gov/vocabulary/iso639-1/fr"><rdf:type rdf:resource="http://purl.org/dc/terms/LinguisticSystem" />
+</dcterms:LinguisticSystem></dcterms:language><dcterms:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2014-02-04T00:00:00</dcterms:issued>
+<dcterms:date rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2014-02-04T00:00:00</dcterms:date>
+<dcterms:modified rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2025-03-06T10:46:36+00:00</dcterms:modified>
+</dcat:Distribution></dcat:distribution>
+<dcat:distribution><dcat:Distribution rdf:about="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/exports/parquet"><rdf:type rdf:resource="http://www.w3.org/ns/dcat#Distribution" />
+<dcterms:title xml:lang="fr">statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica.parquet</dcterms:title>
+<dcterms:description xml:lang="fr">Statistiques d&#x27;usage de l&#x27;ENT en Corse - Taux d&#x27;utilisateurs actifs (parquet)</dcterms:description>
+<dcat:accessURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/exports/parquet" />
+<dcat:downloadURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/exports/parquet" />
+<dcterms:format><dcterms:MediaTypeOrExtent rdf:about="https://www.iana.org/assignments/media-types/application/parquet"><rdf:type rdf:resource="http://purl.org/dc/terms/MediaTypeOrExtent" />
+</dcterms:MediaTypeOrExtent></dcterms:format><dcat:mediaType rdf:resource="https://www.iana.org/assignments/media-types/application/parquet" />
+<dcterms:license><dcterms:LicenseDocument><rdfs:label>Licence Ouverte (Etalab)</rdfs:label>
+</dcterms:LicenseDocument></dcterms:license><dcterms:language><dcterms:LinguisticSystem rdf:about="http://id.loc.gov/vocabulary/iso639-1/fr"><rdf:type rdf:resource="http://purl.org/dc/terms/LinguisticSystem" />
+</dcterms:LinguisticSystem></dcterms:language><dcterms:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2014-02-04T00:00:00</dcterms:issued>
+<dcterms:date rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2014-02-04T00:00:00</dcterms:date>
+<dcterms:modified rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2025-03-06T10:46:36+00:00</dcterms:modified>
+</dcat:Distribution></dcat:distribution>
+<dcat:distribution><dcat:Distribution rdf:about="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/exports/rdfxml"><rdf:type rdf:resource="http://www.w3.org/ns/dcat#Distribution" />
+<dcterms:title xml:lang="fr">statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica.rdf</dcterms:title>
+<dcterms:description xml:lang="fr">Statistiques d&#x27;usage de l&#x27;ENT en Corse - Taux d&#x27;utilisateurs actifs (rdfxml)</dcterms:description>
+<dcat:accessURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/exports/rdfxml" />
+<dcat:downloadURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/exports/rdfxml" />
+<dcterms:format><dcterms:MediaTypeOrExtent rdf:about="https://www.iana.org/assignments/media-types/application/rdf+xml"><rdf:type rdf:resource="http://purl.org/dc/terms/MediaTypeOrExtent" />
+</dcterms:MediaTypeOrExtent></dcterms:format><dcat:mediaType rdf:resource="https://www.iana.org/assignments/media-types/application/rdf+xml" />
+<dcterms:license><dcterms:LicenseDocument><rdfs:label>Licence Ouverte (Etalab)</rdfs:label>
+</dcterms:LicenseDocument></dcterms:license><dcterms:language><dcterms:LinguisticSystem rdf:about="http://id.loc.gov/vocabulary/iso639-1/fr"><rdf:type rdf:resource="http://purl.org/dc/terms/LinguisticSystem" />
+</dcterms:LinguisticSystem></dcterms:language><dcterms:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2014-02-04T00:00:00</dcterms:issued>
+<dcterms:date rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2014-02-04T00:00:00</dcterms:date>
+<dcterms:modified rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2025-03-06T10:46:36+00:00</dcterms:modified>
+</dcat:Distribution></dcat:distribution>
+<dcat:distribution><dcat:Distribution rdf:about="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/exports/jsonld"><rdf:type rdf:resource="http://www.w3.org/ns/dcat#Distribution" />
+<dcterms:title xml:lang="fr">statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica.jsonld</dcterms:title>
+<dcterms:description xml:lang="fr">Statistiques d&#x27;usage de l&#x27;ENT en Corse - Taux d&#x27;utilisateurs actifs (jsonld)</dcterms:description>
+<dcat:accessURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/exports/jsonld" />
+<dcat:downloadURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/exports/jsonld" />
+<dcterms:format><dcterms:MediaTypeOrExtent rdf:about="https://www.iana.org/assignments/media-types/application/ld+json"><rdf:type rdf:resource="http://purl.org/dc/terms/MediaTypeOrExtent" />
+</dcterms:MediaTypeOrExtent></dcterms:format><dcat:mediaType rdf:resource="https://www.iana.org/assignments/media-types/application/ld+json" />
+<dcterms:license><dcterms:LicenseDocument><rdfs:label>Licence Ouverte (Etalab)</rdfs:label>
+</dcterms:LicenseDocument></dcterms:license><dcterms:language><dcterms:LinguisticSystem rdf:about="http://id.loc.gov/vocabulary/iso639-1/fr"><rdf:type rdf:resource="http://purl.org/dc/terms/LinguisticSystem" />
+</dcterms:LinguisticSystem></dcterms:language><dcterms:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2014-02-04T00:00:00</dcterms:issued>
+<dcterms:date rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2014-02-04T00:00:00</dcterms:date>
+<dcterms:modified rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2025-03-06T10:46:36+00:00</dcterms:modified>
+</dcat:Distribution></dcat:distribution>
+<dcat:distribution><dcat:Distribution rdf:about="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/exports/turtle"><rdf:type rdf:resource="http://www.w3.org/ns/dcat#Distribution" />
+<dcterms:title xml:lang="fr">statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica.ttl</dcterms:title>
+<dcterms:description xml:lang="fr">Statistiques d&#x27;usage de l&#x27;ENT en Corse - Taux d&#x27;utilisateurs actifs (turtle)</dcterms:description>
+<dcat:accessURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/exports/turtle" />
+<dcat:downloadURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/exports/turtle" />
+<dcterms:format><dcterms:MediaTypeOrExtent rdf:about="https://www.iana.org/assignments/media-types/text/turtle"><rdf:type rdf:resource="http://purl.org/dc/terms/MediaTypeOrExtent" />
+</dcterms:MediaTypeOrExtent></dcterms:format><dcat:mediaType rdf:resource="https://www.iana.org/assignments/media-types/text/turtle" />
+<dcterms:license><dcterms:LicenseDocument><rdfs:label>Licence Ouverte (Etalab)</rdfs:label>
+</dcterms:LicenseDocument></dcterms:license><dcterms:language><dcterms:LinguisticSystem rdf:about="http://id.loc.gov/vocabulary/iso639-1/fr"><rdf:type rdf:resource="http://purl.org/dc/terms/LinguisticSystem" />
+</dcterms:LinguisticSystem></dcterms:language><dcterms:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2014-02-04T00:00:00</dcterms:issued>
+<dcterms:date rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2014-02-04T00:00:00</dcterms:date>
+<dcterms:modified rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2025-03-06T10:46:36+00:00</dcterms:modified>
+</dcat:Distribution></dcat:distribution>
+<dcat:distribution><dcat:Distribution rdf:about="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/exports/n3"><rdf:type rdf:resource="http://www.w3.org/ns/dcat#Distribution" />
+<dcterms:title xml:lang="fr">statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica.n3</dcterms:title>
+<dcterms:description xml:lang="fr">Statistiques d&#x27;usage de l&#x27;ENT en Corse - Taux d&#x27;utilisateurs actifs (n3)</dcterms:description>
+<dcat:accessURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/exports/n3" />
+<dcat:downloadURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/exports/n3" />
+<dcterms:format><dcterms:MediaTypeOrExtent rdf:about="https://www.iana.org/assignments/media-types/text/n3"><rdf:type rdf:resource="http://purl.org/dc/terms/MediaTypeOrExtent" />
+</dcterms:MediaTypeOrExtent></dcterms:format><dcat:mediaType rdf:resource="https://www.iana.org/assignments/media-types/text/n3" />
+<dcterms:license><dcterms:LicenseDocument><rdfs:label>Licence Ouverte (Etalab)</rdfs:label>
+</dcterms:LicenseDocument></dcterms:license><dcterms:language><dcterms:LinguisticSystem rdf:about="http://id.loc.gov/vocabulary/iso639-1/fr"><rdf:type rdf:resource="http://purl.org/dc/terms/LinguisticSystem" />
+</dcterms:LinguisticSystem></dcterms:language><dcterms:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2014-02-04T00:00:00</dcterms:issued>
+<dcterms:date rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2014-02-04T00:00:00</dcterms:date>
+<dcterms:modified rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2025-03-06T10:46:36+00:00</dcterms:modified>
+</dcat:Distribution></dcat:distribution>
+<dcat:distribution><dcat:Distribution rdf:about="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/exports/xlsx?use_labels=true"><rdf:type rdf:resource="http://www.w3.org/ns/dcat#Distribution" />
+<dcterms:title xml:lang="fr">statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica.xlsx</dcterms:title>
+<dcterms:description xml:lang="fr">Statistiques d&#x27;usage de l&#x27;ENT en Corse - Taux d&#x27;utilisateurs actifs (xlsx)</dcterms:description>
+<dcat:accessURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/exports/xlsx?use_labels=true" />
+<dcat:downloadURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/exports/xlsx?use_labels=true" />
+<dcterms:format><dcterms:MediaTypeOrExtent rdf:about="https://www.iana.org/assignments/media-types/application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"><rdf:type rdf:resource="http://purl.org/dc/terms/MediaTypeOrExtent" />
+</dcterms:MediaTypeOrExtent></dcterms:format><dcat:mediaType rdf:resource="https://www.iana.org/assignments/media-types/application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+<dcterms:license><dcterms:LicenseDocument><rdfs:label>Licence Ouverte (Etalab)</rdfs:label>
+</dcterms:LicenseDocument></dcterms:license><dcterms:language><dcterms:LinguisticSystem rdf:about="http://id.loc.gov/vocabulary/iso639-1/fr"><rdf:type rdf:resource="http://purl.org/dc/terms/LinguisticSystem" />
+</dcterms:LinguisticSystem></dcterms:language><dcterms:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2014-02-04T00:00:00</dcterms:issued>
+<dcterms:date rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2014-02-04T00:00:00</dcterms:date>
+<dcterms:modified rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2025-03-06T10:46:36+00:00</dcterms:modified>
+</dcat:Distribution></dcat:distribution>
+</dcat:Dataset>
+</dcat:dataset><dcat:dataset><dcat:Dataset rdf:about="https://data.opendatasoft.com/explore/dataset/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/"><dcterms:description xml:lang="fr"><![CDATA[<p>Données transport urbain : bus de la CAPA (Communauté d'Agglomération du Pays Ajaccien)</p><p><strong>Données GTFS téléchargeables  via l'export alternatif</strong></p>]]></dcterms:description>
+<dcterms:identifier>https://data.opendatasoft.com/explore/dataset/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/</dcterms:identifier>
+<rdf:type rdf:resource="http://purl.org/dc/dcmitype/Dataset" />
+<rdf:type rdf:resource="http://www.w3.org/ns/dcat#Dataset" />
+<dcterms:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:issued>
+<dcterms:date rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:date>
+<dcterms:modified rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T12:55:19+00:00</dcterms:modified>
+<dcterms:publisher><foaf:Agent rdf:about="https://data.opendatasoft.com/explore/?refine.publisher=CAPA"><foaf:name>CAPA</foaf:name>
+</foaf:Agent></dcterms:publisher><dcterms:contributor rdf:resource="https://data.opendatasoft.com/explore/?refine.publisher=CAPA" />
+<dcterms:creator rdf:resource="https://data.opendatasoft.com/explore/?refine.publisher=CAPA" />
+<dcterms:license><dcterms:LicenseDocument><rdfs:label>Licence Ouverte v2.0 (Etalab)</rdfs:label>
+</dcterms:LicenseDocument></dcterms:license><dcat:landingPage><foaf:Document rdf:about="https://data.opendatasoft.com/explore/dataset/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/"><rdf:type rdf:resource="http://xmlns.com/foaf/0.1/Document" />
+</foaf:Document></dcat:landingPage><dcterms:title xml:lang="fr">Données GTFS - Transport  -  bus urbains de la CAPA</dcterms:title>
+<dcterms:language><dcterms:LinguisticSystem rdf:about="http://id.loc.gov/vocabulary/iso639-1/fr"><rdf:type rdf:resource="http://purl.org/dc/terms/LinguisticSystem" />
+</dcterms:LinguisticSystem></dcterms:language><dcat:keyword xml:lang="fr">transport</dcat:keyword>
+<dcat:keyword xml:lang="fr">bus</dcat:keyword>
+<dcat:keyword xml:lang="fr">transport urbain</dcat:keyword>
+<dcat:keyword xml:lang="fr">gtfs</dcat:keyword>
+<dcat:theme><skos:Concept rdf:about="https://data.opendatasoft.com/explore/?refine.theme=Transport+%26+Mobility"><rdf:type rdf:resource="http://www.w3.org/2004/02/skos/core#Concept" />
+<skos:prefLabel>Transport &amp; Mobility</skos:prefLabel>
+</skos:Concept></dcat:theme><dcterms:subject rdf:resource="https://data.opendatasoft.com/explore/?refine.theme=Transport+%26+Mobility" />
+<dcterms:spatial rdf:resource="Region" />
+<dcterms:coverage rdf:resource="Region" />
+<dcat:distribution><dcat:Distribution rdf:about="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/csv?use_labels=true"><rdf:type rdf:resource="http://www.w3.org/ns/dcat#Distribution" />
+<dcterms:title xml:lang="fr">donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica.csv</dcterms:title>
+<dcterms:description xml:lang="fr">Données GTFS - Transport  -  bus urbains de la CAPA (csv)</dcterms:description>
+<dcat:accessURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/csv?use_labels=true" />
+<dcat:downloadURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/csv?use_labels=true" />
+<dcterms:format><dcterms:MediaTypeOrExtent rdf:about="https://www.iana.org/assignments/media-types/text/csv"><rdf:type rdf:resource="http://purl.org/dc/terms/MediaTypeOrExtent" />
+</dcterms:MediaTypeOrExtent></dcterms:format><dcat:mediaType rdf:resource="https://www.iana.org/assignments/media-types/text/csv" />
+<dcterms:license><dcterms:LicenseDocument><rdfs:label>Licence Ouverte v2.0 (Etalab)</rdfs:label>
+</dcterms:LicenseDocument></dcterms:license><dcterms:language><dcterms:LinguisticSystem rdf:about="http://id.loc.gov/vocabulary/iso639-1/fr"><rdf:type rdf:resource="http://purl.org/dc/terms/LinguisticSystem" />
+</dcterms:LinguisticSystem></dcterms:language><dcterms:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:issued>
+<dcterms:date rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:date>
+<dcterms:modified rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T12:55:19+00:00</dcterms:modified>
+</dcat:Distribution></dcat:distribution>
+<dcat:distribution><dcat:Distribution rdf:about="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/json"><rdf:type rdf:resource="http://www.w3.org/ns/dcat#Distribution" />
+<dcterms:title xml:lang="fr">donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica.json</dcterms:title>
+<dcterms:description xml:lang="fr">Données GTFS - Transport  -  bus urbains de la CAPA (json)</dcterms:description>
+<dcat:accessURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/json" />
+<dcat:downloadURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/json" />
+<dcterms:format><dcterms:MediaTypeOrExtent rdf:about="https://www.iana.org/assignments/media-types/application/json"><rdf:type rdf:resource="http://purl.org/dc/terms/MediaTypeOrExtent" />
+</dcterms:MediaTypeOrExtent></dcterms:format><dcat:mediaType rdf:resource="https://www.iana.org/assignments/media-types/application/json" />
+<dcterms:license><dcterms:LicenseDocument><rdfs:label>Licence Ouverte v2.0 (Etalab)</rdfs:label>
+</dcterms:LicenseDocument></dcterms:license><dcterms:language><dcterms:LinguisticSystem rdf:about="http://id.loc.gov/vocabulary/iso639-1/fr"><rdf:type rdf:resource="http://purl.org/dc/terms/LinguisticSystem" />
+</dcterms:LinguisticSystem></dcterms:language><dcterms:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:issued>
+<dcterms:date rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:date>
+<dcterms:modified rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T12:55:19+00:00</dcterms:modified>
+</dcat:Distribution></dcat:distribution>
+<dcat:distribution><dcat:Distribution rdf:about="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/fgb"><rdf:type rdf:resource="http://www.w3.org/ns/dcat#Distribution" />
+<dcterms:title xml:lang="fr">donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica.fgb</dcterms:title>
+<dcterms:description xml:lang="fr">Données GTFS - Transport  -  bus urbains de la CAPA (fgb)</dcterms:description>
+<dcat:accessURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/fgb" />
+<dcat:downloadURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/fgb" />
+<dcterms:format><dcterms:MediaTypeOrExtent rdf:about="https://www.iana.org/assignments/media-types/application/octet-stream"><rdf:type rdf:resource="http://purl.org/dc/terms/MediaTypeOrExtent" />
+</dcterms:MediaTypeOrExtent></dcterms:format><dcat:mediaType rdf:resource="https://www.iana.org/assignments/media-types/application/octet-stream" />
+<dcterms:license><dcterms:LicenseDocument><rdfs:label>Licence Ouverte v2.0 (Etalab)</rdfs:label>
+</dcterms:LicenseDocument></dcterms:license><dcterms:language><dcterms:LinguisticSystem rdf:about="http://id.loc.gov/vocabulary/iso639-1/fr"><rdf:type rdf:resource="http://purl.org/dc/terms/LinguisticSystem" />
+</dcterms:LinguisticSystem></dcterms:language><dcterms:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:issued>
+<dcterms:date rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:date>
+<dcterms:modified rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T12:55:19+00:00</dcterms:modified>
+</dcat:Distribution></dcat:distribution>
+<dcat:distribution><dcat:Distribution rdf:about="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/geojson"><rdf:type rdf:resource="http://www.w3.org/ns/dcat#Distribution" />
+<dcterms:title xml:lang="fr">donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica.geojson</dcterms:title>
+<dcterms:description xml:lang="fr">Données GTFS - Transport  -  bus urbains de la CAPA (geojson)</dcterms:description>
+<dcat:accessURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/geojson" />
+<dcat:downloadURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/geojson" />
+<dcterms:format><dcterms:MediaTypeOrExtent rdf:about="https://www.iana.org/assignments/media-types/application/json"><rdf:type rdf:resource="http://purl.org/dc/terms/MediaTypeOrExtent" />
+</dcterms:MediaTypeOrExtent></dcterms:format><dcat:mediaType rdf:resource="https://www.iana.org/assignments/media-types/application/json" />
+<dcterms:license><dcterms:LicenseDocument><rdfs:label>Licence Ouverte v2.0 (Etalab)</rdfs:label>
+</dcterms:LicenseDocument></dcterms:license><dcterms:language><dcterms:LinguisticSystem rdf:about="http://id.loc.gov/vocabulary/iso639-1/fr"><rdf:type rdf:resource="http://purl.org/dc/terms/LinguisticSystem" />
+</dcterms:LinguisticSystem></dcterms:language><dcterms:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:issued>
+<dcterms:date rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:date>
+<dcterms:modified rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T12:55:19+00:00</dcterms:modified>
+</dcat:Distribution></dcat:distribution>
+<dcat:distribution><dcat:Distribution rdf:about="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/gpx"><rdf:type rdf:resource="http://www.w3.org/ns/dcat#Distribution" />
+<dcterms:title xml:lang="fr">donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica.gpx</dcterms:title>
+<dcterms:description xml:lang="fr">Données GTFS - Transport  -  bus urbains de la CAPA (gpx)</dcterms:description>
+<dcat:accessURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/gpx" />
+<dcat:downloadURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/gpx" />
+<dcterms:format><dcterms:MediaTypeOrExtent rdf:about="https://www.iana.org/assignments/media-types/application/gpx+xml"><rdf:type rdf:resource="http://purl.org/dc/terms/MediaTypeOrExtent" />
+</dcterms:MediaTypeOrExtent></dcterms:format><dcat:mediaType rdf:resource="https://www.iana.org/assignments/media-types/application/gpx+xml" />
+<dcterms:license><dcterms:LicenseDocument><rdfs:label>Licence Ouverte v2.0 (Etalab)</rdfs:label>
+</dcterms:LicenseDocument></dcterms:license><dcterms:language><dcterms:LinguisticSystem rdf:about="http://id.loc.gov/vocabulary/iso639-1/fr"><rdf:type rdf:resource="http://purl.org/dc/terms/LinguisticSystem" />
+</dcterms:LinguisticSystem></dcterms:language><dcterms:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:issued>
+<dcterms:date rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:date>
+<dcterms:modified rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T12:55:19+00:00</dcterms:modified>
+</dcat:Distribution></dcat:distribution>
+<dcat:distribution><dcat:Distribution rdf:about="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/jsonl"><rdf:type rdf:resource="http://www.w3.org/ns/dcat#Distribution" />
+<dcterms:title xml:lang="fr">donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica.jsonl</dcterms:title>
+<dcterms:description xml:lang="fr">Données GTFS - Transport  -  bus urbains de la CAPA (jsonl)</dcterms:description>
+<dcat:accessURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/jsonl" />
+<dcat:downloadURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/jsonl" />
+<dcterms:format><dcterms:MediaTypeOrExtent rdf:about="https://www.iana.org/assignments/media-types/application/json"><rdf:type rdf:resource="http://purl.org/dc/terms/MediaTypeOrExtent" />
+</dcterms:MediaTypeOrExtent></dcterms:format><dcat:mediaType rdf:resource="https://www.iana.org/assignments/media-types/application/json" />
+<dcterms:license><dcterms:LicenseDocument><rdfs:label>Licence Ouverte v2.0 (Etalab)</rdfs:label>
+</dcterms:LicenseDocument></dcterms:license><dcterms:language><dcterms:LinguisticSystem rdf:about="http://id.loc.gov/vocabulary/iso639-1/fr"><rdf:type rdf:resource="http://purl.org/dc/terms/LinguisticSystem" />
+</dcterms:LinguisticSystem></dcterms:language><dcterms:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:issued>
+<dcterms:date rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:date>
+<dcterms:modified rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T12:55:19+00:00</dcterms:modified>
+</dcat:Distribution></dcat:distribution>
+<dcat:distribution><dcat:Distribution rdf:about="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/kml"><rdf:type rdf:resource="http://www.w3.org/ns/dcat#Distribution" />
+<dcterms:title xml:lang="fr">donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica.kml</dcterms:title>
+<dcterms:description xml:lang="fr">Données GTFS - Transport  -  bus urbains de la CAPA (kml)</dcterms:description>
+<dcat:accessURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/kml" />
+<dcat:downloadURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/kml" />
+<dcterms:format><dcterms:MediaTypeOrExtent rdf:about="https://www.iana.org/assignments/media-types/application/vnd.google-earth.kml+xml"><rdf:type rdf:resource="http://purl.org/dc/terms/MediaTypeOrExtent" />
+</dcterms:MediaTypeOrExtent></dcterms:format><dcat:mediaType rdf:resource="https://www.iana.org/assignments/media-types/application/vnd.google-earth.kml+xml" />
+<dcterms:license><dcterms:LicenseDocument><rdfs:label>Licence Ouverte v2.0 (Etalab)</rdfs:label>
+</dcterms:LicenseDocument></dcterms:license><dcterms:language><dcterms:LinguisticSystem rdf:about="http://id.loc.gov/vocabulary/iso639-1/fr"><rdf:type rdf:resource="http://purl.org/dc/terms/LinguisticSystem" />
+</dcterms:LinguisticSystem></dcterms:language><dcterms:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:issued>
+<dcterms:date rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:date>
+<dcterms:modified rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T12:55:19+00:00</dcterms:modified>
+</dcat:Distribution></dcat:distribution>
+<dcat:distribution><dcat:Distribution rdf:about="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/ov2"><rdf:type rdf:resource="http://www.w3.org/ns/dcat#Distribution" />
+<dcterms:title xml:lang="fr">donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica.ov2</dcterms:title>
+<dcterms:description xml:lang="fr">Données GTFS - Transport  -  bus urbains de la CAPA (ov2)</dcterms:description>
+<dcat:accessURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/ov2" />
+<dcat:downloadURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/ov2" />
+<dcterms:format><dcterms:MediaTypeOrExtent rdf:about="https://www.iana.org/assignments/media-types/text/plain"><rdf:type rdf:resource="http://purl.org/dc/terms/MediaTypeOrExtent" />
+</dcterms:MediaTypeOrExtent></dcterms:format><dcat:mediaType rdf:resource="https://www.iana.org/assignments/media-types/text/plain" />
+<dcterms:license><dcterms:LicenseDocument><rdfs:label>Licence Ouverte v2.0 (Etalab)</rdfs:label>
+</dcterms:LicenseDocument></dcterms:license><dcterms:language><dcterms:LinguisticSystem rdf:about="http://id.loc.gov/vocabulary/iso639-1/fr"><rdf:type rdf:resource="http://purl.org/dc/terms/LinguisticSystem" />
+</dcterms:LinguisticSystem></dcterms:language><dcterms:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:issued>
+<dcterms:date rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:date>
+<dcterms:modified rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T12:55:19+00:00</dcterms:modified>
+</dcat:Distribution></dcat:distribution>
+<dcat:distribution><dcat:Distribution rdf:about="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/parquet"><rdf:type rdf:resource="http://www.w3.org/ns/dcat#Distribution" />
+<dcterms:title xml:lang="fr">donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica.parquet</dcterms:title>
+<dcterms:description xml:lang="fr">Données GTFS - Transport  -  bus urbains de la CAPA (parquet)</dcterms:description>
+<dcat:accessURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/parquet" />
+<dcat:downloadURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/parquet" />
+<dcterms:format><dcterms:MediaTypeOrExtent rdf:about="https://www.iana.org/assignments/media-types/application/parquet"><rdf:type rdf:resource="http://purl.org/dc/terms/MediaTypeOrExtent" />
+</dcterms:MediaTypeOrExtent></dcterms:format><dcat:mediaType rdf:resource="https://www.iana.org/assignments/media-types/application/parquet" />
+<dcterms:license><dcterms:LicenseDocument><rdfs:label>Licence Ouverte v2.0 (Etalab)</rdfs:label>
+</dcterms:LicenseDocument></dcterms:license><dcterms:language><dcterms:LinguisticSystem rdf:about="http://id.loc.gov/vocabulary/iso639-1/fr"><rdf:type rdf:resource="http://purl.org/dc/terms/LinguisticSystem" />
+</dcterms:LinguisticSystem></dcterms:language><dcterms:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:issued>
+<dcterms:date rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:date>
+<dcterms:modified rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T12:55:19+00:00</dcterms:modified>
+</dcat:Distribution></dcat:distribution>
+<dcat:distribution><dcat:Distribution rdf:about="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/rdfxml"><rdf:type rdf:resource="http://www.w3.org/ns/dcat#Distribution" />
+<dcterms:title xml:lang="fr">donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica.rdf</dcterms:title>
+<dcterms:description xml:lang="fr">Données GTFS - Transport  -  bus urbains de la CAPA (rdfxml)</dcterms:description>
+<dcat:accessURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/rdfxml" />
+<dcat:downloadURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/rdfxml" />
+<dcterms:format><dcterms:MediaTypeOrExtent rdf:about="https://www.iana.org/assignments/media-types/application/rdf+xml"><rdf:type rdf:resource="http://purl.org/dc/terms/MediaTypeOrExtent" />
+</dcterms:MediaTypeOrExtent></dcterms:format><dcat:mediaType rdf:resource="https://www.iana.org/assignments/media-types/application/rdf+xml" />
+<dcterms:license><dcterms:LicenseDocument><rdfs:label>Licence Ouverte v2.0 (Etalab)</rdfs:label>
+</dcterms:LicenseDocument></dcterms:license><dcterms:language><dcterms:LinguisticSystem rdf:about="http://id.loc.gov/vocabulary/iso639-1/fr"><rdf:type rdf:resource="http://purl.org/dc/terms/LinguisticSystem" />
+</dcterms:LinguisticSystem></dcterms:language><dcterms:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:issued>
+<dcterms:date rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:date>
+<dcterms:modified rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T12:55:19+00:00</dcterms:modified>
+</dcat:Distribution></dcat:distribution>
+<dcat:distribution><dcat:Distribution rdf:about="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/jsonld"><rdf:type rdf:resource="http://www.w3.org/ns/dcat#Distribution" />
+<dcterms:title xml:lang="fr">donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica.jsonld</dcterms:title>
+<dcterms:description xml:lang="fr">Données GTFS - Transport  -  bus urbains de la CAPA (jsonld)</dcterms:description>
+<dcat:accessURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/jsonld" />
+<dcat:downloadURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/jsonld" />
+<dcterms:format><dcterms:MediaTypeOrExtent rdf:about="https://www.iana.org/assignments/media-types/application/ld+json"><rdf:type rdf:resource="http://purl.org/dc/terms/MediaTypeOrExtent" />
+</dcterms:MediaTypeOrExtent></dcterms:format><dcat:mediaType rdf:resource="https://www.iana.org/assignments/media-types/application/ld+json" />
+<dcterms:license><dcterms:LicenseDocument><rdfs:label>Licence Ouverte v2.0 (Etalab)</rdfs:label>
+</dcterms:LicenseDocument></dcterms:license><dcterms:language><dcterms:LinguisticSystem rdf:about="http://id.loc.gov/vocabulary/iso639-1/fr"><rdf:type rdf:resource="http://purl.org/dc/terms/LinguisticSystem" />
+</dcterms:LinguisticSystem></dcterms:language><dcterms:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:issued>
+<dcterms:date rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:date>
+<dcterms:modified rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T12:55:19+00:00</dcterms:modified>
+</dcat:Distribution></dcat:distribution>
+<dcat:distribution><dcat:Distribution rdf:about="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/turtle"><rdf:type rdf:resource="http://www.w3.org/ns/dcat#Distribution" />
+<dcterms:title xml:lang="fr">donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica.ttl</dcterms:title>
+<dcterms:description xml:lang="fr">Données GTFS - Transport  -  bus urbains de la CAPA (turtle)</dcterms:description>
+<dcat:accessURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/turtle" />
+<dcat:downloadURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/turtle" />
+<dcterms:format><dcterms:MediaTypeOrExtent rdf:about="https://www.iana.org/assignments/media-types/text/turtle"><rdf:type rdf:resource="http://purl.org/dc/terms/MediaTypeOrExtent" />
+</dcterms:MediaTypeOrExtent></dcterms:format><dcat:mediaType rdf:resource="https://www.iana.org/assignments/media-types/text/turtle" />
+<dcterms:license><dcterms:LicenseDocument><rdfs:label>Licence Ouverte v2.0 (Etalab)</rdfs:label>
+</dcterms:LicenseDocument></dcterms:license><dcterms:language><dcterms:LinguisticSystem rdf:about="http://id.loc.gov/vocabulary/iso639-1/fr"><rdf:type rdf:resource="http://purl.org/dc/terms/LinguisticSystem" />
+</dcterms:LinguisticSystem></dcterms:language><dcterms:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:issued>
+<dcterms:date rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:date>
+<dcterms:modified rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T12:55:19+00:00</dcterms:modified>
+</dcat:Distribution></dcat:distribution>
+<dcat:distribution><dcat:Distribution rdf:about="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/n3"><rdf:type rdf:resource="http://www.w3.org/ns/dcat#Distribution" />
+<dcterms:title xml:lang="fr">donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica.n3</dcterms:title>
+<dcterms:description xml:lang="fr">Données GTFS - Transport  -  bus urbains de la CAPA (n3)</dcterms:description>
+<dcat:accessURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/n3" />
+<dcat:downloadURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/n3" />
+<dcterms:format><dcterms:MediaTypeOrExtent rdf:about="https://www.iana.org/assignments/media-types/text/n3"><rdf:type rdf:resource="http://purl.org/dc/terms/MediaTypeOrExtent" />
+</dcterms:MediaTypeOrExtent></dcterms:format><dcat:mediaType rdf:resource="https://www.iana.org/assignments/media-types/text/n3" />
+<dcterms:license><dcterms:LicenseDocument><rdfs:label>Licence Ouverte v2.0 (Etalab)</rdfs:label>
+</dcterms:LicenseDocument></dcterms:license><dcterms:language><dcterms:LinguisticSystem rdf:about="http://id.loc.gov/vocabulary/iso639-1/fr"><rdf:type rdf:resource="http://purl.org/dc/terms/LinguisticSystem" />
+</dcterms:LinguisticSystem></dcterms:language><dcterms:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:issued>
+<dcterms:date rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:date>
+<dcterms:modified rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T12:55:19+00:00</dcterms:modified>
+</dcat:Distribution></dcat:distribution>
+<dcat:distribution><dcat:Distribution rdf:about="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/shp"><rdf:type rdf:resource="http://www.w3.org/ns/dcat#Distribution" />
+<dcterms:title xml:lang="fr">donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica.zip</dcterms:title>
+<dcterms:description xml:lang="fr">Données GTFS - Transport  -  bus urbains de la CAPA (shp)</dcterms:description>
+<dcat:accessURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/shp" />
+<dcat:downloadURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/shp" />
+<dcterms:format><dcterms:MediaTypeOrExtent rdf:about="https://www.iana.org/assignments/media-types/application/zip"><rdf:type rdf:resource="http://purl.org/dc/terms/MediaTypeOrExtent" />
+</dcterms:MediaTypeOrExtent></dcterms:format><dcat:mediaType rdf:resource="https://www.iana.org/assignments/media-types/application/zip" />
+<dcterms:license><dcterms:LicenseDocument><rdfs:label>Licence Ouverte v2.0 (Etalab)</rdfs:label>
+</dcterms:LicenseDocument></dcterms:license><dcterms:language><dcterms:LinguisticSystem rdf:about="http://id.loc.gov/vocabulary/iso639-1/fr"><rdf:type rdf:resource="http://purl.org/dc/terms/LinguisticSystem" />
+</dcterms:LinguisticSystem></dcterms:language><dcterms:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:issued>
+<dcterms:date rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:date>
+<dcterms:modified rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T12:55:19+00:00</dcterms:modified>
+</dcat:Distribution></dcat:distribution>
+<dcat:distribution><dcat:Distribution rdf:about="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/xlsx?use_labels=true"><rdf:type rdf:resource="http://www.w3.org/ns/dcat#Distribution" />
+<dcterms:title xml:lang="fr">donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica.xlsx</dcterms:title>
+<dcterms:description xml:lang="fr">Données GTFS - Transport  -  bus urbains de la CAPA (xlsx)</dcterms:description>
+<dcat:accessURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/xlsx?use_labels=true" />
+<dcat:downloadURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/exports/xlsx?use_labels=true" />
+<dcterms:format><dcterms:MediaTypeOrExtent rdf:about="https://www.iana.org/assignments/media-types/application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"><rdf:type rdf:resource="http://purl.org/dc/terms/MediaTypeOrExtent" />
+</dcterms:MediaTypeOrExtent></dcterms:format><dcat:mediaType rdf:resource="https://www.iana.org/assignments/media-types/application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+<dcterms:license><dcterms:LicenseDocument><rdfs:label>Licence Ouverte v2.0 (Etalab)</rdfs:label>
+</dcterms:LicenseDocument></dcterms:license><dcterms:language><dcterms:LinguisticSystem rdf:about="http://id.loc.gov/vocabulary/iso639-1/fr"><rdf:type rdf:resource="http://purl.org/dc/terms/LinguisticSystem" />
+</dcterms:LinguisticSystem></dcterms:language><dcterms:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:issued>
+<dcterms:date rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T00:00:00</dcterms:date>
+<dcterms:modified rdf:datatype="http://www.w3.org/2001/XMLSchema#dateTime">2019-04-17T12:55:19+00:00</dcterms:modified>
+</dcat:Distribution></dcat:distribution>
+</dcat:Dataset>
+</dcat:dataset><dcat:service><dcat:DataService rdf:about="https://data.opendatasoft.com/api/explore/v2.1/"><dcterms:title xml:lang="en"><![CDATA[Explore API v2 https://data.opendatasoft.com]]></dcterms:title>
+<dcterms:identifier>https://data.opendatasoft.com/api/explore/v2.1/</dcterms:identifier>
+<dcat:endpointURL rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/" />
+<dcat:endpointDescription rdf:resource="https://data.opendatasoft.com/api/explore/v2.1/swagger.json" />
+<dcat:landingPage rdf:resource="https://data.opendatasoft.com/api-console/explore/v2.1/" />
+<dcat:servesDataset rdf:resource="https://data.opendatasoft.com/explore/dataset/statistiques-dusage-de-lent-en-corse-taux-dutilisateurs-actifs@datacorsica/" />
+<dcat:servesDataset rdf:resource="https://data.opendatasoft.com/explore/dataset/donnees-gtfs-horaires-theoriques-des-bus-urbains-de-la-capa@datacorsica/" />
+</dcat:DataService></dcat:service>
+</rdf:Description></rdf:RDF>
