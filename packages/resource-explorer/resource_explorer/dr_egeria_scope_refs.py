@@ -33,8 +33,9 @@ class Rewrite:
     words: str = ""                  # reported by the child, always when a scope reference was seen
     rewritten: dict[str, str] = field(default_factory=dict)   # name -> guid used
     count: int = 0
-    left: list[str] = field(default_factory=list)              # distinct scope values sent as written (W-117-1)
-    left_count: int = 0
+    left: list[str] = field(default_factory=list)              # distinct values left as names: not in the glossary,
+    left_count: int = 0                                        # or duplicated in it (W-117-1/2); left_count = distinct
+    already: int = 0                                           # values that already carried a (guid:...) (W-117-2)
 
 
 def _blocks(text: str) -> list[tuple[int, int]]:
@@ -119,15 +120,20 @@ def rewrite_scope_refs(path: str | Path, client: Any, *, terms: Callable[[Any], 
     out = Rewrite(path)
     left: list[str] = []
     for n, value in values:
-        if _GUID.search(value) or value not in known:
+        if _GUID.search(value):
+            out.already += 1                # already a guid: fine as written, never "left as a name"
+            continue
+        if value not in known:
             left.append(value)
             continue
         ending = "\n" if lines[n].endswith("\n") else ""
         lines[n] = f"{value} (guid:{known[value]}){ending}"
         out.rewritten[value] = known[value]
         out.count += 1
-    out.left, out.left_count = sorted(set(left)), len(left)
-    left_words = f"{out.left_count} left as names" + (f": {', '.join(out.left)}" if out.left else "")
+    out.left = sorted(set(left))
+    out.left_count = len(out.left)          # distinct, so the count matches the list it introduces
+    left_words = (f"{out.already} already guids; {out.left_count} left as names"
+                  + (f": {', '.join(out.left)}" if out.left else ""))
     if not out.count:
         out.words = (f"TR-117: no scope reference names a term of the {GLOSSARY} glossary; nothing rewritten; "
                      f"{left_words}")

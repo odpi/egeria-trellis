@@ -173,18 +173,34 @@ def test_the_child_processes_the_rewritten_copy_reports_it_and_removes_it(tmp_pa
 def test_the_report_names_what_was_left_as_a_name(tmp_path):
     p = _doc(tmp_path)
     out = sr.rewrite_scope_refs(p, object(), terms=lambda _c: TERMS, tmpdir=str(tmp_path / "copy"))
-    assert out.left == ["Answered At (guid:already-a-guid)", "Somewhere Else"]
-    assert "2 left as names: Answered At (guid:already-a-guid), Somewhere Else" in out.words
+    assert out.left == ["Somewhere Else"] and out.already == 1                 # W-117-2: a guid is not "left"
+    assert "1 already guids; 1 left as names: Somewhere Else" in out.words
     assert "(Asked At, Assessment)" in out.words
 
 
 def test_none_rewritten_still_names_every_value_left(tmp_path):
     p = _doc(tmp_path)
     out = sr.rewrite_scope_refs(p, object(), terms=lambda _c: {})
-    assert out.count == 0 and "4 left as names:" in out.words and "Somewhere Else" in out.words
+    assert out.count == 0 and "1 already guids; 3 left as names: Asked At, Assessment, Somewhere Else" in out.words
 
 
 def test_all_rewritten_says_none_left(tmp_path):
     p = _doc(tmp_path, DOC.replace("Somewhere Else", "Assessment").replace(" (guid:already-a-guid)", ""))
     out = sr.rewrite_scope_refs(p, object(), terms=lambda _c: TERMS, tmpdir=str(tmp_path / "copy"))
-    assert out.count == 4 and "0 left as names" in out.words
+    assert out.count == 4 and "0 already guids; 0 left as names" in out.words
+
+
+def test_w117_2_values_already_guids_are_counted_apart_and_a_repeated_name_is_counted_once(tmp_path):
+    text = DOC.replace("Somewhere Else", "Elsewhere") + DOC.split("# Questions", 1)[1].replace("Somewhere Else", "Elsewhere")
+    p = _doc(tmp_path, text)
+    out = sr.rewrite_scope_refs(p, object(), terms=lambda _c: TERMS, tmpdir=str(tmp_path / "copy"))
+    assert out.count == 4 and out.already == 2                                  # two commands of each, twice over
+    assert out.left == ["Elsewhere"] and out.left_count == 1                     # distinct: named twice, counted once
+    assert "4 scope reference(s) sent as guids" in out.words and "2 already guids; 1 left as names: Elsewhere" in out.words
+
+
+def test_the_real_questions_batch_leaves_nothing_as_a_name(tmp_path):
+    lines = FOUNDATIONS.read_text().splitlines()
+    terms = {lines[i].strip(): f"g-{i}" for i in range(1, len(lines)) if lines[i - 1].strip() == "### Display Name"}
+    out = sr.rewrite_scope_refs(QUESTIONS, object(), terms=lambda _c: terms, tmpdir=str(tmp_path))
+    assert out.left_count == 0 and out.already == 0 and "0 already guids; 0 left as names" in out.words
