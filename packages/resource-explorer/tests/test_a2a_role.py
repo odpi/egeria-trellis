@@ -270,6 +270,29 @@ class TestDiscovery:
             assert entry["card_url"].endswith("/.well-known/agent-card.json")
             assert entry["endpoints"]["rest_message_send"].endswith("/v1/message:send")
 
+    def test_the_public_index_carries_no_url_but_the_public_one_and_no_egeria_block(self, monkeypatch):
+        """TR-133: /.well-known/agents.json needs no token, so it must not publish the Egeria platform's internal URL (or view server name).
+        Every URL in it is built from A2A_PUBLIC_URL; a client that needs the binding can get it from an authenticated endpoint later."""
+        monkeypatch.setenv("A2A_PUBLIC_URL", "https://a2a.example.org")
+        body = _client().get("/.well-known/agents.json").json()
+        assert "egeria" not in body, body.get("egeria")
+        urls = []
+
+        def walk(node):
+            if isinstance(node, dict):
+                for v in node.values():
+                    walk(v)
+            elif isinstance(node, list):
+                for v in node:
+                    walk(v)
+            elif isinstance(node, str) and "://" in node:
+                urls.append(node)
+        walk(body)
+        assert urls, "the index has URLs (the agents)"
+        assert all(u.startswith("https://a2a.example.org") for u in urls), [u for u in urls if not u.startswith("https://a2a.example.org")]
+        text = str(body)
+        assert "localhost:9443" not in text and "qs-view-server" not in text
+
     def test_index_names_the_required_auth_scheme(self):
         body = _client().get("/.well-known/agents.json").json()
         auth = body["authentication"]
@@ -283,19 +306,12 @@ class TestDiscovery:
         assert body["authentication"]["anonymous_allowed"] is True
         assert body["authentication"]["required"] is False
 
-    def test_index_carries_re_version_and_the_egeria_binding(self):
+    def test_index_carries_the_re_version(self):
+        """(TR-133: the Egeria binding was removed from this unauthenticated index; see the test that it names no internal address.)"""
         from resource_explorer import __version__
 
         body = _client().get("/.well-known/agents.json").json()
         assert body["version"] == __version__
-        assert body["egeria"]["view_server"] == "qs-view-server"
-        # The index reports the platform from RE's own config (get_config()), not from the
-        # A2AAuthSettings handed to build_app, so the expected value is whatever the run
-        # configures (EGERIA_PLATFORM_URL); a hard-coded localhost only held on a bare machine.
-        from resource_explorer.config import get_config
-
-        assert body["egeria"]["platform_url"] == get_config().egeria.platform_url
-        assert body["egeria"]["platform_url"]
 
     def test_exactly_one_default_agent_and_it_is_the_orchestrator(self):
         body = _client().get("/.well-known/agents.json").json()
