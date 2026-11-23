@@ -126,6 +126,16 @@ class PgVectorStore(BaseVectorStore):
     # Connection
     # ------------------------------------------------------------------
 
+    def _connect_kwargs(self) -> dict:
+        """The psycopg2 keyword arguments every connection this store opens uses: the pool's, the bootstrap's and the
+        declared-collections read. `options` only when the config sets it (TR-60a)."""
+        kw = dict(host=self._config.host, port=self._config.port, dbname=self._config.dbname,
+                  user=self._config.user, password=self._config.password,
+                  connect_timeout=self._config.connect_timeout)
+        if self._config.options:
+            kw["options"] = self._config.options
+        return kw
+
     def connect(self) -> None:
         """Build the connection pool (and run the bootstrap extension/schema
         setup), bounded by ``self._config.connect_timeout`` on every
@@ -150,19 +160,10 @@ class PgVectorStore(BaseVectorStore):
             pool = ThreadedConnectionPool(
                 minconn=1,
                 maxconn=self._config.max_connections,
-                host=self._config.host,
-                port=self._config.port,
-                dbname=self._config.dbname,
-                user=self._config.user,
-                password=self._config.password,
-                connect_timeout=self._config.connect_timeout,
+                **self._connect_kwargs(),
             )
             try:
-                with psycopg2.connect(
-                    host=self._config.host, port=self._config.port, dbname=self._config.dbname,
-                    user=self._config.user, password=self._config.password,
-                    connect_timeout=self._config.connect_timeout,
-                ) as bootstrap:
+                with psycopg2.connect(**self._connect_kwargs()) as bootstrap:
                     if self._ddl == "auto":
                         self._ensure_extension(bootstrap)
                         if self._config.schema:
@@ -222,11 +223,7 @@ class PgVectorStore(BaseVectorStore):
         if self._ddl != "external" or not self._declared_table or collection_name in self._declared_ok:
             return
         qualified = self._qualified(self._declared_table)
-        with psycopg2.connect(
-            host=self._config.host, port=self._config.port, dbname=self._config.dbname,
-            user=self._config.user, password=self._config.password,
-            connect_timeout=self._config.connect_timeout,
-        ) as conn, conn.cursor() as cur:
+        with psycopg2.connect(**self._connect_kwargs()) as conn, conn.cursor() as cur:
             cur.execute(f"SELECT 1 FROM {qualified} WHERE name = %s", (collection_name,))
             row = cur.fetchone()
         if not row:

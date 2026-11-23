@@ -11,7 +11,7 @@ import psycopg2
 import psycopg2.extras
 from psycopg2.pool import ThreadedConnectionPool
 
-from advisor.config import settings
+from advisor.config import EA_PG_OPTIONS, settings
 
 _CREATE_SCHEMAS_DDL = """
 -- 1. Query Metrics Table with Audit logging
@@ -205,6 +205,7 @@ class ConsolidatedDBManager:
                     dbname=self.dbname,
                     user=self.user,
                     password=self.password,
+                    options=EA_PG_OPTIONS,  # TR-60a: operational SQL is unqualified; pin it to public
                 )
                 self._initialize_schemas()
                 logger.info("Consolidated DB Manager successfully connected and initialized schemas.")
