@@ -40,11 +40,13 @@ def convert_model_to_onnx(
         True if conversion successful
     """
     try:
+        from advisor.embeddings import embedding_dimension  # TR-118: the current method name, old one as fallback
+
         logger.info(f"Loading model: {model_name}")
         model = SentenceTransformer(model_name, device="cpu")
         
         # Get model info
-        embedding_dim = model.get_sentence_embedding_dimension()
+        embedding_dim = embedding_dimension(model)
         max_seq_length = model.max_seq_length
         
         logger.info(f"Model info:")

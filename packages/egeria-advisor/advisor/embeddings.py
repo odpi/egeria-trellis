@@ -104,6 +104,22 @@ import json
 from advisor.config import settings, get_full_config, ensure_writable_dir
 
 
+def embedding_dimension(model) -> int | None:
+    """The model's embedding dimension, by sentence-transformers' current name (TR-118).
+
+    5.x renamed `get_sentence_embedding_dimension` to `get_embedding_dimension` and kept the old name as a deprecated
+    alias that logs a FutureWarning at every EA start. The dependency floor is `>=2.2.0`, so the old name is asked
+    only of a model that has nothing else."""
+    current = getattr(model, "get_embedding_dimension", None)
+    if callable(current):
+        return current()
+    older = getattr(model, "get_sentence_embedding_dimension", None)
+    if callable(older):
+        return older()
+    raise AttributeError(f"{type(model).__name__} reports no embedding dimension "
+                         "(neither get_embedding_dimension nor get_sentence_embedding_dimension)")
+
+
 class EmbeddingGenerator:
     """Generate embeddings using sentence-transformers with GPU acceleration."""
 
@@ -153,7 +169,7 @@ class EmbeddingGenerator:
                 os.environ["CUDA_VISIBLE_DEVICES"] = ""
             
             self.model = SentenceTransformer(self.model_name, device=self.device)
-            self.embedding_dim = self.model.get_sentence_embedding_dimension()
+            self.embedding_dim = embedding_dimension(self.model)
             logger.info(f"Model loaded successfully. Embedding dimension: {self.embedding_dim}")
             self._log_loaded()
 
@@ -171,7 +187,7 @@ class EmbeddingGenerator:
                 os.environ["CUDA_VISIBLE_DEVICES"] = ""
                 try:
                     self.model = SentenceTransformer(self.model_name, device="cpu")
-                    self.embedding_dim = self.model.get_sentence_embedding_dimension()
+                    self.embedding_dim = embedding_dimension(self.model)
                     logger.info(f"Model loaded successfully on CPU. Embedding dimension: {self.embedding_dim}")
                     self._log_loaded()
                 except Exception as cpu_error:
