@@ -1,6 +1,10 @@
 # Trellis — Quickstart
 
-From a fresh clone to a running app. Fifteen minutes, most of it waiting for model downloads.
+From a fresh clone to a running app. **Allow about three hours on a fresh machine for the whole path**, clone to a first
+answer (measured on a fresh Mac install): the QuickStart builds in about 24 min cold, the Egeria Advisor knowledge-base
+clone takes about 34 min (5.1 GB), ingest about 80 min, and the whole path from clone to answer about 2 h 55 min, most of it
+waiting for downloads and ingest. Running Resource Explorer alone against an Egeria and Ollama that are already up is the
+[10-minute path](#the-10-minute-path).
 
 Trellis is a `uv` workspace holding three apps (Resource Explorer, Egeria Advisor and Trellis
 Studio) and its shared libraries. You do not need to
@@ -37,6 +41,8 @@ and there is no local user store, so without Egeria there is no way to sign in. 
   the QuickStart's user directory, egeria-workspaces'
   `compose-configs/egeria-quickstart/secrets/coco-user-directory.omsecrets` (each account's `clearPassword`). On
   any other Egeria, ask its administrator for the two accounts.
+- **The demo users' password** (the people you sign in as, such as `peterprofile`) is `QUICKSTART_PERSONA_PASSWORD` in
+  egeria-workspaces' `.env`.
 - Don't set `EGERIA_USER` / `EGERIA_USER_PASSWORD` for the apps: those are pyegeria's names for running its tools
   as yourself in a shell, and both apps warn at startup if they see them. You sign in to each app as yourself.
 
@@ -85,7 +91,14 @@ POSTGRES_PASSWORD="$PGVECTOR_PASSWORD" docker run -d --name trellis-postgres -p 
 ```
 
 Resource Explorer keeps its tables in a named schema, which is the one thing that is not
-created for you:
+created for you. With an `egeria-workspaces` checkout the container is `egeria-shared-postgres`:
+
+```bash
+docker exec egeria-shared-postgres psql -U egeria_advisor -d egeria_advisor \
+  -c 'CREATE SCHEMA IF NOT EXISTS resource_explorer AUTHORIZATION egeria_advisor;'
+```
+
+On the standalone path above it is `trellis-postgres`:
 
 ```bash
 docker exec trellis-postgres psql -U egeria_advisor -d egeria_advisor \
