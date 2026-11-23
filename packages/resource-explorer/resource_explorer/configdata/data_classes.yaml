@@ -4,7 +4,8 @@
 #
 # Adding a data class, or a keyword to one, is an edit here, not a code change. What the bootstrap
 # creates in Egeria for each entry:
-#   DataClass::<name>                                  the DataClass (dataPatterns = keywords)
+#   DataClass::<name>                                  the DataClass (matchPropertyNames = keywords; specification
+#                                                      = the optional value regex; no dataPatterns, TR-127)
 #   ValidValuesSet::<name>Keywords                     a plain ValidValueDefinition, the keyword set
 #   ValidValueDefinition::<name>Keyword::<keyword>     one plain ValidValueDefinition per keyword,
 #                                                      linked to the set as a member
@@ -17,7 +18,13 @@
 #   name          - letters and digits only (it is part of every qualifiedName above)
 #   displayName   - shown in Egeria and on the Curate data-class rules
 #   description   - one sentence
-#   dataPatterns  - one or more keywords: lower case, letters, digits and underscores
+#   dataPatterns  - one or more column-name KEYWORDS: lower case, letters, digits and underscores
+#                   (sent to Egeria as matchPropertyNames; the name `dataPatterns` is kept for existing files)
+# Optional:
+#   specification - a regular expression a VALUE of this class fully matches (python `re.fullmatch`). Give one
+#                   only where the shape is specific to the class. A generic shape (nine digits, a long number, any
+#                   date) matches columns that are not the class at all, so Phone, SSN, Credit Card and Date of
+#                   Birth ship with none and stay name-only until a value-AND-name rule exists (TR-131).
 #
 # A second file may add entries without editing this one: set RE_DATA_CLASSES_FILE to its path (the
 # same shape). A name in both files is an error, not an override.
@@ -27,6 +34,7 @@ data_classes:
     displayName: Email Address
     description: Electronic mail address identifier.
     dataPatterns: [email, email_address, mail_addr, emailaddr]
+    specification: '[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}'
 
   - name: PhoneNumber
     displayName: Phone Number

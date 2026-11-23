@@ -29,7 +29,7 @@ trellis-accel = { workspace = true }
 trellis-studio = { workspace = true }
 trellis-analytics-re = { workspace = true }
 # The Analytic Library left trellis in LS2 (odpi/egeria-trellis-analytics). It has no entry here on purpose: since
-# v0.2.0 (2026-11-05) the requirement (egeria-trellis-analytics>=0.4,<0.5 since 0.4.0) resolves from PyPI like any other dependency.
+# v0.2.0 (2026-11-05) the requirement (egeria-trellis-analytics>=0.5,<0.6 since 0.5.0, the own-reads read, TR-114) resolves from PyPI like any other dependency.
 trellis-step-change-rates = { workspace = true }
 trellis-step-database-staleness = { workspace = true }
 trellis-step-fs-activity = { workspace = true }

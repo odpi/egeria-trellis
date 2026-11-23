@@ -27,13 +27,25 @@ def _url(schema: str) -> str:
 
 
 @pytest.fixture()
-def schema():
+def schema(monkeypatch):
+    """A throwaway schema. `schema apply` now brings the four stores too (TR-115), so their settings point at the same
+    throwaway database: metrics and feedback share the registry's schema, the vector store its own `<schema>` and the
+    artifact tree `<schema>_tree` (both dropped afterwards)."""
     import psycopg2
+    from urllib.parse import urlsplit
     name = f"resource_explorer_test_schemaapply_{uuid.uuid4().hex[:8]}"
+    u = urlsplit(BASE_URL.replace("postgresql+psycopg2://", "postgresql://"))
+    for k, v in {"PGVECTOR_HOST": u.hostname, "PGVECTOR_PORT": str(u.port or 5432), "PGVECTOR_DBNAME": u.path.lstrip("/"),
+                 "PGVECTOR_USER": u.username, "PGVECTOR_PASSWORD": u.password or "", "PGVECTOR_SCHEMA": name,
+                 "ARTIFACT_TREE_SCHEMA": f"{name}_tree", "METRICS_DATABASE_URL": _url(name), "FEEDBACK_DATABASE_URL": _url(name)}.items():
+        monkeypatch.setenv(k, v)
+    from resource_explorer import config
+    monkeypatch.setattr(config, "_config", None)
     yield name
     c = psycopg2.connect(BASE_URL.replace("postgresql+psycopg2://", "postgresql://"))
     c.autocommit = True
-    c.cursor().execute(f'DROP SCHEMA IF EXISTS "{name}" CASCADE')
+    for n in (name, f"{name}_tree"):
+        c.cursor().execute(f'DROP SCHEMA IF EXISTS "{n}" CASCADE')
     c.close()
 
 

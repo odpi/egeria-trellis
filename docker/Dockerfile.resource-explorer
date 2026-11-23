@@ -197,6 +197,9 @@ RUN mkdir -p /app/data /home/trellis/.cache \
     && chown -R trellis:0 /app/data /home/trellis \
     && chmod -R g=u /app/data /home/trellis \
     && chown trellis:0 /app/.cache /app/.cache/huggingface && chmod g=u /app/.cache /app/.cache/huggingface
+# The bootstrap heal runs Dr.Egeria against docs/dr-egeria/<name>.md and writes <name>/egeria-outbox beside each file. Found on OpenShift Local
+# (arbitrary UID, GID 0): that tree was trellis:trellis, so the heal failed with "Permission denied" there. Group 0 with g=u, as the paths above.
+RUN chown -R trellis:0 /app/packages/resource-explorer/docs/dr-egeria && chmod -R g=u /app/packages/resource-explorer/docs/dr-egeria
 USER trellis
 
 EXPOSE 8810

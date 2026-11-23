@@ -167,6 +167,15 @@ def test_the_run_reads_the_walks_narratives_and_stores_proposals_by_section(regi
     assert all(m["file_path"] != "survey/answers.csv" for _, m in rows)
 
 
+def test_the_run_records_when_it_began_not_only_when_it_ended(registry, tmp_path, store):
+    """TR-114: `ran_at` is the END of the run, after every file was read; fs_activity needs the START to tell this
+    run's reads from a person's, so the run keeps both."""
+    fs = _register(registry, _tree(tmp_path))
+    _walk(registry, fs)
+    out = nd.run_narrative_docs(fs, registry, store_factory=lambda: store)
+    assert out["started_at"] and out["started_at"] <= out["ran_at"]
+
+
 def test_a_file_is_read_in_full_past_the_walks_excerpt(registry, tmp_path, store):
     root = tmp_path / "big"
     root.mkdir()

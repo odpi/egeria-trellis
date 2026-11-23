@@ -67,7 +67,14 @@ def schema_apply() -> None:
     """
     from resource_explorer.registry import ProjectRegistry
 
-    n, secs = ProjectRegistry.open_for_schema_apply().schema_apply()
+    import time
+
+    from resource_explorer import schema_stores
+
+    t0 = time.perf_counter()
+    done = schema_stores.apply_all()
+    secs = time.perf_counter() - t0
+    n = done["registry"] + sum(v for k, v in done.items() if k not in ("registry", "stores"))
     elapsed = f"{secs * 1000:.0f} ms" if secs < 1 else f"{secs:.1f} s"
     typer.echo(f"schema ready · {n} statements · {elapsed}")
 

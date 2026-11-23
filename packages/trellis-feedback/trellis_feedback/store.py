@@ -53,6 +53,7 @@ from trellis_feedback.models import (
     STATUSES,
     UNDIAGNOSED,
     FeedbackError,
+    SchemaNotReady,
     FeedbackItem,
     TriageEvent,
     TriageState,
@@ -173,7 +174,12 @@ class FeedbackStore:
         schema: str | None = None,
         external_sources: Iterable[str] = (),
         engine: Engine | None = None,
+        ddl: str = "auto",
     ) -> None:
+        """`ddl="auto"` (default) creates and migrates the tables on open. `ddl="external"` sends no DDL
+        at all: the tables must already exist (see `apply_schema`), else `SchemaNotReady`."""
+        if ddl not in ("auto", "external"):
+            raise FeedbackError(f"ddl must be 'auto' or 'external', not {ddl!r}")
         if not app:
             raise FeedbackError("app is required")
         self.app = app
@@ -194,10 +200,42 @@ class FeedbackStore:
                 kwargs["connect_args"] = {"check_same_thread": False, "timeout": 30}
             engine = create_engine(url, **kwargs)
         self.engine = engine
+        self.ddl = ddl
         self._md, self.items, self.events = _build_tables(self.schema)
-        self._init_schema()
+        if ddl == "auto":
+            self._init_schema()
+        else:
+            self.check_schema()
 
     # ── schema ──────────────────────────────────────────────────────────────────────────────
+
+    def apply_schema(self) -> int:
+        """Create and migrate the tables: the schema Job's entry point (works in either mode). Returns the number of
+        statements this sent to the database (introspection included)."""
+        from sqlalchemy import event
+        count = [0]
+
+        def _count(conn, cursor, statement, parameters, context, executemany):
+            count[0] += 1
+        event.listen(self.engine, "before_cursor_execute", _count)
+        try:
+            self._init_schema()
+        finally:
+            event.remove(self.engine, "before_cursor_execute", _count)
+        return count[0]
+
+    def check_schema(self) -> None:
+        """Read-only: raise `SchemaNotReady` unless both tables and every added column exist."""
+        insp = inspect(self.engine)
+        names = set(insp.get_table_names(schema=self.schema))
+        missing = [t for t in (self.items.name, self.events.name) if t not in names]
+        if not missing:
+            have = {c["name"] for c in insp.get_columns(self.events.name, schema=self.schema)}
+            missing = [f"{self.events.name}.{n}" for n, _ in _ADDED_EVENT_COLUMNS if n not in have]
+        if missing:
+            raise SchemaNotReady(
+                f"feedback schema is not ready (missing: {', '.join(missing)}); "
+                "ddl='external' sends no DDL: run `resource-explorer schema apply` first")
 
     def _init_schema(self) -> None:
         with self.engine.begin() as conn:

@@ -56,6 +56,10 @@ class _InsertSql:
     extra_columns: tuple[str, ...]
 
 
+class SchemaNotReady(RuntimeError):
+    """`ddl="external"` and something this operation needs is not declared or not created: run the schema step first."""
+
+
 class PgVectorStore(BaseVectorStore):
     """pgvector implementation of BaseVectorStore. One table per collection."""
 
@@ -69,7 +73,22 @@ class PgVectorStore(BaseVectorStore):
         table_name_map: Mapping[str, str] | None = None,
         auto_provision_on_insert: bool = False,
         logger: LoggerLike | None = None,
+        ddl: str = "auto",
+        declared_collections_table: str | None = None,
     ) -> None:
+        """`ddl="auto"` (default) is today's behaviour. `ddl="external"` means this instance sends no DDL: `connect()`
+        skips CREATE EXTENSION / CREATE SCHEMA; create_collection, create_index, delete_collection, rename_collection and
+        swap_collections are refused; `auto_provision_on_insert` is refused. With `declared_collections_table` (a table in
+        this store's schema with a `name` column), an insert into a collection not listed there fails before any write
+        with SchemaNotReady. `apply_schema()` is the schema Job's entry point."""
+        if ddl not in ("auto", "external"):
+            raise ValueError(f"ddl must be 'auto' or 'external', not {ddl!r}")
+        if ddl == "external" and auto_provision_on_insert:
+            raise ValueError("auto_provision_on_insert=True would send DDL on insert and is refused with ddl='external'")
+        self._ddl = ddl
+        self._declared_table = declared_collections_table
+        self._declared_ok: set[str] = set()
+        self._ddl_sent = 0           # DDL statements this instance has sent (apply_schema reports the delta)
         self._config = config
         self._metric = resolve_metric(metric)
         self._embeddings = embeddings
@@ -144,9 +163,10 @@ class PgVectorStore(BaseVectorStore):
                     user=self._config.user, password=self._config.password,
                     connect_timeout=self._config.connect_timeout,
                 ) as bootstrap:
-                    self._ensure_extension(bootstrap)
-                    if self._config.schema:
-                        self._ensure_schema(bootstrap)
+                    if self._ddl == "auto":
+                        self._ensure_extension(bootstrap)
+                        if self._config.schema:
+                            self._ensure_schema(bootstrap)
             except Exception:
                 # Don't leak the pool's own connections if bootstrap fails —
                 # self._pool stays None either way, but closeall() releases
@@ -175,14 +195,56 @@ class PgVectorStore(BaseVectorStore):
     def _put_conn(self, conn) -> None:
         self._pool.putconn(conn)
 
+    def _refuse_ddl(self, op: str) -> None:
+        if self._ddl == "external":
+            raise SchemaNotReady(
+                f"{op}() sends DDL and is refused with ddl='external': the schema Job (`resource-explorer schema apply`) "
+                "creates collections; a running process only reads and writes rows")
+
+    def apply_schema(self, collections: Sequence[str] = ()) -> int:
+        """The schema Job's entry point: CREATE EXTENSION, CREATE SCHEMA, then each named collection's table and index.
+        Works whatever this instance's `ddl` is (it runs through an `auto` twin that shares the configuration)."""
+        twin = PgVectorStore(
+            self._config, metric=self._metric, embeddings=self._embeddings,
+            collection_schemas=self._collection_schemas, table_name_map=self._table_name_map,
+            logger=self._logger, ddl="auto")
+        twin.connect()
+        try:
+            for name in collections:
+                twin.create_collection(name)
+                twin.create_index(name)
+            return twin._ddl_sent
+        finally:
+            twin.disconnect()
+
+    def _require_declared(self, collection_name: str) -> None:
+        """External mode with a declared-collections table: refuse an insert into an undeclared collection, loudly and before any write."""
+        if self._ddl != "external" or not self._declared_table or collection_name in self._declared_ok:
+            return
+        qualified = self._qualified(self._declared_table)
+        with psycopg2.connect(
+            host=self._config.host, port=self._config.port, dbname=self._config.dbname,
+            user=self._config.user, password=self._config.password,
+            connect_timeout=self._config.connect_timeout,
+        ) as conn, conn.cursor() as cur:
+            cur.execute(f"SELECT 1 FROM {qualified} WHERE name = %s", (collection_name,))
+            row = cur.fetchone()
+        if not row:
+            raise SchemaNotReady(
+                f"collection {collection_name!r} is not declared in {self._declared_table}; ddl='external' sends no DDL: "
+                "a new resource needs the schema Job: helm upgrade, or run `resource-explorer schema apply`")
+        self._declared_ok.add(collection_name)
+
     def _ensure_extension(self, conn) -> None:
         with conn.cursor() as cur:
             cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        self._ddl_sent += 1
         conn.commit()
 
     def _ensure_schema(self, conn) -> None:
         with conn.cursor() as cur:
             cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{self._config.schema}"')
+        self._ddl_sent += 1
         conn.commit()
 
     # ------------------------------------------------------------------
@@ -190,6 +252,7 @@ class PgVectorStore(BaseVectorStore):
     # ------------------------------------------------------------------
 
     def create_collection(self, collection_name: str, drop_if_exists: bool = False) -> str:
+        self._refuse_ddl("create_collection")
         table = self._table(collection_name)
         self.connect()
         conn = self._get_conn()
@@ -200,6 +263,7 @@ class PgVectorStore(BaseVectorStore):
                     self._logger.warning(f"Dropped table: {table}")
                 ddl = self._render_ddl(table)
                 cur.execute(ddl)
+                self._ddl_sent += 1 + (1 if drop_if_exists else 0)
             conn.commit()
             self._logger.info(f"✓ Created/verified table: {table}")
         finally:
@@ -247,6 +311,7 @@ class PgVectorStore(BaseVectorStore):
         Neither app's real callers ever pass this explicitly today; this
         makes the mismatch a loud failure instead of a silent one, for free.
         """
+        self._refuse_ddl("create_index")
         # Validated before connecting — this is a pure config check, no
         # reason to require a live database just to reject a bad call.
         if metric_type is not None and metric_type.upper() != self._metric.legacy_metric_type:
@@ -272,6 +337,7 @@ class PgVectorStore(BaseVectorStore):
         try:
             with conn.cursor() as cur:
                 cur.execute(sql)
+                self._ddl_sent += 1
             conn.commit()
             self._logger.info(f"✓ Created HNSW index on {table} (m={m}, ef_construction={ef_construction})")
         finally:
@@ -348,6 +414,7 @@ class PgVectorStore(BaseVectorStore):
         if self._auto_provision_on_insert:
             self.create_collection(collection_name)
             self.create_index(collection_name)
+        self._require_declared(collection_name)
         self.connect()
 
         if ids is None:
@@ -586,6 +653,7 @@ class PgVectorStore(BaseVectorStore):
             self._put_conn(conn)
 
     def delete_collection(self, collection_name: str) -> None:
+        self._refuse_ddl("delete_collection")
         self.connect()
         table = self._table(collection_name)
         conn = self._get_conn()
@@ -674,6 +742,7 @@ class PgVectorStore(BaseVectorStore):
         needs, so a long reader cannot stall the swap, and retries `attempts` times; on any failure the transaction
         rolls back and nothing is renamed.
         """
+        self._refuse_ddl("swap_collections")
         if not renames:
             return
         problems = self.check_names(*[n for pair in renames for n in pair])
@@ -740,6 +809,7 @@ class PgVectorStore(BaseVectorStore):
         collections' rows under Postgres' RENAME semantics being a no-op
         error in that case is what we want, not what to swallow.
         """
+        self._refuse_ddl("rename_collection")
         self.connect()
         old_table = self._table(old_name)
         new_table = self._table(new_name)

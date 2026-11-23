@@ -230,9 +230,12 @@ function bindingGlyph(inv) {
     // After an Egeria reset: the project it named is gone. Not "local" (a choice) and not "Egeria" (a project).
     return '<span class="text-state-warn" title="unbound by reset \u00b7 rebind to recreate">unbound by reset</span>';
   }
-  return inv.egeria_project_guid
-    ? `<span title="${esc(inv.egeria_project_qualified_name || 'bound to an Egeria Project')}">☁ Egeria</span>`
-    : '<span class="text-ink-muted" title="no Egeria Project">🏠 local</span>';
+  if (inv.egeria_project_guid) {
+    return `<span title="${esc(inv.egeria_project_qualified_name || 'bound to an Egeria Project')}">☁ Egeria</span>`;
+  }
+  // TR-120: bound to Egeria but not promoted yet: say so, as the server words it. Not "local", which is a choice.
+  if (inv.egeria_project_words) return `<span data-inv-egeria-words class="text-ink-muted">${esc(inv.egeria_project_words)}</span>`;
+  return '<span class="text-ink-muted" title="no Egeria Project">🏠 local</span>';
 }
 
 async function renderList() {
@@ -689,8 +692,10 @@ function egeriaSectionHtml(inv) {
         <button data-act="inv-unbind" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent disabled:cursor-default disabled:opacity-60">Unbind</button>
       </div>`;
   }
+  // TR-120: an investigation bound to Egeria is not "local only"; the server says what it is.
+  const lead = inv.egeria_project_words ? esc(inv.egeria_project_words) + '.' : 'No Egeria Project yet — local only.';
   return `<p class="max-w-[70ch] text-caveat text-ink-muted">
-      No Egeria Project yet — local only. Bind an existing one, or create the Egeria side
+      ${lead} Bind an existing one, or create the Egeria side
       (Project + Folio + ResourceList) from this investigation's current members.
     </p>
     <div class="flex flex-wrap gap-s2">

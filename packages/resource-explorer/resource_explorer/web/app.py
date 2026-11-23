@@ -106,6 +106,11 @@ async def _lifespan(app: FastAPI):
     check_public_url()  # refuses to start on a malformed RE_PUBLIC_URL, quoting it (PublicUrlInvalid)
     check_database_settings_at_startup()  # TR-12: refuses to start naming an unset shared-Postgres setting
     log_llm_tier_config()  # the resolved tier/model/num_ctx/budgets; the lazy first-call line predates logging setup
+    from resource_explorer.registry import schema_mode_from_env
+    if schema_mode_from_env() == "external":
+        # TR-115: refuse to start, naming the store, when the schema Job has not brought every store to this code's version.
+        from resource_explorer import schema_stores
+        schema_stores.require_ready()
 
     from resource_explorer.surveyors.prefect_adapter import alog_prefect_reachability_at_startup
 

@@ -97,7 +97,7 @@ test('a run shows its words, the proposal rule, the matches worth a look by file
   assert.deepEqual([...name.querySelectorAll('td')].map(text), ['hr/payroll.csv', 'hr, payroll']);
 });
 
-test('an unread catalogue is said in the words; Egeria-profiled files are said not opened; stale after newer profiles', async () => {
+test('an unread catalogue is said in the words; Egeria-profiled files that could not be read are said not sampled; stale after newer profiles', async () => {
   const { host, fs } = await setUp();
   host.innerHTML = fs.folderSurveyCardHtml(VIEW(CM(PRICED, RUN({ matches: [], name_signals: [], name_signal_files: 0,
     words: "3 columns of 2 profiled files examined · nothing established · Egeria's data classes could not be read: refused",
@@ -105,7 +105,7 @@ test('an unread catalogue is said in the words; Egeria-profiled files are said n
   const sec = host.querySelector('[data-fs-class]');
   assert.match(text(sec), /nothing established · Egeria's data classes could not be read: refused/);
   assert.doesNotMatch(text(sec), /no class matched/);
-  assert.match(text(host.querySelector('[data-fs-class-egeria]')), /1 file profiled by Egeria · not opened here, so not sampled/);
+  assert.match(text(host.querySelector('[data-fs-class-egeria]')), /1 file profiled by Egeria · could not be read here, so not sampled/);
   assert.match(text(host.querySelector('[data-fs-class-stale]')), /newer profiles exist/);
   assert.equal(host.querySelector('[data-fs-measure-table="class-match"]'), null);
 });
@@ -118,4 +118,14 @@ test('the press posts once and repaints from the re-read', async () => {
   assert.equal(calls.filter((c) => c.method === 'POST' && /\/class-match$/.test(c.url)).length, 1);
   assert.equal(host.querySelector('[data-fs-class]').dataset.fsClassState, 'matched');
   assert.equal(host.querySelector('[data-fs-error]'), null);
+});
+
+test('TR-126: Egeria-profiled files read for matching only are said so, on their own line', async () => {
+  const { host, fs } = await setUp();
+  host.innerHTML = fs.folderSurveyCardHtml(VIEW(CM(PRICED, RUN({ matches: [], name_signals: [], name_signal_files: 0,
+    words: '3 columns of 2 profiled files examined · 2 columns match a data class',
+    file_outcomes: { egeria_profiled_sampled: 2, sampled: 1 } }))));
+  assert.match(text(host.querySelector('[data-fs-class-egeria-read]')),
+    /2 files profiled by Egeria · values read by Resource Explorer for matching only/);
+  assert.equal(host.querySelector('[data-fs-class-egeria]'), null, 'nothing was left unread, so no "not sampled" line');
 });

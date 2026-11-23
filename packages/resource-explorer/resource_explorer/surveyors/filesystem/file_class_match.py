@@ -51,8 +51,9 @@ PERSONAL_NAME_WORDS = ("patient", "patients", "customer", "customers", "employee
                        "students", "dob", "birth", "address", "addresses", "people", "persons", "users", "staff", "hr",
                        "pii", "gdpr", "phi")
 
-EGERIA_NOT_OPENED = ("Egeria's CSV Survey Service profiled this file, so Resource Explorer does not open it; Egeria's value "
-                     "counts are not read by this step yet")
+#: TR-126: a file Egeria's CSV Survey Service profiled has its head read for MATCHING ONLY. Egeria's profile stays the
+#: profile (nothing is written to it); the match says where its values came from.
+EGERIA_READ_FOR_MATCHING_WORDS = "values read by Resource Explorer for matching only; Egeria profiled this file"
 
 
 class NothingToMatch(RuntimeError):
@@ -79,7 +80,9 @@ def name_signals(file_path: str) -> list[str]:
 
 def sample_values(path: Path, ext: str, *, limit: int = SAMPLE_BYTES, max_values: int = MAX_VALUES):
     """({column: [values]} or None, rows read, why-not). Reads the head of the file only: a delimited or JSON-lines file
-    up to `limit` bytes cut at its last whole line, a Parquet file's first row group. None with the reason when the file
+    up to `limit` bytes cut at its last whole line, a Parquet file's first row group, a workbook's first `max_values` rows
+    (xlsx/xlsm/xls/ods: opened only if the file is within `limit` bytes, since a workbook cannot be cut at a line, and
+    only when its library is installed). None with the reason when the file
     cannot be opened or parsed; never raises."""
     import pandas as pd
 
@@ -109,6 +112,18 @@ def sample_values(path: Path, ext: str, *, limit: int = SAMPLE_BYTES, max_values
                         df = pd.read_csv(io.BytesIO(data), sep=fp._DELIMITED[ext], low_memory=False)
                     except UnicodeDecodeError:
                         df = pd.read_csv(io.BytesIO(data), sep=fp._DELIMITED[ext], low_memory=False, encoding="latin-1")
+            elif ext in fp._SPREADSHEETS:
+                # TR-125: the head rows of a workbook, under the same limits. A workbook is a zip and cannot be cut at
+                # a line, so the byte limit decides whether it is opened at all (file_profiles reads one whole, and
+                # calls one over its limit OVER_LIMIT, so such a file has no profiled columns to match anyway); the row
+                # limit is `max_values`, read by pandas (`nrows`), which stops after them.
+                lib = fp._LIBRARY[ext]
+                if not fp._has(lib):
+                    return None, 0, f"values are not sampled from .{ext} files here: the {lib} library is not installed"
+                if os.fstat(fh.fileno()).st_size > limit:
+                    return None, 0, (f"a .{ext} workbook over the {limit}-byte sample limit is not opened "
+                                     f"(a workbook cannot be cut at a line)")
+                df = pd.read_excel(fh, nrows=max_values)
             else:
                 return None, 0, f"values are not sampled from .{ext} files here (read whole only)"
     except Exception as exc:  # noqa: BLE001 -- a file that cannot be parsed says so, never a silent skip
@@ -143,9 +158,21 @@ def _display(m, file_path: str) -> dict:
     return d
 
 
+#: TR-128(b): what a kept row is worth, by VERDICT. A real match (matched, partial_match) outranks a proposal, which
+#: outranks a no_match; anything not established comes last. The old key put `established` first and then confidence, and
+#: a no_match carries confidence 100, so no_match rows pushed real matches past MAX_KEPT (6 of 12 cut on egeria_v6).
+_VERDICT_RANK = {"matched": 0, "partial_match": 0, "unmatched_patterned": 1, "no_match": 2}
+
+
 def _rank(d: dict) -> tuple:
-    return (not d["privacy_relevant"], not d["established"], d["verdict"] != "unmatched_patterned", -d["confidence"],
-            d["file_path"], d["column"])
+    return (not d["privacy_relevant"], _VERDICT_RANK.get(d["verdict"], 3), -d["confidence"], d["file_path"], d["column"])
+
+
+def matching(verdicts: dict | None) -> int:
+    """TR-128(a): the columns that MATCH a data class: matched and partial_match, by verdict. Not `established`, which
+    also counts no_match and unmatched_patterned (both are findings, neither is a match)."""
+    v = verdicts or {}
+    return int(v.get("matched", 0)) + int(v.get("partial_match", 0))
 
 
 def run_file_class_match(fs_entity, registry, *, catalog_loader: Callable[[], object] | None = None) -> dict:
@@ -167,7 +194,8 @@ def run_file_class_match(fs_entity, registry, *, catalog_loader: Callable[[], ob
     if not root.is_dir():
         raise NotReachable(f"The mount point {fs_entity.local_mount_point} cannot be reached from here · nothing read.")
     claim_key = f"{STEP_KEY}:{registry._normalize_slug(slug)}"
-    holder = f"{fp.machine()}:{os.getpid()}:{_now()}"
+    started_at = _now()      # `ran_at` below is the end of the run; fs_activity needs when the files began to be read (TR-114)
+    holder = f"{fp.machine()}:{os.getpid()}:{started_at}"
     if not registry.take_claim(claim_key, holder, stale_after_seconds=CLAIM_STALE_SECONDS):
         raise AlreadyRunning(ALREADY_RUNNING_WORDS.format(slug=slug))
     try:
@@ -191,14 +219,18 @@ def run_file_class_match(fs_entity, registry, *, catalog_loader: Callable[[], ob
                 continue
             source = cols[0].get("stats_source") or ""
             name = PurePosixPath(file_path).name
-            values, rows_read, why = None, 0, ""
-            if source.startswith(fp.EGERIA_SOURCE_PREFIX):
-                why, outcome = EGERIA_NOT_OPENED, "egeria_profiled"
-            elif looks_secret(name):
+            values, rows_read, why, read_note = None, 0, "", ""
+            if looks_secret(name):
                 why, outcome = "a secret-looking name: never opened", "secret_name"
             else:
                 values, rows_read, why = sample_values(root / file_path, fp.ext_of(file_path))
-                outcome = "sampled" if values is not None else "not_sampled"
+                egeria = source.startswith(fp.EGERIA_SOURCE_PREFIX)
+                if values is not None:
+                    outcome = "egeria_profiled_sampled" if egeria else "sampled"
+                    if egeria:
+                        why = read_note = EGERIA_READ_FOR_MATCHING_WORDS
+                else:
+                    outcome = "egeria_profiled" if egeria else "not_sampled"
             sampled = values is not None
             total = None
             if sampled and all((c.get("sample_ratio") in (None, 1, 1.0)) for c in cols):
@@ -219,6 +251,9 @@ def run_file_class_match(fs_entity, registry, *, catalog_loader: Callable[[], ob
                     m.matched_qualified_name = m.matched_display_name = ""
                     m.not_established_reason = catalog.unavailable_reason or "Egeria's data classes could not be read"
                 d = _display(m, file_path)
+                if read_note:
+                    d["read_note"] = read_note
+                    d["statement"] = f"{d['statement']} ({read_note})"
                 d["header_suspect"] = c.get("state") == fp.HEADER_SUSPECT
                 matches.append(d)
         matches.sort(key=_rank)
@@ -226,11 +261,14 @@ def run_file_class_match(fs_entity, registry, *, catalog_loader: Callable[[], ob
         summary = {
             # Only files with a profiled column (the set `price()` counts): `by_file` holds a row for every file of the
             # profile run in every state, so len(by_file) said "of 4,847 profiled files" when 1,889 were profiled (D7).
-            "profile_run": profile_run, "ran_at": _now(), "columns": len(matches),
+            "profile_run": profile_run, "started_at": started_at, "ran_at": _now(), "columns": len(matches),
             "files": sum(1 for f in files_out if f["outcome"] != "no_columns"),
             "verdicts": dict(verdicts), "established": sum(1 for d in matches if d["established"]),
+            "matching": matching(verdicts),
             "privacy_relevant": sum(1 for d in matches if d["privacy_relevant"] and d["established"]),
             "proposals": verdicts.get("unmatched_patterned", 0),
+            "proposals_privacy_relevant": sum(1 for d in matches
+                                              if d["verdict"] == "unmatched_patterned" and d["privacy_relevant"]),
             "files_detail": files_out[:200], "files_not_shown": max(0, len(files_out) - 200),
             "file_outcomes": dict(Counter(f["outcome"] for f in files_out)),
             "name_signals": names[:200], "name_signal_files": len(names),
@@ -258,11 +296,14 @@ def run_words(m: dict) -> str:
     if not cat.get("available", True):
         parts.append(f"nothing established · {cat.get('unavailable_reason') or 'Egeria’s data classes could not be read'}")
     else:
-        parts.append(f"{_plural(m.get('established', 0), 'column')} match a data class"
-                     f" ({m.get('privacy_relevant', 0):,} privacy-relevant)")
+        parts.append(f"{_plural(matching(v), 'column')} match a data class")
         parts.append(f"against {_plural(cat.get('data_class_count', 0), 'data class', 'data classes')} Egeria holds")
     if m.get("proposals"):
-        parts.append(f"{_plural(m['proposals'], 'column')} with a pattern no class has · a proposal for a new class")
+        # `privacy_relevant` is set on a PROPOSAL (a column whose values follow a pattern RE knows to be personal), never on a
+        # match, so the count belongs here and not beside the matches (Architect read-back, TR-128).
+        priv = m.get("proposals_privacy_relevant", m.get("privacy_relevant", 0))
+        parts.append(f"{_plural(m['proposals'], 'column')} with a pattern no class has ({priv:,} privacy-relevant)"
+                     f" · a proposal for a new class")
     for key, words in (("no_match", "matched no class"), ("inconclusive", "inconclusive on their sample"),
                        ("not_sampled", "not sampled"), ("not_applicable", "of a type no data class describes")):
         if v.get(key):
@@ -288,7 +329,8 @@ def price(registry, slug: str) -> dict:
     return {"priced": True, "files": len(files), "columns": len(cols), "run": runs[0],
             "words": (f"matches {_plural(len(cols), 'column')} of {_plural(len(files), 'profiled file')} against the data "
                       f"classes Egeria holds (read from Egeria) · reads the first {SAMPLE_BYTES // (1024 * 1024)} MB of "
-                      f"{_plural(len(by_re), 'file')} Resource Explorer profiled; files Egeria profiled are not opened")}
+                      f"{_plural(len(files), 'file')}"
+                      + (f"; the {len(files) - len(by_re):,} Egeria profiled are read for matching only" if len(files) > len(by_re) else ""))}
 
 
 def view(registry, slug: str) -> dict:

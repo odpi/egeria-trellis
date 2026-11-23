@@ -212,7 +212,7 @@ async def list_classifications() -> dict:
         ],
         "bindings": [
             {"name": ProjectRegistry.BINDING_EGERIA,
-             "label": "Create in Egeria",
+             "label": "Egeria Project (created when you publish)",
              "description": "Gets an Egeria Project, so it can be shared, zoned "
                             "and found by others."},
             {"name": ProjectRegistry.BINDING_LOCAL,

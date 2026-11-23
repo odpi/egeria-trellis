@@ -237,7 +237,8 @@ def run_narrative_docs(fs_entity, registry, *, store_factory: Callable[[], objec
     if not root.is_dir():
         raise NotReachable(f"The mount point {fs_entity.local_mount_point} cannot be reached from here · nothing read.")
     claim_key = f"{STEP_KEY}:{registry._normalize_slug(slug)}"
-    holder = f"{machine()}:{os.getpid()}:{_now()}"
+    started_at = _now()      # `ran_at` below is the end of the run; fs_activity needs when the files began to be read (TR-114)
+    holder = f"{machine()}:{os.getpid()}:{started_at}"
     if not registry.take_claim(claim_key, holder, stale_after_seconds=CLAIM_STALE_SECONDS):
         raise AlreadyRunning(ALREADY_RUNNING_WORDS.format(slug=slug))
     try:
@@ -274,7 +275,7 @@ def run_narrative_docs(fs_entity, registry, *, store_factory: Callable[[], objec
         store = (store_factory or default_store)()
         collection = collection_for(store, slug)
         stored, leftover = _replace(store, collection, chunks)
-        summary = {"walk_run": run, "ran_at": _now(), "collection": collection, "leftover": leftover, "files": len(files),
+        summary = {"walk_run": run, "started_at": started_at, "ran_at": _now(), "collection": collection, "leftover": leftover, "files": len(files),
                    "outcomes": outcomes, "sections": sections, "chunks": len(chunks), "stored": int(stored or 0),
                    "files_detail": per_file[:200], "files_not_shown": max(0, len(per_file) - 200),
                    "max_file_bytes": limit, "machine": machine()}

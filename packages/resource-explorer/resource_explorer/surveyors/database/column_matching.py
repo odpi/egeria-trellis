@@ -67,6 +67,11 @@ MATCH_MATCHED = "matched"
 #: Reference data only: the sampled distinct values are covered by a known set,
 #: but not all of them — some values are outside it.
 MATCH_PARTIAL = "partial_match"
+#: TR-127 (Architect ruling 2026-11-22): the column's NAME and TYPE fit a class that carries no value rule, so no
+#: value was tested. It is NOT a match and it must never read as one: it is in `NOT_ESTABLISHED_VERDICTS`, not in
+#: `ESTABLISHED_VERDICTS`, and counts as a match nowhere. Every consumer keys on the verdict, so a distinct verdict
+#: fails closed where an evidence flag on "matched" would fail open at any consumer that forgot to check it.
+MATCH_NAME_ONLY = "name_only"
 #: Values were read, candidates existed, nothing conformed. A real finding.
 MATCH_NO_MATCH = "no_match"
 #: Nothing known conformed, but the values follow a recognisable pattern (or,
@@ -90,7 +95,7 @@ MATCH_NOT_APPLICABLE = "not_applicable"
 #: as absence rather than as a negative answer. Grouped here so a consumer gets
 #: the distinction by importing one name instead of by remembering four.
 NOT_ESTABLISHED_VERDICTS: frozenset[str] = frozenset(
-    {MATCH_NOT_SAMPLED, MATCH_NO_CANDIDATES, MATCH_INCONCLUSIVE, MATCH_NOT_APPLICABLE}
+    {MATCH_NOT_SAMPLED, MATCH_NO_CANDIDATES, MATCH_INCONCLUSIVE, MATCH_NOT_APPLICABLE, MATCH_NAME_ONLY}
 )
 
 #: The verdicts that are a positive statement about the data.
@@ -434,6 +439,15 @@ def detect_patterns(values: Sequence[Any]) -> list[tuple[ValuePattern, float]]:
 
 # ── What a known Egeria Data Class looks like, to this module ─────────────────
 
+#: Characters that make a string a regular expression rather than a plain word.
+_REGEX_METACHARS = frozenset(".^$*+?{}[]\\|()")
+
+
+def _is_name_hint(pattern: str) -> bool:
+    """True for a plain word or name (no regex metacharacter): a column-name keyword, not a value regex."""
+    return bool(pattern and pattern.strip()) and not any(c in _REGEX_METACHARS for c in pattern)
+
+
 @dataclass(frozen=True)
 class KnownDataClass:
     """An Egeria `DataClass` already in the platform, reduced to what matching
@@ -473,16 +487,29 @@ class KnownDataClass:
 
     @property
     def value_regexes(self) -> tuple[str, ...]:
-        """Every regex this class declares, `specification` first.
+        """Every VALUE regex this class declares, `specification` first.
 
         Egeria allows both a single `specification` and a list of
         `dataPatterns`, and a value conforming to any one of them conforms to
         the class — so conformance is computed over the union, not over the
         first one found.
+
+        TR-127: a `dataPatterns` entry with no regex metacharacter is a column-NAME keyword (`email`,
+        `ssn_num`), which is what RE's own seed wrote there before it used `matchPropertyNames`. Fullmatched as
+        a value regex it matches no real value, so the class would disqualify itself; those entries are name
+        hints (`name_hints`), not value regexes. Blank entries are neither.
         """
         return tuple(
-            r for r in (self.specification, *self.data_patterns) if r
+            r for r in (self.specification, *self.data_patterns) if r and r.strip() and not _is_name_hint(r)
         )
+
+    @property
+    def name_hints(self) -> tuple[str, ...]:
+        """The column names this class expects: `matchPropertyNames`, plus the metachar-free `dataPatterns`
+        (TR-127: keywords an older seed wrote as dataPatterns)."""
+        hints = [h for h in self.match_property_names if h and h.strip()]
+        hints += [p for p in self.data_patterns if p and p.strip() and _is_name_hint(p) and p not in hints]
+        return tuple(hints)
 
 
 @dataclass(frozen=True)
@@ -723,6 +750,13 @@ class ColumnMatch:
                 f"the sampled distinct values; {len(self.unmatched_values)} "
                 f"are outside it. {envelope}."
             )
+        if self.verdict == MATCH_NAME_ONLY:
+            return (
+                f"{self.column_path}: matches "
+                f"'{self.matched_display_name}' on column name and type only — "
+                f"that class carries no value specification, so no value "
+                f"conformance was tested. {envelope}."
+            )
         # MATCH_MATCHED
         draft_note = (
             " (NOTE: the matched element is itself a DRAFT proposal, not "
@@ -882,7 +916,7 @@ def data_class_match(
     scored: list[dict[str, Any]] = []
     for candidate in candidates:
         name_score = name_similarity(
-            column_name, list(candidate.match_property_names) + [candidate.display_name]
+            column_name, list(candidate.name_hints) + [candidate.display_name]
         )
         type_score = type_compatibility(column_type, candidate.data_type)
         value_score: float | None = None
@@ -957,7 +991,27 @@ def data_class_match(
     eligible = [s for s in scored if s.get("eligible")]
     eligible.sort(key=lambda s: (-s["confidence"], s["candidate"].display_name))
 
-    if eligible:
+    # TR-127: a candidate backed by a tested value rule outranks any that rests on name and type alone; when only
+    # name-and-type candidates remain the answer is `name_only`, which is not a match.
+    valued = [s for s in eligible if s.get("evidence") != "name_and_type"]
+    if eligible and not valued:
+        best = eligible[0]
+        candidate = best["candidate"]
+        return ColumnMatch(
+            **base, verdict=MATCH_NAME_ONLY,
+            confidence=best["confidence"],
+            evidence="name_and_type",
+            matched_guid=candidate.guid,
+            matched_qualified_name=candidate.qualified_name,
+            matched_display_name=candidate.display_name,
+            matched_element_is_draft=candidate.is_draft,
+            not_established_reason=(
+                f"the column's name and type fit '{candidate.display_name}', but that class carries no value "
+                f"specification, so no value was tested"),
+            unusable_specifications=unusable,
+        )
+    if valued:
+        eligible = valued
         best = eligible[0]
         candidate: KnownDataClass = best["candidate"]
         return ColumnMatch(

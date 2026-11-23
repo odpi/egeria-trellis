@@ -64,7 +64,7 @@ class TreeBuildResult:
         return self.stored > 0
 
 
-def _store():
+def _store(ddl: str | None = None):
     from trellis_artifact_tree import ArtifactTreeConfig, ArtifactTreeStore
 
     from resource_explorer.config import get_config, require_pgvector_password
@@ -72,6 +72,7 @@ def _store():
     cfg = get_config()
     pg = cfg.pgvector
     require_pgvector_password(pg)      # TR-12: refused by name, never libpq's authentication error
+    from resource_explorer.registry import schema_mode_from_env
     return ArtifactTreeStore(ArtifactTreeConfig(
         host=pg.host, port=pg.port, dbname=pg.dbname,
         # RE's PgVectorConfig deliberately avoids a bare `user` field (it would
@@ -79,7 +80,7 @@ def _store():
         # package's plain dataclass has no such problem, so translate here.
         user=pg.db_user, password=pg.password,
         schema=cfg.artifact_tree.schema_name,
-    ))
+    ), ddl=ddl or schema_mode_from_env())
 
 
 def build_trees(
@@ -115,7 +116,11 @@ def build_trees(
 
         store = _store()
         if not _schema_ready:
-            store.create_schema()
+            from resource_explorer.registry import schema_mode_from_env
+            if schema_mode_from_env() == "external":
+                store.check_schema()           # TR-115: no DDL in a running process; the schema Job made the tables
+            else:
+                store.create_schema()
             _schema_ready = True
 
         registry = AdapterRegistry()

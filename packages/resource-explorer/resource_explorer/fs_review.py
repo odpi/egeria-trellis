@@ -84,7 +84,9 @@ def class_proposals(registry, slug: str) -> tuple[str, list[dict], int]:
             continue
         out.append({"key": f"{file_path}::{column}::{cls}", "file": file_path, "column": column,
                     "data_class": str(d.get("matched_display_name") or cls), "data_class_guid": str(d.get("matched_guid") or ""),
-                    "confidence": d.get("confidence"), "privacy_relevant": bool(d.get("privacy_relevant"))})
+                    "confidence": d.get("confidence"), "privacy_relevant": bool(d.get("privacy_relevant")),
+                    # TR-126: where the values came from, when RE read them for matching only (an Egeria-profiled file)
+                    "read_note": str(d.get("read_note") or "")})
     return str(m.get("ran_at") or ""), out, int(m.get("matches_not_kept") or 0)
 
 

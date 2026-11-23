@@ -49,6 +49,7 @@ from resource_explorer.registry import (
 )
 from resource_explorer.surveyors.database.column_matching import (
     MATCH_MATCHED,
+    MATCH_NAME_ONLY,
     MATCH_NOT_APPLICABLE,
     MATCH_NOT_SAMPLED,
     MATCH_PARTIAL,
@@ -339,7 +340,9 @@ def _data_class_annotation(match: ColumnMatch) -> DataClassAnnotation:
         summary=match.describe(),
         analysis_step=ANALYSIS_STEP,
         annotation_type_name="DataClassMatch",
-        confidence=match.confidence,
+        # TR-127: a name-only column is not a finding about the data, so it carries no class GUID (candidates are
+        # only set for a real match) and no confidence: the annotation says it was not established.
+        confidence=0 if match.verdict == MATCH_NAME_ONLY else match.confidence,
         check_name="data_class_match",
         item_key=match.column_path,
         label=match.verdict,

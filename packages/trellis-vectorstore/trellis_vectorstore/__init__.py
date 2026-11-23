@@ -22,13 +22,14 @@ from trellis_vectorstore.config import PgVectorStoreConfig
 from trellis_vectorstore.embeddings import EmbeddingProvider
 from trellis_vectorstore.filters import translate_filter_expr
 from trellis_vectorstore.metrics import COSINE, L2, METRICS, MetricStrategy, resolve_metric
-from trellis_vectorstore.pg import PgVectorStore
+from trellis_vectorstore.pg import PgVectorStore, SchemaNotReady
 from trellis_vectorstore.schemas import CollectionSchema, ExtraColumn, render_create_table_sql
 
 __all__ = [
     "BaseVectorStore",
     "SearchResult",
     "PgVectorStore",
+    "SchemaNotReady",
     "PgVectorStoreConfig",
     "EmbeddingProvider",
     "translate_filter_expr",
