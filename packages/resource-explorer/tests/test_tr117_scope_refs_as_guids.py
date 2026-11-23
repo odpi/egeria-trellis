@@ -166,3 +166,25 @@ def test_the_child_processes_the_rewritten_copy_reports_it_and_removes_it(tmp_pa
     assert not seen["path"].exists()                                       # the copy's temp directory is gone
     assert "2 scope reference(s) sent as guids" in capsys.readouterr().out
     assert p.read_text() == DOC
+
+
+# ── W-117-1 (Architect's read-back): the line also names the scope values left as names ──────────────────────────
+
+def test_the_report_names_what_was_left_as_a_name(tmp_path):
+    p = _doc(tmp_path)
+    out = sr.rewrite_scope_refs(p, object(), terms=lambda _c: TERMS, tmpdir=str(tmp_path / "copy"))
+    assert out.left == ["Answered At (guid:already-a-guid)", "Somewhere Else"]
+    assert "2 left as names: Answered At (guid:already-a-guid), Somewhere Else" in out.words
+    assert "(Asked At, Assessment)" in out.words
+
+
+def test_none_rewritten_still_names_every_value_left(tmp_path):
+    p = _doc(tmp_path)
+    out = sr.rewrite_scope_refs(p, object(), terms=lambda _c: {})
+    assert out.count == 0 and "4 left as names:" in out.words and "Somewhere Else" in out.words
+
+
+def test_all_rewritten_says_none_left(tmp_path):
+    p = _doc(tmp_path, DOC.replace("Somewhere Else", "Assessment").replace(" (guid:already-a-guid)", ""))
+    out = sr.rewrite_scope_refs(p, object(), terms=lambda _c: TERMS, tmpdir=str(tmp_path / "copy"))
+    assert out.count == 4 and "0 left as names" in out.words

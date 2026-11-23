@@ -33,6 +33,8 @@ class Rewrite:
     words: str = ""                  # reported by the child, always when a scope reference was seen
     rewritten: dict[str, str] = field(default_factory=dict)   # name -> guid used
     count: int = 0
+    left: list[str] = field(default_factory=list)              # distinct scope values sent as written (W-117-1)
+    left_count: int = 0
 
 
 def _blocks(text: str) -> list[tuple[int, int]]:
@@ -115,15 +117,20 @@ def rewrite_scope_refs(path: str | Path, client: Any, *, terms: Callable[[Any], 
         return Rewrite(path, words=f"TR-117: scope references sent by name, not rewritten: {exc}")
     lines = text.splitlines(keepends=True)
     out = Rewrite(path)
+    left: list[str] = []
     for n, value in values:
         if _GUID.search(value) or value not in known:
+            left.append(value)
             continue
         ending = "\n" if lines[n].endswith("\n") else ""
         lines[n] = f"{value} (guid:{known[value]}){ending}"
         out.rewritten[value] = known[value]
         out.count += 1
+    out.left, out.left_count = sorted(set(left)), len(left)
+    left_words = f"{out.left_count} left as names" + (f": {', '.join(out.left)}" if out.left else "")
     if not out.count:
-        out.words = f"TR-117: no scope reference names a term of the {GLOSSARY} glossary; nothing rewritten"
+        out.words = (f"TR-117: no scope reference names a term of the {GLOSSARY} glossary; nothing rewritten; "
+                     f"{left_words}")
         return out
     d = Path(tmpdir or tempfile.mkdtemp(prefix="re-scope-refs-"))
     d.mkdir(parents=True, exist_ok=True)
@@ -131,5 +138,5 @@ def rewrite_scope_refs(path: str | Path, client: Any, *, terms: Callable[[Any], 
     copy.write_text("".join(lines))
     out.path = copy
     out.words = (f"TR-117: {out.count} scope reference(s) sent as guids from the {GLOSSARY} glossary "
-                 f"({', '.join(sorted(out.rewritten))}); retire when PY-73 lands")
+                 f"({', '.join(sorted(out.rewritten))}); {left_words}; retire when PY-73 lands")
     return out
