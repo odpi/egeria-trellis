@@ -285,3 +285,61 @@ def test_the_manual_run_is_a_dry_run_unless_apply_is_given(monkeypatch, capsys):
     assert e.updates == [] and "dry run" in capsys.readouterr().out.lower()
     assert bdc.reconcile_command(apply=True) == 0
     assert len(e.updates) == 1
+
+
+# ── W-135-1: matchPropertyNames is a union, never a replacement ──
+
+def _email_with(egeria, keywords):
+    dc = _by_name("EmailAddress")
+    egeria.add(bdc.data_class_qn("EmailAddress"), displayName=dc["displayName"], description=dc["description"],
+               matchPropertyNames=list(keywords), specification=dc["specification"])
+    return dc
+
+
+def test_keywords_someone_added_in_egeria_are_kept_and_the_seeds_missing_ones_are_appended():
+    e = _Egeria()
+    dc = _email_with(e, ["email", "email_address", "Email", "emailaddress"])      # hand-updated on laz, 2026-11-22
+    report = _reconcile(e, apply=True)
+    [(qn, body)] = e.updates
+    sent = body["properties"]["matchPropertyNames"]
+    assert sent[:4] == ["email", "email_address", "Email", "emailaddress"]          # Egeria's order, none dropped
+    assert sent[4:] == [k for k in dc["dataPatterns"] if k not in ("email", "email_address", "Email", "emailaddress")]
+    assert set(sent) == {"email", "email_address", "Email", "emailaddress", *dc["dataPatterns"]}
+    assert e.classes[qn]["matchPropertyNames"] == sent
+    assert set(body["properties"]) == {"class", "matchPropertyNames"}               # nothing else differed
+
+
+def test_the_dry_run_reports_only_the_additions():
+    e = _Egeria()
+    _email_with(e, ["email", "email_address", "Email", "emailaddress"])
+    report = _reconcile(e)
+    [one] = [c for c in report.classes if c.name == "EmailAddress"]
+    assert "+ ['mail_addr', 'emailaddr']" in one.line()
+    assert "Email'" not in one.line().split("+")[1]           # the extra keywords are not listed as changes
+    assert e.updates == []
+
+
+def test_a_list_that_already_covers_the_seed_is_no_changes_even_with_extra_keywords():
+    e = _Egeria()
+    dc = _by_name("EmailAddress")
+    _email_with(e, [*dc["dataPatterns"], "Email", "extra_one"])
+    report = _reconcile(e, apply=True)
+    assert e.updates == []
+    assert {c.name: c.status for c in report.classes}["EmailAddress"] == bdc.IN_STEP
+    assert "no changes" in report.text().lower()
+
+
+def test_an_empty_list_gets_the_whole_seed_in_seed_order():
+    e = _Egeria()
+    dc = _email_with(e, [])
+    _reconcile(e, apply=True)
+    assert e.classes[bdc.data_class_qn("EmailAddress")]["matchPropertyNames"] == dc["dataPatterns"]
+
+
+def test_a_second_apply_after_the_union_sends_nothing():
+    e = _Egeria()
+    _email_with(e, ["email", "Email"])
+    _reconcile(e, apply=True)
+    e.updates.clear()
+    _reconcile(e, apply=True)
+    assert e.updates == []

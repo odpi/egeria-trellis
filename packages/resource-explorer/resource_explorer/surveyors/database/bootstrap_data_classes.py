@@ -38,7 +38,8 @@ by hand in Egeria (the value matcher already treats such keywords as name hints,
 keywords as `dataPatterns` and has no `specification`. `python -m resource_explorer.surveyors.database.bootstrap_data_classes
 reconcile` lists, per seed class, the seed-owned fields that differ (`SEED_OWNED_FIELDS`, and the `requiresNameMatch` and
 `valueCheck` keys of `specificationDetails`; never displayName or description); it is a DRY RUN. With `--apply` it
-updates only those fields of those classes, keeping any other key in `specificationDetails`, and it never empties a list or
+updates only those fields of those classes, keeping any other key in `specificationDetails`, ADDING the seed's keywords to
+`matchPropertyNames` (a keyword someone added in Egeria stays; only the additions are listed), and it never empties a list or
 removes a key (Egeria's merge update does not send those: they are reported as "needs a replace update; not applied"): never a delete, never a class the seed does not name, never a class that is
 missing from Egeria (the bootstrap creates it), and a second apply changes nothing and says so. Each update is read back;
 one that did not take is reported, not counted as done.
@@ -713,6 +714,9 @@ SEED_OWNED_FIELDS: dict[str, Any] = {
     "dataPatterns": lambda dc: [],
 }
 
+#: The list fields that are a UNION: the seed's values are added to what Egeria holds, and nothing in Egeria's list is removed.
+UNION_FIELDS = ("matchPropertyNames",)
+
 #: The seed-owned KEYS of the DataClass's `specificationDetails` string map (TR-131; `_spec_details` writes them). Any
 #: other key in that map belongs to someone else and is kept.
 SEED_OWNED_DETAIL_KEYS = ("requiresNameMatch", "valueCheck")
@@ -744,7 +748,8 @@ class ClassDiff:
             return f"{self.name}: {self.status}"
         if not (self.changes or self.not_applied):
             return f"{self.name}: {self.status}" + (f": {self.reason}" if self.reason else "")
-        parts = [f"{k}: {a!r} -> {b!r}" for k, (a, b) in self.changes.items()]
+        parts = [(f"{k}: + {[x for x in b if x not in a]!r}" if k in UNION_FIELDS else f"{k}: {a!r} -> {b!r}")
+                 for k, (a, b) in self.changes.items()]
         parts += [f"{k}: {a!r} -> {b!r}: {NOT_APPLIED}" for k, (a, b) in self.not_applied.items()]
         return f"{self.name}: {self.status}: " + "; ".join(parts)
 
@@ -799,6 +804,14 @@ def _diff(dc: dict, props: dict) -> tuple[dict, dict]:
     held: dict = {}
     for prop, wanted in SEED_OWNED_FIELDS.items():
         want, have = wanted(dc), props.get(prop)
+        if prop in UNION_FIELDS:
+            # W-135-1: keywords people added in Egeria are theirs. The update sends Egeria's list as it is with the seed's
+            # missing keywords appended (Egeria's order, never a removal); only the additions are a difference.
+            have_list = list(have) if isinstance(have, (list, tuple)) else ([] if _empty(have) else [have])
+            missing = [k for k in want if k not in have_list]
+            if missing:
+                changes[prop] = (have_list, have_list + missing)
+            continue
         if _same(have, want):
             continue
         if isinstance(want, list):
