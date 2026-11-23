@@ -1,0 +1,1 @@
+{"id":"msg_01FIXTURE","type":"message","role":"assistant","model":"claude-haiku-4-5-20251001","content":[{"type":"text","text":"pong"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":19,"output_tokens":4}}

@@ -1,0 +1,26 @@
+[project]
+name = "trellis-llm"
+version = "0.1.0"
+description = "One way for Trellis apps to talk to a chat model: Ollama, any OpenAI-compatible server (LM Studio, vLLM ...) or Anthropic, with one config resolver, an egress guard and an honest report of what each provider ignored. TR-38 step 1: the package only; no app uses it yet."
+readme = "README.md"
+authors = [{ name = "Dan Wolfson" }]
+requires-python = ">=3.12,<4.0"
+# No required dependencies, deliberately: each provider's client is an optional extra, imported only when that provider is
+# chosen, so `import trellis_llm` never pulls one in and choosing a provider whose extra is missing says which to install.
+dependencies = []
+
+[project.optional-dependencies]
+ollama = ["ollama>=0.4"]
+openai = ["openai>=1.40"]
+anthropic = ["anthropic>=0.30"]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["trellis_llm"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
