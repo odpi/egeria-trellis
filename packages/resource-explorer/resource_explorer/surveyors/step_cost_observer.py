@@ -338,7 +338,7 @@ def observe(step_key: str, declared_fetch: str, declared_compute: str,
     from resource_explorer.observability import openlineage
 
     # R21: every step passes through here, so this is the one place a run
-    # event is emitted -- START now, COMPLETE/FAIL in the finally below.
+    # event is emitted -- START now, COMPLETE/FAIL/ABORT in the finally below.
     ol_state, ol_token = openlineage.begin(job_family, step_key, entity_type, slug, resource)
     raised: BaseException | None = None
 
