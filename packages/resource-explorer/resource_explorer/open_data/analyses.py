@@ -60,7 +60,8 @@ def register(analysis_id: str, run: Callable[[RunContext], OpenDataResult],
 
 #: Analyses RE ships a runner for: id -> the module that holds its `RUNNER`. Loaded when first asked for, so a worker that never
 #: runs one never imports it. A runner registered with `register` (a test's stand-in) wins.
-BUILT_IN = {"od_licence_usable": "resource_explorer.open_data.licence_usable"}
+BUILT_IN = {"od_licence_usable": "resource_explorer.open_data.licence_usable",
+            "od_cadence_kept": "resource_explorer.open_data.cadence_kept"}
 
 
 def runner_for(analysis_id: str) -> Runner | None:

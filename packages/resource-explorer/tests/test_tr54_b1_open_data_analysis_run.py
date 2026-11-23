@@ -124,8 +124,8 @@ def test_an_unknown_analysis_id_is_refused_in_words(reg, store, dataset):
 def test_a_declared_analysis_with_no_runner_says_it_is_not_built_never_ok(reg, store, dataset):
     from resource_explorer.workflows.analysis import run_open_data_analysis
 
-    r = run_open_data_analysis(dataset["slug"], "od_cadence_kept", registry=reg)
-    assert r.status == "error" and "'od_cadence_kept' is declared but has no reader yet" in r.error
+    r = run_open_data_analysis(dataset["slug"], "od_profile", registry=reg)
+    assert r.status == "error" and "'od_profile' is declared but has no reader yet" in r.error
 
 
 # ── the price, before the press ──────────────────────────────────────────────

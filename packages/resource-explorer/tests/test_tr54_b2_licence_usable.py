@@ -139,7 +139,6 @@ def test_the_built_in_runner_is_found_without_registration_and_calls_no_portal()
 
 
 def test_other_declared_analyses_are_still_not_built():
-    assert "has no reader yet" in analyses.refusal("od_cadence_kept")
     assert "has no reader yet" in analyses.refusal("od_profile")
 
 
@@ -183,7 +182,7 @@ def test_only_od_licence_usable_is_flipped_to_built_and_no_analysis_answers_a_qu
     cat = yaml.safe_load((Path(__file__).resolve().parents[1] / "resource_explorer/configdata/analysis_catalog.yaml").read_text())
     by = {a["id"]: a for a in cat["open_data_analyses"]}
     assert by[ID]["declaration"]["built"] is True
-    assert by["od_cadence_kept"]["declaration"]["built"] is False and by["od_profile"]["declaration"]["built"] is False
+    assert by["od_profile"]["declaration"]["built"] is False          # od_cadence_kept was built in B3
     assert not by[ID].get("answers_questions")                      # stays false until a catalog question lists it (B5)
     assert [m["name"] for m in by[ID]["declaration"]["measures"]] == ["licences_read"]
     assert "Not built" not in by[ID]["description"]

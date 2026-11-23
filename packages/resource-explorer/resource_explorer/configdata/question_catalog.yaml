@@ -4229,19 +4229,23 @@ open_data_questions:
   levels:
   - resource
   answering:
-    kind: gap
+    kind: partial
     analysis_ids:
     - od_cadence_kept
     checks: []
-    note: 'GAP: od_cadence_kept (proposed): compare the stated cadence with the modified dates. Until
-      it is built the stated cadence and the modified date are shown when the record gives them (partial).'
-  answering_mechanism: Direct Field + Gap
+    note: 'PARTIAL: od_cadence_kept compares the cadence a dataset''s publisher states with the modified
+      dates RE has observed over the dataset''s refresh history, one dataset at a time on the run queue;
+      one refresh is ''not enough history'', never ''kept'', a dataset that states no cadence is ''not
+      judged'', and it reads stored refresh history only, with no portal call. Until the question is wired
+      to it, the row shows the stated cadence and the modified date from the publisher''s record.'
+  answering_mechanism: Direct Field + Analysis
   rationale: 'What the publisher states: the update cadence it gives (accrualPeriodicity) and the modified
     date. The check will compare them; a publisher that states no cadence leaves the question unanswered,
     not answered yes.'
   catalog_history: '2026-11-02: added for open data (owner: add them now; answers ''not run yet'' until
     the check lands). The analysis is declared in analysis_catalog.yaml with built: false, so the row
-    reads no reader yet, not a runnable analysis.'
+    reads no reader yet, not a runnable analysis. 2026-11-23: od_cadence_kept built (TR-54 B3): GAP →
+    PARTIAL; it answers the question once wired (B5).'
   retired: false
 - id: Q-0115
   question: What do we know about the data itself — columns, size, formats — and what has not been read?

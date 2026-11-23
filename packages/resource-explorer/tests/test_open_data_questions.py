@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 NEXT = ROOT / "resource_explorer/web/static/next"
 IDS = ("Q-0113", "Q-0114", "Q-0115")
 LEADS = {"Q-0113": "od_licence_usable", "Q-0114": "od_cadence_kept", "Q-0115": "od_profile"}
+BUILT = {"od_licence_usable", "od_cadence_kept"}      # built in TR-54 B2 and B3: their rows are PARTIAL; od_profile's stays a gap until B4
 
 
 def test_the_catalogue_has_the_three_rows_with_unique_ids_and_declared_analyses():
@@ -28,9 +29,9 @@ def test_the_catalogue_has_the_three_rows_with_unique_ids_and_declared_analyses(
     for q in qs:
         lead = LEADS[q["id"]]
         # Q-0113 became PARTIAL when od_licence_usable was built (TR-54 B2, Architect ruling); the other two stay gaps until built
-        assert q["answering"]["analysis_ids"] == [lead] and q["answering"]["kind"] == ("partial" if lead == "od_licence_usable" else "gap")
+        assert q["answering"]["analysis_ids"] == [lead] and q["answering"]["kind"] == ("partial" if lead in BUILT else "gap")
         # declared, no implementation (od_licence_usable was built in TR-54 B2: its question still reads "no reader yet" until B5)
-        assert declared[lead]["declaration"]["built"] is (lead == "od_licence_usable")
+        assert declared[lead]["declaration"]["built"] is (lead in BUILT)
         assert q["levels"] == ["resource"] and q["catalog_history"].startswith("2026-11-02: added for open data")
     by = {q["id"]: q for q in qs}
     assert (by["Q-0113"]["stage"], by["Q-0114"]["stage"], by["Q-0115"]["stage"]) == ("Assessment", "Scouting", "Discovery")
@@ -48,7 +49,7 @@ def test_the_csv_mirror_names_the_three_rows():
     rows = {r["Question ID"]: r for r in csv.DictReader(open(ROOT / "docs/dr-egeria/resource_questions.csv", newline="", encoding="utf-8"))}
     for qid in IDS:
         assert rows[qid]["Resource Types"] == "open_data"
-        assert rows[qid]["Answering Analysis"].startswith("PARTIAL:" if qid == "Q-0113" else "GAP:")
+        assert rows[qid]["Answering Analysis"].startswith("PARTIAL:" if LEADS[qid] in BUILT else "GAP:")
 
 
 def _dataset(**kw):
@@ -150,4 +151,15 @@ def test_q0113_is_partial_with_the_architects_words_and_says_when_it_changed():
     assert r["Answering Analysis"].startswith("PARTIAL: od_licence_usable judges a dataset's licence identifier against RE's licence table")
     assert "RE gives no legal advice" in r["Answering Analysis"] and "GAP" not in r["Answering Mechanism"]
     assert r["Catalog History"].endswith("2026-11-23: od_licence_usable built (TR-54 B2): GAP → PARTIAL; it answers the question once wired (B5).")
-    assert rows["Q-0114"]["Answering Analysis"].startswith("GAP:") and rows["Q-0115"]["Answering Analysis"].startswith("GAP:")
+    assert rows["Q-0115"]["Answering Analysis"].startswith("GAP:")
+
+
+def test_q0114_is_partial_and_states_the_absence_rules_in_words():
+    import csv
+
+    r = {x["Question ID"]: x for x in csv.DictReader(open(ROOT / "docs/dr-egeria/resource_questions.csv", newline="", encoding="utf-8"))}["Q-0114"]
+    cell = r["Answering Analysis"]
+    assert cell.startswith("PARTIAL: od_cadence_kept compares the cadence a dataset's publisher states with the modified dates")
+    assert "one refresh is 'not enough history', never 'kept'" in cell and "states no cadence is 'not judged'" in cell
+    assert "reads stored refresh history only, with no portal call" in cell and "GAP" not in r["Answering Mechanism"]
+    assert r["Catalog History"].endswith("2026-11-23: od_cadence_kept built (TR-54 B3): GAP → PARTIAL; it answers the question once wired (B5).")

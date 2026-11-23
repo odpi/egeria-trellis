@@ -4146,8 +4146,10 @@ open_data_analyses:
   - id: od_cadence_kept
     name: "Open Data Cadence Kept"
     description: >
-      Not built. Declared 2026-11-02 so the open data question it will answer reads "no reader yet" rather than
-      claiming a runnable analysis. Will compare the publisher's stated update cadence (accrualPeriodicity) with its modified dates and say whether the dataset is kept to it.
+      Says whether a dataset is kept to the update cadence its publisher states (accrualPeriodicity), by comparing it with the modified
+      dates RE observed over the dataset's refresh history. One refresh is "not enough history (1 refresh)", never "kept"; no cadence
+      stated is nothing found; a cadence that is not an interval (irregular, continuous) is stated and not judged. It reads the stored
+      history: no portal call.
     resource_types: ["open_data"]
     intent: scouting
     perspectives: ["all", "Steward"]
@@ -4162,7 +4164,7 @@ open_data_analyses:
       candidate: false
       native_process_ref: null
     declaration:
-      built: false
+      built: true
       result_kind: measure
       measures:
       - name: cadence_checks
@@ -4170,7 +4172,7 @@ open_data_analyses:
         as_of: retrieved_at
         value_field: cadence_checks
       absence:
-        not_measured: 'Not built: the cadence check has no reader yet, so no dataset has been compared with its stated cadence.'
+        not_measured: 'Not measured: the cadence check has not run on this dataset, or its refresh history is too short to compare.'
         not_permitted: 'Not permitted: the source refused the read.'
         not_applicable: 'Not applicable: the dataset is not on a portal RE can read yet.'
         nothing_found: 'Measured: the source states nothing for this question.'
