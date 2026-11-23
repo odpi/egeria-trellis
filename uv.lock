@@ -26,6 +26,7 @@ members = [
     "trellis-auth",
     "trellis-context",
     "trellis-feedback",
+    "trellis-llm",
     "trellis-microflow",
     "trellis-querycache",
     "trellis-step-change-rates",
@@ -10346,7 +10347,6 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
 ]
 provides-extras = ["ollama", "openai", "anthropic", "dev"]
-
 
 [[package]]
 name = "trellis-microflow"
