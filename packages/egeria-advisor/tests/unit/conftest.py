@@ -20,3 +20,22 @@ def _feedback_store_in_tmp(tmp_path, monkeypatch):
     mod = sys.modules.get("advisor.feedback_store")
     if mod is not None:
         mod.reset_stores()
+
+
+
+# ── TR-102: unit tests never open a real Postgres (the guard itself is in pg_guard.py, with its tests) ─────────────
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).parent))
+from pg_guard import guard_applies, install_pg_guard  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _no_real_postgres(request, monkeypatch):
+    if not guard_applies(request):
+        yield
+        return
+    hits = install_pg_guard(monkeypatch, request.node.nodeid)
+    request.node.pg_guard_hits = hits
+    yield
+    if hits:
+        pytest.fail(f"TR-102: {request.node.nodeid} opened a real Postgres connection "
+                    f"({len(hits)}): {'; '.join(hits[:3])}. Stub the store it reached.", pytrace=False)
