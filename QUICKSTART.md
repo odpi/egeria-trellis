@@ -128,15 +128,17 @@ done
 This is for a standalone setup. A deployment that keeps the password in a separate secrets file (for
 example a shared host) should leave it out of the apps' `.env` files, so there is only one copy to rotate.
 
-The other defaults point at the Postgres and Ollama you just started. To let Resource Explorer read
-GitHub at a sensible rate limit, add a token to its `.env`:
+The other defaults point at the Postgres and Ollama you just started. Set `GITHUB_TOKEN` in Resource
+Explorer's `.env` (a personal token with read scope). It is not optional in practice:
 
 ```
 GITHUB_TOKEN=ghp_...
 ```
 
-Without one you get 60 API calls an hour, which is enough to look around and not enough to
-survey much.
+Without one GitHub allows 60 API calls an hour, which one survey of a modest repository spends in its
+first calls: the commit history, diff stats and contributors then come back empty or partial. Resource
+Explorer warns at startup when it is unset (and `resource-explorer survey` and `refresh` say so before
+they run); `/health/ready` shows `github.token_set`.
 
 ### 5. Run
 
