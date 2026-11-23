@@ -30,7 +30,7 @@ ID = "od_cadence_kept"
     ("http://purl.org/cld/freq/monthly", 30), ("http://purl.org/cld/freq/quarterly", 91), ("http://purl.org/cld/freq/annual", 365),
     ("http://purl.org/cld/freq/semiannual", 182), ("http://purl.org/cld/freq/irregular", None),
     ("Daily", 1), ("weekly", 7), ("Monthly", 30), ("quarterly", 91), ("annually", 365), ("yearly", 365),
-    ("continuous", None), ("irregular", None), ("as needed", None), ("unknown", None),
+    ("continuous", None), ("irregular", None), ("as needed", None),
 ])
 def test_a_stated_cadence_is_read_as_days_between_updates_or_as_no_interval(raw, days):
     from resource_explorer.open_data.cadence import parse_cadence
@@ -39,7 +39,8 @@ def test_a_stated_cadence_is_read_as_days_between_updates_or_as_no_interval(raw,
     assert c is not None and c.days == days and c.raw == raw
 
 
-@pytest.mark.parametrize("raw", ["", "  ", None, 42, {"a": 1}, ["monthly"], NOT_REPORTED])
+@pytest.mark.parametrize("raw", ["", "  ", None, 42, {"a": 1}, ["monthly"], NOT_REPORTED,
+                                 "unknown", "Unknown", "None", "N/A", "TBD", "null", "not specified"])
 def test_no_cadence_stated_is_none(raw):
     from resource_explorer.open_data.cadence import parse_cadence
 
@@ -75,11 +76,45 @@ def test_monthly_not_updated_for_three_months_is_late_and_says_by_how_much():
     assert "late" in r.summary and "2026-08-01" in r.summary
 
 
-def test_a_gap_between_two_modified_dates_beyond_the_cadence_is_late_even_if_it_is_current_now():
+def test_an_on_time_monthly_publisher_seen_only_quarterly_is_kept_with_the_sparse_looks_words():
+    """W-B3-1: RE only sees a modified date when it looks, so dates a quarter apart say nothing about the publisher."""
     from resource_explorer.open_data.cadence_kept import judge
 
-    r = judge("P1M", _looks(("2026-03-02", "2026-03-01"), ("2026-10-02", "2026-10-01")))
-    assert r.measures["verdict"] == "late" and r.measures["longest_gap_days"] == 214
+    r = judge("P1M", _looks(("2026-01-30", "2026-01-28"), ("2026-04-30", "2026-04-27"), ("2026-07-30", "2026-07-28")))
+    assert r.measures["verdict"] == "kept" and "late" not in r.summary.split(";")[0]
+    assert r.summary.startswith("kept in the looks RE has; RE looked every ~91 days, longer than the cadence")
+    assert "a late update between looks cannot be seen" in r.summary and r.measures["looks_interval_days"] == 90.5
+    assert r.measures["longest_gap_days"] == 92                       # still a fact, labelled as between the dates RE observed
+
+
+def test_a_look_that_saw_a_date_older_than_the_cadence_allows_is_late_and_names_that_look():
+    from resource_explorer.open_data.cadence_kept import judge
+
+    r = judge("P1M", _looks(("2026-08-02", "2026-08-01"), ("2026-09-02", "2026-09-01"), ("2026-10-31", "2026-09-01"),
+                            ("2026-11-02", "2026-11-01")))
+    assert r.measures["verdict"] == "late" and r.measures["worst_look"] == "2026-10-31" and r.measures["worst_age_days"] == 60
+    assert "the look on 2026-10-31 saw a modified date of 2026-09-01, 60 days old" in r.summary
+
+
+def test_dense_looks_on_time_say_a_plain_kept():
+    from resource_explorer.open_data.cadence_kept import judge
+
+    r = judge("P1M", _looks(("2026-08-02", "2026-08-01"), ("2026-09-02", "2026-09-01"), ("2026-10-02", "2026-10-01")))
+    assert r.summary.startswith("kept: stated cadence P1M") and "cannot be seen" not in r.summary and r.measures["looks_interval_days"] == 30.5
+
+
+def test_the_summary_pluralises_refreshes():
+    from resource_explorer.open_data.cadence_kept import judge
+
+    assert "3 refreshes read" in judge("P1M", _looks(("2026-08-02", "2026-08-01"), ("2026-09-02", "2026-09-01"),
+                                                     ("2026-10-02", "2026-10-01"))).summary
+
+
+def test_a_placeholder_in_the_cadence_field_is_no_cadence_stated_and_the_raw_word_is_noted():
+    from resource_explorer.open_data.cadence_kept import judge
+
+    r = judge("Unknown", _looks(("2026-08-02", "2026-08-01"), ("2026-09-02", "2026-09-01")))
+    assert r.state == "nothing_found" and r.measures["placeholder"] == "Unknown" and "'Unknown'" in r.explanation
 
 
 def test_one_observation_is_not_enough_history_never_kept():

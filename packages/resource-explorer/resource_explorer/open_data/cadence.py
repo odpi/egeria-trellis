@@ -25,8 +25,17 @@ _IRI = re.compile(r"^https?://purl\.org/cld/freq/([A-Za-z]+)/?$", re.IGNORECASE)
 _WORDS: dict[str, float | None] = {
     "daily": 1, "weekly": 7, "biweekly": 14, "bi-weekly": 14, "fortnightly": 14, "monthly": 30, "bimonthly": 61, "quarterly": 91,
     "semiannual": 182, "semiannually": 182, "biannual": 182, "semi-annual": 182, "annual": 365, "annually": 365, "yearly": 365,
-    "continuous": None, "continuously": None, "irregular": None, "as needed": None, "asneeded": None, "unknown": None,
+    "continuous": None, "continuously": None, "irregular": None, "as needed": None, "asneeded": None,
 }
+
+#: Words a portal puts in the cadence field that state none: read as no cadence stated, with the raw word noted (like E1-1's licence words).
+PLACEHOLDERS = frozenset({"unknown", "none", "n/a", "na", "tbd", "null", "nil", "not specified", "not stated", "unspecified",
+                          "not available", "other", "-", "?"})
+
+
+def placeholder_of(raw) -> str | None:
+    """The raw word when the field holds a placeholder, else None."""
+    return raw.strip() if isinstance(raw, str) and raw.strip().lower() in PLACEHOLDERS else None
 
 
 def parse_cadence(raw) -> Cadence | None:
@@ -34,6 +43,8 @@ def parse_cadence(raw) -> Cadence | None:
     if not isinstance(raw, str) or not raw.strip() or raw == NOT_REPORTED:
         return None
     text = raw.strip()
+    if text.lower() in PLACEHOLDERS:
+        return None
     iri = _IRI.match(text)
     word = (iri.group(1) if iri else text).lower()
     if word in _WORDS:
