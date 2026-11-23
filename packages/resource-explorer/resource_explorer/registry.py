@@ -5866,6 +5866,8 @@ class ProjectRegistry:
         "database_analysis_run",
         # One file system Analytic Library step (Files build step 6), run by run_queue._handle_filesystem_analysis_run.
         "filesystem_analysis_run",
+        # One analysis of one open data dataset (TR-54 B1), run by run_queue._handle_open_data_analysis_run. Stored, never published.
+        "open_data_analysis_run",
         "survey_definition_run",
         "scouting_scan",
         "stage_batch",

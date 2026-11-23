@@ -807,6 +807,67 @@ def execute_and_record_filesystem_analysis(slug: str, analysis_id: str, activity
     return result
 
 
+def run_open_data_analysis(slug: str, analysis_id: str, *, registry=None, activity_id: str = "",
+                           transport_factory=None) -> DatabaseAnalysisRunResult:
+    """Run ONE analysis on ONE open data dataset (TR-54 B1), through its registered runner (`open_data.analyses`). Stores one
+    result per (dataset slug, analysis_id) in `step_annotations` (entity type `open_data`), never publishes, and writes no
+    Egeria element. An unknown or unbuilt analysis, or a missing dataset, is an error in words: never an ok. A runner's own
+    exception propagates to `execute_and_record_open_data_analysis`, which ends the activity in error."""
+    import uuid
+    from datetime import datetime, timezone
+
+    from resource_explorer.open_data import analyses
+    from resource_explorer.open_data.store import OpenDataStore
+    from resource_explorer.registry import ProjectRegistry
+    from resource_explorer.run_queue import requested_by
+
+    registry = registry or ProjectRegistry()
+    dataset = OpenDataStore(registry).get_dataset(slug)
+    if not dataset:
+        return DatabaseAnalysisRunResult(status="error", error=f"Open data '{slug}' not found")
+    why = analyses.refusal(analysis_id)
+    if why:
+        return DatabaseAnalysisRunResult(status="error", error=why)
+    ctx = analyses.RunContext(registry=registry, store=OpenDataStore(registry), dataset=dataset,
+                              requested_by=requested_by(), transport_factory=transport_factory)
+    result = analyses.RUNNERS[analysis_id].run(ctx)
+    measured_at = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    record = analyses.annotation_record(analysis_id, dataset, result, measured_at)
+    registry.record_step_annotations("open_data", slug, analysis_id, run=activity_id or str(uuid.uuid4()),
+                                     measured_at=measured_at, annotations=[record])
+    return DatabaseAnalysisRunResult(status="ok", summary=result.summary, annotations=[record])
+
+
+def execute_and_record_open_data_analysis(slug: str, analysis_id: str, activity_id: str,
+                                          *, registry=None, transport_factory=None) -> DatabaseAnalysisRunResult:
+    """Run one open data analysis and write its terminal status onto `activity_id`, from the run queue's
+    `open_data_analysis_run` handler (the open-data twin of `execute_and_record_filesystem_analysis`). Never publishes:
+    `published` is None in the Activity detail."""
+    from resource_explorer.registry import ProjectRegistry
+
+    registry = registry or ProjectRegistry()
+    started = time.monotonic()
+    try:
+        result = run_open_data_analysis(slug, analysis_id, registry=registry, activity_id=activity_id,
+                                        transport_factory=transport_factory)
+    except Exception as exc:
+        log.exception("Open data analysis run crashed for %s/%s", slug, analysis_id)
+        registry.update_activity_status(
+            activity_id, "error", summary=f"'{analysis_id}' run failed: {exc}",
+            detail=json.dumps({"analysis_id": analysis_id, "published": None, "error": str(exc),
+                               "duration_s": round(time.monotonic() - started, 3)}))
+        return DatabaseAnalysisRunResult(status="error", error=str(exc))
+    detail = {"analysis_id": analysis_id, "published": None, "duration_s": round(time.monotonic() - started, 3)}
+    if result.status == "error":
+        detail["error"] = result.error or result.summary
+    else:
+        detail["message"] = result.summary
+    registry.update_activity_status(
+        activity_id, result.status, summary=result.summary or result.error or "",
+        detail=json.dumps(detail), annotations=result.annotations or None)
+    return result
+
+
 #: The word an override row shows for a credential typed for one run, and the row's own statement
 #: that the run is not retried (the credential lives in session memory and dies with the session).
 OVERRIDE_SCOPE = "this run"

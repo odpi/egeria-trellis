@@ -353,6 +353,49 @@ def get_dataset_questions(slug: str) -> dict:
     return dataset_questions.build(d)
 
 
+@router.get("/datasets/{slug}/analyses/{analysis_id}/price")
+def dataset_analysis_price(slug: str, analysis_id: str) -> dict:
+    """The price line of one analysis on one dataset, shown BEFORE the press: the portal calls it makes. Not priced (never 0)
+    when the analysis has no reader yet. Registry-only: it calls nothing."""
+    from resource_explorer.open_data import analyses
+
+    dataset = _store().get_dataset(slug)
+    if not dataset:
+        raise HTTPException(status_code=404, detail=f"No open data '{slug}'.")
+    return analyses.price(analysis_id, dataset)
+
+
+@router.post("/datasets/{slug}/analyses/{analysis_id}/run")
+def run_dataset_analysis(slug: str, analysis_id: str, request: Request, pressed_on: str = "") -> dict:
+    """Run ONE analysis on ONE dataset (TR-54 B1): validated here (an unknown analysis, or one with no reader yet, is a 400 in
+    words), then queued, as every analysis is (never inline in a request). The answer is
+    `{status: "started", activity_id, run_id, price}`: the activity row exists before the worker starts, so the checklist's
+    pollActivity always has something to poll. The result is stored per (dataset, analysis); nothing is published, nothing
+    is written to Egeria. The run executes as the person who pressed."""
+    from resource_explorer.activity_logger import log_analysis_run
+    from resource_explorer.open_data import analyses
+    from resource_explorer.run_queue import requested_by
+
+    _signed_in_user(request)
+    registry = ProjectRegistry()
+    dataset = OpenDataStore(registry).get_dataset(slug)
+    if not dataset:
+        raise HTTPException(status_code=404, detail=f"No open data '{slug}'.")
+    why = analyses.refusal(analysis_id)
+    if why:
+        raise HTTPException(status_code=400, detail=why)
+    price = analyses.price(analysis_id, dataset)
+    activity_id = log_analysis_run(registry, "open_data", slug, str(dataset.get("title") or slug), "running",
+                                   f"Running '{analysis_id}' on {slug}…", analysis_id, published=None)
+    run_id = registry.enqueue_run("open_data_analysis_run",
+                                  {"slug": slug, "analysis_id": analysis_id,
+                                   **({"pressed_on": pressed_on[:40]} if pressed_on else {})},
+                                  result_ref=activity_id, requested_by=requested_by())
+    log.info("enqueued open_data_analysis_run %s for %s/%s (activity %s)", run_id, slug, analysis_id, activity_id)
+    return {"status": "started", "slug": slug, "analysis_id": analysis_id, "activity_id": activity_id, "run_id": run_id,
+            "price": price}
+
+
 # ── directories ──────────────────────────────────────────────────────────────
 
 class FitRequest(BaseModel):
