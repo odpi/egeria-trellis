@@ -361,6 +361,11 @@ class TestCostTierFilter:
                     # external site over HTTP, so it is not zero-fetch.
                     "repo_website_ingestion",
                     "repo_git_statistics", "repo_sub_resource_survey",
+                    # repo_refresh_plan (TR-104, 2026-11-23) — asks GitHub for the head
+                    # commit (get_repo + get_latest_commit_sha): 703 laz runs made exactly
+                    # 2 api.github.com calls each, so it declares "api" and a "none"
+                    # republish from stored data leaves it out.
+                    "repo_refresh_plan",
                     # repo_cve_scan (2026-08-26) — one batched call to OSV.dev.
                     # No repo download and nothing fetched about the repo
                     # itself, but still not zero-fetch.

@@ -40,7 +40,7 @@ ACTIVE
 | engine_host | resource-explorer-worker |
 | request_type | re-repo-refresh-plan |
 | entity_type | repo |
-| fetch_cost | none |
+| fetch_cost | api |
 | compute_cost | low |
 | requires_capability | undeclared |
 | engine_host_dispatch | survey-invalid: repository step repo_refresh_plan is not run by Resource Explorer's engine host yet: it runs database steps only so far. Run its definition from Resource Explorer's own Run |

@@ -493,6 +493,10 @@ STEP_REGISTRY: dict[str, StepInfo] = {
         "step regardless, so this records the decision rather than enforcing it.",
         ["ClassificationAnnotation"],
         accepts_surveyed_at=True,
+        # TR-104: it asks GitHub for the head commit (get_repo + get_latest_commit_sha). It took the default "none"
+        # and every run logged a fetch disagreement; laz's 703 recorded runs made exactly 2 api.github.com calls each.
+        # So a max_fetch_cost="none" run (a republish from stored data) leaves it out.
+        fetch_cost="api",
     ),
     "repo_git_statistics": StepInfo(
         "repo_git_statistics", GitStatisticsSurveyor,
