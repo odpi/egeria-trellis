@@ -53,8 +53,8 @@ in the QuickStart's own documentation (`portal-docs/quickstart/`):
 3. The QuickStart (`./quick-start-local`), which starts the Egeria platform on port 9443 with the
    `qs-*` servers and the Portal on port 8800 (8843 with TLS).
 
-Wait for `OMAG Server 'qs-view-server' successful start` in `docker logs quickstart-egeria-main`
-before starting either app.
+Wait for the line `SERVER-OPS-0004 The qs-view-server server has successfully completed start up. The following
+services are running: ...` in `docker logs quickstart-egeria-main` before starting either app.
 
 ### 1.3 Identities
 
@@ -65,7 +65,7 @@ All identities are in the QuickStart's user directory,
 |---|---|---|
 | Resource Explorer's own service account (background work: the worker role, surveys, publishing) | `resourceexplorernpa` | `RE_DAEMON_USER_ID` / `RE_DAEMON_USER_PASSWORD` |
 | Egeria Advisor's own service account (its report-spec sync and anonymous reads) | `egeriaadvisornpa` | `EA_DAEMON_USER_ID` / `EA_DAEMON_USER_PASSWORD` |
-| Signing in to either app, in the browser or on the command line | any demo user, e.g. `peterprofile` (the demo users share the QuickStart's standard demo password) | nothing: you type it |
+| Signing in to either app, in the browser or on the command line | any demo user, e.g. `peterprofile` (the demo users share one password: `QUICKSTART_PERSONA_PASSWORD` in egeria-workspaces' `.env`) | nothing: you type it |
 | Platform-services reads used in the checks below | `garygeeke` | nothing |
 
 A service account is the app's own account, never a person, and no one can sign in to an app as one. Don't
