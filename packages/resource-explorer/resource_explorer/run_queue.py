@@ -219,6 +219,17 @@ def _handle_filesystem_analysis_run(target: dict, result_ref: str) -> RunOutcome
     return RunOutcome(state="succeeded" if result.status == "ok" else "failed", error=result.error or "")
 
 
+def _handle_open_data_analysis_run(target: dict, result_ref: str) -> RunOutcome:
+    """One analysis of one open data dataset (TR-54 B1): the open-data twin of `_handle_filesystem_analysis_run`. Stored,
+    never published, and it executes as the person who pressed (the queue's `requested_by`)."""
+    from resource_explorer.activity_logger import pressed_on
+    from resource_explorer.workflows.analysis import execute_and_record_open_data_analysis
+
+    with pressed_on(target.get("pressed_on", "")):
+        result = execute_and_record_open_data_analysis(target["slug"], target["analysis_id"], result_ref)
+    return RunOutcome(state="succeeded" if result.status == "ok" else "failed", error=result.error or "")
+
+
 def _handle_stage_batch(target: dict, result_ref: str) -> RunOutcome:
     from resource_explorer.workflows.analysis import (
         execute_and_record_stage_batch,
@@ -458,6 +469,7 @@ HANDLERS: dict[str, Callable[[dict, str], RunOutcome]] = {
     "analysis_run": _handle_analysis_run,
     "database_analysis_run": _handle_database_analysis_run,
     "filesystem_analysis_run": _handle_filesystem_analysis_run,
+    "open_data_analysis_run": _handle_open_data_analysis_run,
     "stage_batch": _handle_stage_batch,
     "scouting_scan": _handle_scouting_scan,
     "survey_definition_run": _handle_survey_definition_run,
