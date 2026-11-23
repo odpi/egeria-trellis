@@ -116,3 +116,28 @@ def classify_licence(raw) -> Classified:
     if _ID_TOKEN.match(text):
         return Classified(text, NOT_REPORTED)
     return Classified(NOT_REPORTED, text)
+
+
+#: The key a stored dataset's record keeps a licence STATED AS TEXT under (no column: a column on the shared open_data table is the
+#: owner-approved DDL process). The adapter writes it through this constant; `licence_text` is the ONE reader.
+LICENCE_TEXT_KEY = "_licence_text"
+
+
+def licence_text(dataset) -> str | None:
+    """The licence a portal stated in words (a sentence, a name, an HTML disclaimer), for a stored dataset or an adapter row;
+    None when it stated none (not reported). The one place that reads the stored key: nothing else reads it directly."""
+    record = dataset.get("record") if isinstance(dataset, dict) else None
+    text = record.get(LICENCE_TEXT_KEY) if isinstance(record, dict) else None
+    return text.strip() if isinstance(text, str) and text.strip() and text != NOT_REPORTED else None
+
+
+def licence_statement(dataset: dict) -> dict:
+    """What the portal said about the licence, in the words the UI and API use: identified (an id or URL), stated in words (text
+    and no id: "licence stated in words, not identified", never "no licence"), or not stated."""
+    lid = dataset.get("licence_id") if isinstance(dataset, dict) else None
+    text = licence_text(dataset)
+    if lid not in (None, "", NOT_REPORTED):
+        return {"state": "identified", "id": lid, "text": text, "words": f"licence {lid}"}
+    if text:
+        return {"state": "stated_in_words", "id": None, "text": text, "words": "licence stated in words, not identified"}
+    return {"state": "not_stated", "id": None, "text": None, "words": "the portal states no licence"}

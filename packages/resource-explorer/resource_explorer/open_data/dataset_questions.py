@@ -104,12 +104,20 @@ def _source(d: dict) -> str:
 
 
 def _licence_partial(d: dict) -> str | None:
+    from resource_explorer.open_data.licences import licence_statement
+
     lic = d.get("licence") or {}
     flags_known = any(isinstance(lic.get(k), bool) for k in ("attribution", "share_alike", "commercial"))
-    if not _stated(d.get("licence_id")) and not flags_known:
+    statement = licence_statement(d)
+    if not _stated(d.get("licence_id")) and not flags_known and statement["state"] != "stated_in_words":
         return None
-    ident = d["licence_id"] if _stated(d.get("licence_id")) else "licence identifier not reported"
-    return (f"Licence {ident} · attribution {_flag(lic.get('attribution'))} · share-alike "
+    if _stated(d.get("licence_id")):
+        ident = d["licence_id"]
+    elif statement["state"] == "stated_in_words":
+        ident = statement["words"]                       # "licence stated in words, not identified": never "no licence"
+    else:
+        ident = "licence identifier not reported"
+    return (f"{'Licence ' if ident and not ident.startswith('licence ') else ''}{ident} · attribution {_flag(lic.get('attribution'))} · share-alike "
             f"{_flag(lic.get('share_alike'))} · commercial {_flag(lic.get('commercial'))} — {_source(d)}")
 
 

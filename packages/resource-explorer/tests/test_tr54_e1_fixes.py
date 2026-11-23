@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from test_open_data import FakeTransport, reg, store  # noqa: E402,F401  (fixtures are shared)
 from test_tr54_e1_portal_reach import FIX, PortalTransport, _rows  # noqa: E402
 
-from resource_explorer.open_data import service  # noqa: E402
+from resource_explorer.open_data import licence_text, service  # noqa: E402
 from resource_explorer.open_data.absence import NOT_REPORTED  # noqa: E402
 from resource_explorer.open_data.ckan import CkanAdapter, NotCkan  # noqa: E402
 from resource_explorer.open_data.dcat_ap import DcatApAdapter  # noqa: E402
@@ -39,13 +39,13 @@ def test_arcgis_free_text_licence_goes_to_licence_text_and_the_id_is_not_reporte
         assert row["licence_id"] == NOT_REPORTED
         assert "as is" in row["licence_text"] and len(row["licence_text"]) > 200
         assert row["licence"] == {"attribution": NOT_REPORTED, "share_alike": NOT_REPORTED, "commercial": NOT_REPORTED}
-        assert row["record"]["_licence_text"] == row["licence_text"]          # kept with the stored record
+        assert licence_text(row) == row["licence_text"]                          # kept with the stored record, read by the accessor
 
 
 def test_a_licence_url_or_a_known_id_is_still_the_id_and_has_no_text():
     _, rows = _rows("https://opendata.minneapolismn.gov", "pod_arcgis_hub_uri_licence_head.json")
     assert rows[0]["licence_id"] == "cc0-1.0" and rows[0]["licence_text"] == NOT_REPORTED
-    assert "_licence_text" not in rows[0]["record"]
+    assert licence_text(rows[0]) is None
 
 
 @pytest.mark.parametrize("raw,kind", [
@@ -73,7 +73,7 @@ def test_opendatasoft_rights_is_read_as_licence_text_not_as_an_id():
     _, rows = _rows(export, "ods_pod_export_limit3.json", feed=export)
     first = rows[0]
     assert first["licence_text"] == "Licence Ouverte (Etalab)" and first["licence_id"] == NOT_REPORTED
-    assert first["record"]["_licence_text"] == "Licence Ouverte (Etalab)"
+    assert licence_text(first) == "Licence Ouverte (Etalab)"
     assert "rights" in first["record"]["_licence_note"]                      # it says where the text came from
     assert first["licence"]["commercial"] == NOT_REPORTED                    # and it is not judged
 
@@ -197,3 +197,69 @@ def test_registering_a_ckan_portal_with_no_transport_makes_no_probe_call(store):
 def test_the_dkan_404_fixture_is_trimmed_to_the_status_and_a_minimal_body():
     body = (FIX / "dkan2_ckan_package_search_404.html").read_text(encoding="utf-8")
     assert len(body) < 400 and "<html" in body.lower() and "@" not in body      # no portal e-mail address in it
+
+
+# ── the one accessor, and what a licence stated in words is called ───────────
+
+def test_the_accessor_returns_the_stated_text_or_none_for_not_reported():
+    assert licence_text({"record": {"_licence_text": "Licence Ouverte (Etalab)"}}) == "Licence Ouverte (Etalab)"
+    for d in ({"record": {}}, {"record": {"_licence_text": ""}}, {"record": {"_licence_text": NOT_REPORTED}}, {"record": None}, {}):
+        assert licence_text(d) is None
+
+
+def test_no_production_code_reads_the_record_key_but_the_accessor():
+    import re
+    root = Path(__file__).resolve().parents[1] / "resource_explorer"
+    readers = []
+    for path in root.rglob("*.py"):
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if "_licence_text" in line and not path.name == "licences.py" and "LICENCE_TEXT_KEY" not in line and not line.strip().startswith("#"):
+                readers.append(f"{path.relative_to(root)}:{n}")
+    assert readers == [], f"only licences.py touches the key (the adapter writes it through LICENCE_TEXT_KEY): {readers}"
+
+
+def test_a_licence_stated_in_words_is_never_called_no_licence():
+    from resource_explorer.open_data.licences import licence_statement
+
+    ds = {"licence_id": NOT_REPORTED, "record": {"_licence_text": "Licence Ouverte (Etalab)"}}
+    st = licence_statement(ds)
+    assert st["state"] == "stated_in_words" and st["words"] == "licence stated in words, not identified"
+    assert st["text"] == "Licence Ouverte (Etalab)" and "no licence" not in st["words"].lower()
+
+
+def test_licence_statement_identified_and_not_stated():
+    from resource_explorer.open_data.licences import licence_statement
+
+    assert licence_statement({"licence_id": "cc-by-4.0", "record": {}})["state"] == "identified"
+    nothing = licence_statement({"licence_id": NOT_REPORTED, "record": {}})
+    assert nothing["state"] == "not_stated" and nothing["words"] == "the portal states no licence"
+
+
+def test_the_licence_question_row_says_stated_in_words_not_no_licence():
+    from resource_explorer.open_data import dataset_questions
+
+    ds = {"licence_id": NOT_REPORTED, "licence": {"attribution": NOT_REPORTED, "share_alike": NOT_REPORTED,
+                                                    "commercial": NOT_REPORTED},
+          "record": {"_licence_text": "Licence Ouverte (Etalab)"}, "portals": ["p"], "retrieved_at": "2026-11-23T00:00:00"}
+    words = dataset_questions._licence_partial(ds)
+    assert words and "licence stated in words, not identified" in words
+
+
+@pytest.mark.usefixtures("signed_in_caller")
+def test_the_dataset_api_carries_the_licence_statement(reg, store, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from resource_explorer.web.app import app
+    from resource_explorer.web import routes
+
+    portal = service.register_portal(store, display_name="demo", api_kind="CKAN", base_url="https://demo.ckan.org", registered_by="t")
+    row = {"identifier": "d1", "identifier_kind": "portal_id", "title": "T", "publisher": NOT_REPORTED, "licence_id": NOT_REPORTED,
+           "licence": {"attribution": NOT_REPORTED, "share_alike": NOT_REPORTED, "commercial": NOT_REPORTED},
+           "modified": NOT_REPORTED, "formats": NOT_REPORTED, "size": NOT_REPORTED,
+           "record": {"_licence_text": "Licence Ouverte (Etalab)"}}
+    store.add_dataset(slug="d1", row=row, portals=[portal["slug"]], retrieved_at="2026-11-23T00:00:00", imported_by="t",
+                      work_list_slug="w", datacite=None)
+    monkeypatch.setattr(routes.open_data, "_store", lambda: store)
+    body = TestClient(app).get("/api/open-data/datasets/d1").json()
+    assert body["licence_statement"]["state"] == "stated_in_words"
+    assert body["licence_statement"]["words"] == "licence stated in words, not identified"

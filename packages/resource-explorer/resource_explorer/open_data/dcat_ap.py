@@ -24,7 +24,7 @@ from urllib.parse import urlparse
 from resource_explorer.open_data.absence import NOT_REPORTED, reported_or_absent
 from resource_explorer.open_data.adapters import Adapter, AdapterManifest, page_of
 from resource_explorer.open_data.ckan import normalise_doi
-from resource_explorer.open_data.licences import classify_licence, licence_flags, licence_id_from_iri
+from resource_explorer.open_data.licences import LICENCE_TEXT_KEY, classify_licence, licence_flags, licence_id_from_iri
 from resource_explorer.open_data.transport import Transport, TransportError
 
 LD_ACCEPT = {"Accept": "application/ld+json, application/json;q=0.9"}
@@ -439,7 +439,7 @@ class DcatApAdapter(Adapter):
         classified = classify_licence(licence_raw)
         licence_id, licence_text = classified.id, classified.text
         if licence_text != NOT_REPORTED:
-            record["_licence_text"] = licence_text      # kept with the stored record: the licence is stated, and not judged
+            record[LICENCE_TEXT_KEY] = licence_text      # kept with the stored record: the licence is stated, and not judged
         modified = next((t for t in (_text(v) for ns_local in (("dct", "modified"), ("dct", "issued"))
                                      for v in _vals(entry, *ns_local)) if t), None)
         sizes = [_bytes(_vals(d, "dcat", "byteSize")) for d in dist_nodes]

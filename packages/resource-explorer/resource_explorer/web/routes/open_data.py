@@ -332,8 +332,11 @@ def get_dataset(slug: str) -> dict:
     d = _store().get_dataset(slug)
     if not d:
         raise HTTPException(status_code=404, detail=f"No open data '{slug}'.")
+    from resource_explorer.open_data.licences import licence_statement
+
     d["stated_by"] = d["portals"]
     d["survey"] = "Not yet run"
+    d["licence_statement"] = licence_statement(d)       # identified / stated in words, not identified / not stated
     return d
 
 
