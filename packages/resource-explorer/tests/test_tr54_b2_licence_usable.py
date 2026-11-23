@@ -234,3 +234,53 @@ def test_the_adapter_reads_a_placeholder_as_no_licence_and_notes_the_raw_word():
         {"title": "t", "identifier": "i", "license": "None"})
     assert row["licence_id"] == NOT_REPORTED and row["licence_text"] == NOT_REPORTED
     assert "'None'" in row["record"]["_licence_note"] and "states no licence" in row["record"]["_licence_note"]
+
+
+# ── the purpose is read for the person who pressed, through the queue's own wrapper ──
+
+def _private_investigation_of(reg, owner, dataset_slug, store, need):
+    """A creator-only investigation owned by `owner` that holds the dataset and states a licence need."""
+    from resource_explorer.a2a_auth import CallerIdentity, current_caller
+
+    reset = current_caller.set(CallerIdentity(user_id=owner, egeria_token=None, auth_source="app-jwt"))
+    try:
+        inv = reg.create_investigation("Private water study", project_classification="PersonalProject")
+    finally:
+        current_caller.reset(reset)
+    assert inv["visibility"] == "creator-only"
+    service._add_investigation_member(reg, inv["slug"], dataset_slug, "in scope")
+    store.save_data_request(inv["slug"], {"licence": need}, owner)
+    return inv["slug"]
+
+
+def _purposes_in_the_queue_wrapper(reg, store, dataset, requested_by):
+    """`purposes_for` inside `run_queue._run_as_requester`, the wrapper every queued open data run executes in: it sets the
+    presser as `current_caller` before acting as Daemon(RUN_QUEUE), so the registry's per-user scoping reads the presser."""
+    from resource_explorer import run_queue
+
+    with run_queue._run_as_requester({"requested_by": requested_by}):
+        return licence_usable.purposes_for(reg, store, dataset)
+
+
+@pytest.mark.usefixtures("mock_egeria_client_connections")
+def test_the_pressers_own_private_investigation_is_found_and_another_persons_is_not(reg, store, dataset):
+    inv = _private_investigation_of(reg, "user-a", dataset["slug"], store, {"commercial": True})
+    assert [p["investigation"] for p in _purposes_in_the_queue_wrapper(reg, store, dataset, "user-a")] == [inv]
+    assert _purposes_in_the_queue_wrapper(reg, store, dataset, "user-b") == []
+
+
+@pytest.mark.usefixtures("mock_egeria_client_connections")
+def test_a_queued_run_judges_the_fit_against_the_pressers_private_investigation_end_to_end(reg, store, dataset):
+    from resource_explorer import run_queue
+    from resource_explorer.workflows.analysis import execute_and_record_open_data_analysis
+
+    _set_licence(reg, dataset["slug"], "cc-by-nc-4.0")
+    inv = _private_investigation_of(reg, "user-a", dataset["slug"], store, {"commercial": True})
+    for who, expected in (("user-a", [(inv, "does_not_fit")]), ("user-b", [])):
+        with run_queue._run_as_requester({"requested_by": who}):
+            activity = _activity(reg, dataset)
+            assert execute_and_record_open_data_analysis(dataset["slug"], ID, activity, registry=reg).status == "ok"
+        _, rows = reg.query_step_annotations("open_data", dataset["slug"], ID)
+        fit = rows[0]["detail"]["additionalProperties"]["measures"]["fit"]
+        assert [(f["investigation"], f["verdict"]) for f in fit] == expected
+        assert ("Private water study" in json.dumps(rows[0])) is (who == "user-a")    # B learns nothing of A's investigation
