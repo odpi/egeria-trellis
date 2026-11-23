@@ -200,9 +200,13 @@ def sync_now(*, client_factory: Optional[Callable[[], Any]] = None, _claimed: bo
     if not _claimed:
         _claim()
     folders = configured_folders()
+    # TR-58: who the sync reads Egeria as, named in its log line (never the password). Known once the
+    # connection (or the injected client) is.
+    account = "(account not known)"
     try:
         if client_factory is None:
             conn = _service_connection()
+            account = str(conn.get("user_id") or account)
             from advisor.report_pipeline import _conn_is_complete
             if not _conn_is_complete(conn):
                 raise RuntimeError("EA's Egeria connection is incomplete (view server, platform URL, "
@@ -211,6 +215,7 @@ def sync_now(*, client_factory: Optional[Callable[[], Any]] = None, _claimed: bo
             client = _build_client(conn)
         else:
             client = client_factory()
+        account = str(getattr(client, "user_id", "") or account)
         report = sync_report_specs(client, folders=folders, **_sync_kwargs())
     except SyncAlreadyRunning as exc:
         with _lock:
@@ -219,13 +224,13 @@ def sync_now(*, client_factory: Optional[Callable[[], Any]] = None, _claimed: bo
     except Exception as exc:  # noqa: BLE001 -- never let a sync failure escape to startup
         with _lock:
             _state.update(state="failed", finished_at=_now(), error=f"{type(exc).__name__}: {exc}")
-        logger.info(f"Report spec sync from Egeria failed: {type(exc).__name__}: {exc}")
+        logger.info(f"Report spec sync from Egeria as {account} failed: {type(exc).__name__}: {exc}")
         return egeria_held_status()
     with _lock:
         _state.update(state="ok", finished_at=_now(), error=None, report=report.to_dict(),
                       identity=str(getattr(client, "user_id", "") or "?"))
     _after_sync()
-    logger.info(f"Report spec sync from Egeria ({', '.join(folders) or 'no folders'}): "
+    logger.info(f"Report spec sync from Egeria as {account} ({', '.join(folders) or 'no folders'}): "
                 f"{len(report.added)} added, {len(report.updated)} updated, {len(report.unchanged)} unchanged, "
                 f"{len(report.pruned)} pruned, {len(report.skipped)} skipped")
     return egeria_held_status()
