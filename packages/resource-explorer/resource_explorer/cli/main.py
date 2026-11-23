@@ -463,15 +463,10 @@ def refresh(
                 try:
                     from resource_explorer.github.stats_fetcher import StatsFetcher
                     result = StatsFetcher().fetch(slug, lookback_days=history)
-                    if "commits_fetch_error" in result:
-                        console.print(
-                            f"  [yellow]Commit history warning:[/yellow] {result['commits_fetch_error']}"
-                        )
-                    else:
-                        n = result.get("commits_fetched", 0)
-                        console.print(f"  [dim]Stats updated ({n} commits, {history}d lookback).[/dim]")
+                    from resource_explorer.github import stats_summary
+                    stats_summary.print_summary(console, result, lookback_days=history, indent="  ")   # TR-63
                 except Exception as exc:
-                    console.print(f"  [dim]Stats update skipped: {exc}[/dim]")
+                    console.print(f"  [yellow]Stats update skipped:[/yellow] {exc}")
             # Collections were proposed once, at onboarding, from the repo as
             # it stood then. Nothing re-evaluates them, so a repo that gains
             # PDFs keeps ignoring them forever. This is a query over the file
