@@ -461,6 +461,8 @@ def run_worker(
     check_public_url()  # refuses to start on a malformed RE_PUBLIC_URL, quoting it
     check_database_settings_at_startup()  # TR-12: refuses to start naming an unset shared-Postgres setting
     log_llm_tier_config()  # the resolved tier/model/num_ctx/budgets; the lazy first-call line predates logging setup
+    from resource_explorer.github.token_status import log_at_startup as log_github_token_at_startup
+    log_github_token_at_startup(log)  # TR-53: WARNING when GITHUB_TOKEN is unset (60 requests/hour)
 
     log.info(
         "worker role starting (embedded=%s): %s leader-elected loop(s) "

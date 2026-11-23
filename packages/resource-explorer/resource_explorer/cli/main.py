@@ -420,6 +420,8 @@ def refresh(
       resource-explorer refresh --all
       resource-explorer refresh --all --top-level   # skip sub-projects
     """
+    from resource_explorer.github.token_status import warn_on_console
+    warn_on_console(console)      # TR-53: 60 GitHub requests an hour without GITHUB_TOKEN
     from resource_explorer.ingestion.incremental import IncrementalIndexer
     from resource_explorer.query_cache import QueryCache
     from resource_explorer.registry import ProjectRegistry
@@ -1359,6 +1361,8 @@ def survey(
       resource-explorer survey --all --top-level     # skip sub-projects
       resource-explorer survey --all --publish       # survey + publish all
     """
+    from resource_explorer.github.token_status import warn_on_console
+    warn_on_console(console)      # TR-53: 60 GitHub requests an hour without GITHUB_TOKEN
     from resource_explorer.registry import ProjectRegistry
     from resource_explorer.surveyors.survey_orchestrator import SurveyOrchestrator
     from resource_explorer.surveyors.survey_report import AnnotationType
