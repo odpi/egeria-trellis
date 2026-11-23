@@ -3,7 +3,8 @@
 `step_cost_observer.observe()` is the one place every step passes through --
 the local loop, the orchestrator, an accepted prerequisite and the Prefect
 task all use it -- so a START event is emitted when the step begins and a
-COMPLETE or FAIL when it ends, built-in and external steps alike.
+COMPLETE, FAIL or (for a cancelled run, TR-90) ABORT when it ends, built-in and
+external steps alike.
 
 Egeria already listens: its Integration Daemon accepts OpenLineage events
 and hands them to the connectors registered for them. See
@@ -277,11 +278,31 @@ def begin(job_family: str, step_key: str, entity_type: str, slug: str,
     return st, token
 
 
+def _was_cancelled(raised: BaseException | None) -> bool:
+    """True when the step stopped because its run was cancelled (TR-90), not because it failed.
+
+    `RunCancelled` is TR-62b's stop for a cancelled flow run; `asyncio.CancelledError` is the same thing for a task.
+    Imported here, not at the top: observability must not import the surveyors package to be imported itself."""
+    if raised is None:
+        return False
+    import asyncio
+
+    from resource_explorer.surveyors.run_cancellation import RunCancelled
+
+    return isinstance(raised, (RunCancelled, asyncio.CancelledError))
+
+
 def finish(st: RunState, token: contextvars.Token, *, raised: BaseException | None) -> None:
-    """Close a run: emit FAIL if the step raised (or noted a failure), else COMPLETE."""
+    """Close a run: ABORT if it was cancelled, FAIL if the step raised (or noted a failure), else COMPLETE.
+
+    A cancel is ABORT ("stopped abnormally"), never FAIL, and carries no errorMessage facet: TR-93 counts a cancelled
+    step as cancelled, not as an error, and the lineage event says the same (TR-90)."""
     _current.reset(token)
-    message = scrub(f"{type(raised).__name__}: {raised}") if raised is not None else st.failed_message
     ended = _now()
+    if _was_cancelled(raised):
+        emit("ABORT", st, ended_at=ended)
+        return
+    message = scrub(f"{type(raised).__name__}: {raised}") if raised is not None else st.failed_message
     if message:
         emit("FAIL", st, ended_at=ended, error=message)
     else:
