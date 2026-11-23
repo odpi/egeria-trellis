@@ -322,12 +322,12 @@ def profile_dataset(store: OpenDataStore, ds: dict, *, transport, catalog, regis
     base = {"slug": ds["slug"], "title": ds["title"], "ran_at": now(), "cap_bytes": cap}
     if not portal:
         return {**base, "outcome": "not_profiled", "words": f"no portal '{ds['portal_slug']}' is registered now",
-                "distributions": [], "documents": [], "provenance": provenance_of(store, ds)}
+                "portal_failed": True, "distributions": [], "documents": [], "provenance": provenance_of(store, ds)}
     try:
         dists = portal_adapter(portal, transport).distributions(_dataset_id(ds))
     except Exception as exc:
         return {**base, "outcome": "not_profiled", "words": f"could not list the distributions: {exc}"[:240],
-                "distributions": [], "documents": [], "provenance": provenance_of(store, ds)}
+                "portal_failed": True, "distributions": [], "documents": [], "provenance": provenance_of(store, ds)}
     data, docs, other = split_distributions(dists)
     chosen, rest = data[:MAX_DATA_DISTRIBUTIONS], data[MAX_DATA_DISTRIBUTIONS:]
     results, documents = [], []

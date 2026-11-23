@@ -3960,14 +3960,14 @@ filesystem_analyses:
 open_data_analyses:
   - id: external_data_scout
     name: "External Data Scout"
-    description: "Re-reads every dataset of a work list of open data from its portal (one call each, priced first) and refreshes what the portal states: license and its flags, publisher, modified date, formats, size, and the coverage and update cadence it gives. A portal that does not answer leaves the dataset's earlier values in place and says so; a field the portal does not state is reported as not reported by that source, never as empty."
+    description: "Re-reads every dataset of a work list of open data from its portal (one call each, priced first; one queued run per dataset, so one portal that does not answer fails only its own run) and refreshes what the portal states: license and its flags, publisher, modified date, formats, size, and the coverage and update cadence it gives. A portal that does not answer leaves the dataset's earlier values in place and says so; a field the portal does not state is reported as not reported by that source, never as empty."
     resource_types: ["open_data"]
     intent: scouting
     perspectives: ["all", "Steward"]
     annotation_types: []
     source: local
     run_time: minutes
-    availability: inline
+    availability: queued
     action: survey
     target_shape: whole_resource_only
     recommended: true
@@ -4013,7 +4013,7 @@ open_data_analyses:
     annotation_types: []
     source: local
     run_time: minutes
-    availability: inline
+    availability: queued
     action: survey
     target_shape: whole_resource_only
     recommended: false
@@ -4059,7 +4059,7 @@ open_data_analyses:
     annotation_types: []
     source: local
     run_time: minutes
-    availability: inline
+    availability: queued
     action: survey
     target_shape: whole_resource_only
     recommended: false
@@ -4191,8 +4191,10 @@ open_data_analyses:
   - id: od_profile
     name: "Open Data Profile"
     description: >
-      Not built. Declared 2026-11-02 so the open data question it will answer reads "no reader yet" rather than
-      claiming a runnable analysis. Will say what is known about the data itself (columns, size, formats) and what has not been read.
+      Says what is known about a dataset's data itself, one dataset at a time on the run queue: it reads the dataset's tabular
+      distributions (the first three, each capped, with Files step 5's profiler) and reports what was profiled and what was not. A file
+      over the cap, in a format not read here, or past the first three is named as not read, never counted as zero rows; a portal that
+      does not answer leaves the earlier profile and says so. Portal calls are priced before the press and counted after it.
     resource_types: ["open_data"]
     intent: discovery
     perspectives: ["all", "Steward"]
@@ -4207,7 +4209,7 @@ open_data_analyses:
       candidate: false
       native_process_ref: null
     declaration:
-      built: false
+      built: true
       result_kind: measure
       measures:
       - name: distributions_profiled_summary
@@ -4215,7 +4217,7 @@ open_data_analyses:
         as_of: retrieved_at
         value_field: distributions_profiled_summary
       absence:
-        not_measured: 'Not built: the dataset-level profile summary has no reader yet, so nothing has been summarised.'
+        not_measured: 'Not measured: no distribution of this dataset has been profiled yet, so nothing has been summarised.'
         not_permitted: 'Not permitted: the source refused the read.'
         not_applicable: 'Not applicable: the dataset is not on a portal RE can read yet.'
         nothing_found: 'Measured: the source states nothing for this question.'

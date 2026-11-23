@@ -723,37 +723,41 @@ def scout_price(n: int) -> dict:
     return {"datasets": n, "calls": n, "line": f"{n} dataset{'s' if n != 1 else ''} × 1 call = {n} call{'s' if n != 1 else ''}"}
 
 
+def scout_dataset(store: OpenDataStore, d: dict, *, transport, adapters_by_portal: dict | None = None) -> dict:
+    """Re-read ONE dataset from its portal (one call) and refresh its stored columns (licence and flags, publisher, modified, formats,
+    size, the publisher's record with its stated coverage). A portal that did not answer is `could_not_scout` with the reason, and the
+    dataset keeps what it had: a failed read never blanks a column."""
+    adapters_by_portal = {} if adapters_by_portal is None else adapters_by_portal     # one adapter per portal: a one-document feed is read once
+    dataset_id = (d["record"] or {}).get("name") or (d["record"] or {}).get("id") or d["identifier"].split(":", 1)[-1]
+    outcome = {"slug": d["slug"], "title": d["title"], "outcome": "could_not_scout", "words": ""}
+    for portal_slug in d["portals"]:
+        portal = store.get_portal(portal_slug)
+        if not portal:
+            outcome["words"] = f"portal '{portal_slug}' is no longer registered"
+            continue
+        try:
+            if portal_slug not in adapters_by_portal:
+                adapters_by_portal[portal_slug] = portal_adapter(portal, transport)
+            row = adapters_by_portal[portal_slug].describe(dataset_id)
+        except Exception as exc:
+            outcome["words"] = f"could not read from {portal['display_name']}: {exc}"[:REFUSAL_WORDS_MAX]
+            continue
+        changed = row["modified"] != d["modified"]
+        store.update_scouted(d["slug"], row, now())
+        outcome.update(outcome="scouted", words="scouted" + (" · changed on their side since the last look" if changed else " · no change on their side"),
+                       changed=changed)
+        break
+    return outcome
+
+
 def scout_work_list(store: OpenDataStore, work_list_slug: str, *, transport) -> dict:
-    """Re-read each dataset in the work list from its portal and refresh its stored columns (licence and flags,
-    publisher, modified, formats, size, the publisher's record with its stated coverage). API only. A dataset whose
-    portal did not answer is reported `could_not_scout` with the reason and keeps what it had: a failed read never
-    blanks a column."""
+    """Every dataset of a work list, one after the other, in one call: a LIBRARY helper (tests, scripts). The press does not use it:
+    since TR-54 B4 a press enqueues one `external_data_scout` run per dataset (`open_data.queued`)."""
     datasets = store.datasets_in_work_list(work_list_slug)
     if not datasets:
         raise NotFound(f"No open data in work list '{work_list_slug}'.")
-    out = []
-    adapters_by_portal: dict = {}        # one adapter per portal for the run: a one-document feed is read once
-    for d in datasets:
-        dataset_id = (d["record"] or {}).get("name") or (d["record"] or {}).get("id") or d["identifier"].split(":", 1)[-1]
-        outcome = {"slug": d["slug"], "title": d["title"], "outcome": "could_not_scout", "words": ""}
-        for portal_slug in d["portals"]:
-            portal = store.get_portal(portal_slug)
-            if not portal:
-                outcome["words"] = f"portal '{portal_slug}' is no longer registered"
-                continue
-            try:
-                if portal_slug not in adapters_by_portal:
-                    adapters_by_portal[portal_slug] = portal_adapter(portal, transport)
-                row = adapters_by_portal[portal_slug].describe(dataset_id)
-            except Exception as exc:
-                outcome["words"] = f"could not read from {portal['display_name']}: {exc}"[:REFUSAL_WORDS_MAX]
-                continue
-            changed = row["modified"] != d["modified"]
-            store.update_scouted(d["slug"], row, now())
-            outcome.update(outcome="scouted", words="scouted" + (" · changed on their side since the last look" if changed else " · no change on their side"),
-                           changed=changed)
-            break
-        out.append(outcome)
+    adapters_by_portal: dict = {}
+    out = [scout_dataset(store, d, transport=transport, adapters_by_portal=adapters_by_portal) for d in datasets]
     return {"work_list": work_list_slug, "price": scout_price(len(datasets)), "rows": out,
             "scouted": sum(1 for o in out if o["outcome"] == "scouted"),
             "could_not_scout": sum(1 for o in out if o["outcome"] != "scouted")}

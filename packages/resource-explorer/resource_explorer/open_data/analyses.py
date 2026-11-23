@@ -18,6 +18,11 @@ from typing import Any, Callable
 RESULT_STATES = ("measured", "not_measured", "not_permitted", "not_applicable", "nothing_found")
 
 
+class RunnerFailed(RuntimeError):
+    """The run could not do its work (a portal did not answer). It ends the run's activity in error with these words, stores NO
+    result, so the dataset keeps the values and the earlier result it had, and the words say so. Never read as "found nothing"."""
+
+
 @dataclass
 class OpenDataResult:
     state: str                                   # one of RESULT_STATES
@@ -61,7 +66,13 @@ def register(analysis_id: str, run: Callable[[RunContext], OpenDataResult],
 #: Analyses RE ships a runner for: id -> the module that holds its `RUNNER`. Loaded when first asked for, so a worker that never
 #: runs one never imports it. A runner registered with `register` (a test's stand-in) wins.
 BUILT_IN = {"od_licence_usable": "resource_explorer.open_data.licence_usable",
-            "od_cadence_kept": "resource_explorer.open_data.cadence_kept"}
+            "od_cadence_kept": "resource_explorer.open_data.cadence_kept",
+            # TR-54 B4: a work-list press (scout, profile, refresh) is one queued run per dataset of these; od_profile is the profile run
+            # reached from one dataset (the same runner under its own id)
+            "external_data_scout": "resource_explorer.open_data.queued:SCOUT",
+            "external_data_refresh": "resource_explorer.open_data.queued:REFRESH",
+            "external_data_profile": "resource_explorer.open_data.queued:PROFILE",
+            "od_profile": "resource_explorer.open_data.queued:PROFILE"}
 
 
 def runner_for(analysis_id: str) -> Runner | None:
@@ -72,7 +83,8 @@ def runner_for(analysis_id: str) -> Runner | None:
         return None
     import importlib
 
-    return importlib.import_module(module).RUNNER
+    module, _, attribute = module.partition(":")
+    return getattr(importlib.import_module(module), attribute or "RUNNER")
 
 
 def _declared() -> dict[str, Any]:

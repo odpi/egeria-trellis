@@ -251,7 +251,8 @@ def test_the_routes_publish_refresh_and_read_the_proof(store, one, monkeypatch):
     app.include_router(routes.router, prefix="/api/open-data")
     c = TestClient(app)
     assert c.get(f"/api/open-data/work-lists/{wl}/refresh-price").json()["calls"] == 2
-    assert c.post(f"/api/open-data/work-lists/{wl}/refresh").json()["first_look"] == 1
+    pressed = c.post(f"/api/open-data/work-lists/{wl}/refresh").json()         # B4: queued, one run per dataset, not done inline
+    assert pressed["queued"] == 1 and "first_look" not in pressed
     assert c.get(f"/api/open-data/datasets/{ds['slug']}/publish").json()["words"] == "Not published to Egeria yet"
     assert c.post(f"/api/open-data/datasets/{ds['slug']}/publish").json()["guid"] == "guid-1"
     assert c.get(f"/api/open-data/datasets/{ds['slug']}/publish").json()["proof"]["guid"] == "guid-1"

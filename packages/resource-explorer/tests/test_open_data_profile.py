@@ -230,8 +230,8 @@ def test_the_routes_price_run_and_view(store, listed, monkeypatch):
     c = TestClient(app)
     got = c.get(f"/api/open-data/work-lists/{listed}/profile").json()
     assert got["price"]["line"].startswith("3 datasets") and all(d["profile"] is None for d in got["datasets"])
-    ran = c.post(f"/api/open-data/work-lists/{listed}/profile").json()
-    assert ran["profiled"] == 2 and ran["not_profiled"] == 1
+    ran = c.post(f"/api/open-data/work-lists/{listed}/profile").json()        # B4: queued, one run per dataset, not done inline
+    assert ran["queued"] == 3 and "profiled" not in ran
     assert c.get("/api/open-data/work-lists/nope/profile").status_code == 404
 
 

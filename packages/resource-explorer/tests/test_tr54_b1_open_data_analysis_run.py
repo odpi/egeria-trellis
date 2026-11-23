@@ -121,7 +121,13 @@ def test_an_unknown_analysis_id_is_refused_in_words(reg, store, dataset):
     assert "'no_such_analysis' is not an open data analysis" in r.error and "od_licence_usable" in r.error
 
 
-def test_a_declared_analysis_with_no_runner_says_it_is_not_built_never_ok(reg, store, dataset):
+@pytest.fixture
+def unbuilt(monkeypatch):
+    """od_profile (the last declared analysis, built in TR-54 B4) with its runner taken away: a declared analysis with no reader."""
+    monkeypatch.delitem(analyses.BUILT_IN, "od_profile")
+
+
+def test_a_declared_analysis_with_no_runner_says_it_is_not_built_never_ok(reg, store, dataset, unbuilt):
     from resource_explorer.workflows.analysis import run_open_data_analysis
 
     r = run_open_data_analysis(dataset["slug"], "od_profile", registry=reg)
@@ -142,7 +148,7 @@ def test_an_analysis_that_calls_no_portal_says_so_not_zero_priced_as_free():
     assert p["calls"] == 0 and "no portal call" in p["line"]
 
 
-def test_the_price_of_an_unbuilt_analysis_is_not_priced_never_zero():
+def test_the_price_of_an_unbuilt_analysis_is_not_priced_never_zero(unbuilt):
     p = analyses.price("od_profile", {"slug": "d"})
     assert p["priced"] is False and p["calls"] is None and "no reader yet" in p["line"]
 
@@ -184,7 +190,7 @@ def test_the_route_enqueues_returns_an_activity_id_and_records_who_pressed(api, 
 
 
 @pytest.mark.usefixtures("signed_in_caller")
-def test_the_route_refuses_in_words_before_it_queues_anything(api, reg, dataset):
+def test_the_route_refuses_in_words_before_it_queues_anything(api, reg, dataset, unbuilt):
     client, headers = api
     assert client.post(f"/api/open-data/datasets/ghost/analyses/{STAND_IN}/run", headers=headers).status_code == 404
     unknown = client.post(f"/api/open-data/datasets/{dataset['slug']}/analyses/nope/run", headers=headers)
@@ -201,7 +207,7 @@ def test_the_route_needs_a_signed_in_person(api, dataset):
 
 
 @pytest.mark.usefixtures("signed_in_caller")
-def test_the_price_route_shows_the_call_count_before_the_press(api, dataset):
+def test_the_price_route_shows_the_call_count_before_the_press(api, dataset, unbuilt):
     client, headers = api
     _register_stand_in(calls=4)
     p = client.get(f"/api/open-data/datasets/{dataset['slug']}/analyses/{STAND_IN}/price", headers=headers).json()

@@ -126,7 +126,8 @@ def test_scout_and_fit_routes(reg, monkeypatch):
     r = c.get(f"/api/open-data/work-lists/{wl}/scout-price")
     assert r.status_code == 200, (wl, r.text)
     assert r.json()["line"] == "3 datasets × 1 call = 3 calls"
-    assert c.post(f"/api/open-data/work-lists/{wl}/scout").json()["scouted"] == 3
+    pressed = c.post(f"/api/open-data/work-lists/{wl}/scout").json()           # B4: queued, one run per dataset, not done inline
+    assert pressed["queued"] == 3 and len(pressed["runs"]) == 3 and "scouted" not in pressed
     assert c.post(f"/api/open-data/work-lists/{wl}/fit", json={"request": {"formats": ["CSV"]}}).json()["passes"] == 0
     assert c.get("/api/open-data/work-lists/nope/scout-price").status_code == 404
     assert c.post("/api/open-data/work-lists/nope/fit", json={}).status_code == 404
@@ -174,9 +175,9 @@ def test_the_scout_is_declared_in_the_analysis_catalog_once():
 
     entries = reader.get_analyses("open_data", include_egeria_live=False)
     assert [e["id"] for e in entries][:3] == ["external_data_scout", "external_data_profile", "external_data_refresh"]   # + OD3, OD4
-    assert {"od_licence_usable", "od_cadence_kept", "od_profile"} <= {e["id"] for e in entries}                     # declared, not built
+    assert {"od_licence_usable", "od_cadence_kept", "od_profile"} <= {e["id"] for e in entries}                     # declared (built since B2-B4)
     e = entries[0]
-    assert e["resource_types"] == ["open_data"] and e["availability"] == "inline" and e["action"] == "survey"
+    assert e["resource_types"] == ["open_data"] and e["availability"] == "queued" and e["action"] == "survey"       # B4: one queued run per dataset
     assert not [x for x in reader.get_analyses("repo", include_egeria_live=False) if x["id"] == "external_data_scout"]
 
 

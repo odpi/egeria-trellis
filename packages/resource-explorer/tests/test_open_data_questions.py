@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 NEXT = ROOT / "resource_explorer/web/static/next"
 IDS = ("Q-0113", "Q-0114", "Q-0115")
 LEADS = {"Q-0113": "od_licence_usable", "Q-0114": "od_cadence_kept", "Q-0115": "od_profile"}
-BUILT = {"od_licence_usable", "od_cadence_kept"}      # built in TR-54 B2 and B3: their rows are PARTIAL; od_profile's stays a gap until B4
+BUILT = {"od_licence_usable", "od_cadence_kept", "od_profile"}      # built in TR-54 B2, B3 and B4: their rows are PARTIAL (not yet wired, B5)
 
 
 def test_the_catalogue_has_the_three_rows_with_unique_ids_and_declared_analyses():
@@ -151,7 +151,7 @@ def test_q0113_is_partial_with_the_architects_words_and_says_when_it_changed():
     assert r["Answering Analysis"].startswith("PARTIAL: od_licence_usable judges a dataset's licence identifier against RE's licence table")
     assert "RE gives no legal advice" in r["Answering Analysis"] and "GAP" not in r["Answering Mechanism"]
     assert r["Catalog History"].endswith("2026-11-23: od_licence_usable built (TR-54 B2): GAP → PARTIAL; it answers the question once wired (B5).")
-    assert rows["Q-0115"]["Answering Analysis"].startswith("GAP:")
+    assert rows["Q-0115"]["Answering Analysis"].startswith("PARTIAL: od_profile reads a dataset's tabular distributions")
 
 
 def test_q0114_is_partial_and_states_the_absence_rules_in_words():

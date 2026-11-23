@@ -372,6 +372,23 @@ def dataset_analysis_price(slug: str, analysis_id: str) -> dict:
     return analyses.price(analysis_id, dataset)
 
 
+def _enqueue_dataset_run(registry, dataset: dict, analysis_id: str, pressed_on: str = "") -> dict:
+    """Queue ONE analysis run on ONE dataset: its activity row first (so a poll always has something), then the queue row. The
+    caller has already refused what cannot run. Returns {slug, title, analysis_id, activity_id, run_id}."""
+    from resource_explorer.activity_logger import log_analysis_run
+    from resource_explorer.run_queue import requested_by
+
+    slug = dataset["slug"]
+    activity_id = log_analysis_run(registry, "open_data", slug, str(dataset.get("title") or slug), "running",
+                                   f"Running '{analysis_id}' on {slug}…", analysis_id, published=None)
+    run_id = registry.enqueue_run("open_data_analysis_run",
+                                  {"slug": slug, "analysis_id": analysis_id,
+                                   **({"pressed_on": pressed_on[:40]} if pressed_on else {})},
+                                  result_ref=activity_id, requested_by=requested_by())
+    log.info("enqueued open_data_analysis_run %s for %s/%s (activity %s)", run_id, slug, analysis_id, activity_id)
+    return {"slug": slug, "title": dataset.get("title"), "analysis_id": analysis_id, "activity_id": activity_id, "run_id": run_id}
+
+
 @router.post("/datasets/{slug}/analyses/{analysis_id}/run")
 def run_dataset_analysis(slug: str, analysis_id: str, request: Request, pressed_on: str = "") -> dict:
     """Run ONE analysis on ONE dataset (TR-54 B1): validated here (an unknown analysis, or one with no reader yet, is a 400 in
@@ -379,9 +396,7 @@ def run_dataset_analysis(slug: str, analysis_id: str, request: Request, pressed_
     `{status: "started", activity_id, run_id, price}`: the activity row exists before the worker starts, so the checklist's
     pollActivity always has something to poll. The result is stored per (dataset, analysis); nothing is published, nothing
     is written to Egeria. The run executes as the person who pressed."""
-    from resource_explorer.activity_logger import log_analysis_run
     from resource_explorer.open_data import analyses
-    from resource_explorer.run_queue import requested_by
 
     _signed_in_user(request)
     registry = ProjectRegistry()
@@ -391,16 +406,32 @@ def run_dataset_analysis(slug: str, analysis_id: str, request: Request, pressed_
     why = analyses.refusal(analysis_id)
     if why:
         raise HTTPException(status_code=400, detail=why)
-    price = analyses.price(analysis_id, dataset)
-    activity_id = log_analysis_run(registry, "open_data", slug, str(dataset.get("title") or slug), "running",
-                                   f"Running '{analysis_id}' on {slug}…", analysis_id, published=None)
-    run_id = registry.enqueue_run("open_data_analysis_run",
-                                  {"slug": slug, "analysis_id": analysis_id,
-                                   **({"pressed_on": pressed_on[:40]} if pressed_on else {})},
-                                  result_ref=activity_id, requested_by=requested_by())
-    log.info("enqueued open_data_analysis_run %s for %s/%s (activity %s)", run_id, slug, analysis_id, activity_id)
-    return {"status": "started", "slug": slug, "analysis_id": analysis_id, "activity_id": activity_id, "run_id": run_id,
-            "price": price}
+    queued = _enqueue_dataset_run(registry, dataset, analysis_id, pressed_on)
+    return {"status": "started", "slug": slug, "analysis_id": analysis_id, "activity_id": queued["activity_id"],
+            "run_id": queued["run_id"], "price": analyses.price(analysis_id, dataset)}
+
+
+def _press_work_list(slug: str, analysis_id: str, request: Request) -> dict:
+    """A work-list press (scout, profile, refresh), TR-54 B4: ONE queued run per dataset, none done in the request. The answer says
+    what was queued and what it costs; each run's result (and which portal failed, and why) is `GET /work-lists/{slug}/runs`."""
+    from resource_explorer.open_data import analyses
+
+    _signed_in_user(request)
+    registry = _store().registry
+    datasets = _store().datasets_in_work_list(slug)
+    if not datasets:
+        raise HTTPException(status_code=404, detail=f"No open data in work list '{slug}'.")
+    why = analyses.refusal(analysis_id)
+    if why:
+        raise HTTPException(status_code=400, detail=why)
+    runs = [_enqueue_dataset_run(registry, d, analysis_id, "Work list") for d in datasets]
+    calls = sum(int(analyses.runner_for(analysis_id).calls(d)) for d in datasets)
+    upper = " (at most: each file is read only up to its cap)" if analysis_id == "external_data_profile" else ""
+    n = len(datasets)
+    return {"work_list": slug, "analysis_id": analysis_id, "queued": n, "runs": runs,
+            "price": {"datasets": n, "calls": calls,
+                      "line": (service.scout_price(n)["line"] if analysis_id == "external_data_scout" else
+                               f"{n} dataset{'s' if n != 1 else ''} · {calls} portal call{'s' if calls != 1 else ''}{upper}")}}
 
 
 # ── directories ──────────────────────────────────────────────────────────────
@@ -421,12 +452,8 @@ def scout_price(slug: str) -> dict:
 
 @router.post("/work-lists/{slug}/scout")
 def scout(slug: str, request: Request) -> dict:
-    """ExternalDataScout: re-read every dataset of the work list from its portal (one call each)."""
-    _signed_in_user(request)
-    try:
-        return service.scout_work_list(_store(), slug, transport=_transport())
-    except service.OpenDataError as exc:
-        raise _http(exc) from exc
+    """ExternalDataScout: queue one run per dataset to re-read it from its portal (one call each, priced in the answer)."""
+    return _press_work_list(slug, "external_data_scout", request)
 
 
 @router.get("/work-lists/{slug}/profile")
@@ -441,16 +468,8 @@ def profile_view(slug: str) -> dict:
 
 @router.post("/work-lists/{slug}/profile")
 def profile_run(slug: str, request: Request) -> dict:
-    """ExternalDataProfile: download and profile the shortlist's distributions, each capped (the price is shown first)."""
-    from resource_explorer.open_data import profile
-
-    _signed_in_user(request)
-    try:
-        return profile.profile_work_list(_store(), slug, transport=_transport())
-    except profile.NothingToProfile as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except profile.AlreadyRunning as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    """ExternalDataProfile: queue one run per dataset to download and profile its distributions, each capped (priced in the answer)."""
+    return _press_work_list(slug, "external_data_profile", request)
 
 
 @router.get("/work-lists/{slug}/refresh-price")
@@ -466,14 +485,22 @@ def refresh_price(slug: str) -> dict:
 
 @router.post("/work-lists/{slug}/refresh")
 def refresh_run(slug: str, request: Request) -> dict:
-    """ExternalDataRefresh: look at each dataset on its portal again and say what changed on their side."""
-    from resource_explorer.open_data import refresh
+    """ExternalDataRefresh: queue one run per dataset to look at it on its portal again and say what changed on their side."""
+    return _press_work_list(slug, "external_data_refresh", request)
 
-    _signed_in_user(request)
-    try:
-        return refresh.refresh_work_list(_store(), slug, transport=_transport())
-    except service.OpenDataError as exc:
-        raise _http(exc) from exc
+
+@router.get("/work-lists/{slug}/runs")
+def work_list_runs(slug: str, analysis_id: str) -> dict:
+    """The newest run of `analysis_id` on each dataset of the work list: its status and words, so a press where one portal did not
+    answer says which dataset failed and why (the others are done)."""
+    from resource_explorer.open_data import analyses, queued
+
+    store = _store()
+    if not store.datasets_in_work_list(slug):
+        raise HTTPException(status_code=404, detail=f"No open data in work list '{slug}'.")
+    if analysis_id not in analyses._declared():
+        raise HTTPException(status_code=400, detail=analyses.refusal(analysis_id))
+    return queued.work_list_runs(store.registry, store, slug, analysis_id)
 
 
 @router.get("/datasets/{slug}/publish")
