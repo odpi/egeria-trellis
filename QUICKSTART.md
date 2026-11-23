@@ -157,6 +157,15 @@ starts nothing.
 
 `make help` lists every target.
 
+**One more shared secret, for the Portal's Trellis tile.** The Egeria Portal hands a signed-in person to Resource
+Explorer and Egeria Advisor with a signed token, and both sides must hold the same secret: the QuickStart's
+`EGERIA_ADVISOR_SSO_SECRET` (in `egeria-workspaces/compose-configs/egeria-quickstart/.env`) and the apps'
+`TRELLIS_PORTAL_SECRET` (in RE's, EA's and Studio's `.env`; EA also reads `ADVISOR_PORTAL_SECRET`). It must be the
+same value in both places. Without it the Portal's Trellis tile reads "Not configured". `make up` copies it for you
+when it can find the QuickStart's `.env`: it looks beside this checkout for `egeria-workspaces`, or set
+`EGERIA_WORKSPACES_FS` to your checkout. If it cannot find it, it says so and leaves the secret unset (it never
+invents one: a made-up value would not verify), and you set the same value in both places by hand.
+
 ### 6. First real action
 
 **Resource Explorer** — add a repo and ask about it:

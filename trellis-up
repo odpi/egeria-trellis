@@ -205,9 +205,11 @@ init_secrets() {
     for f in "$RE_ENV" "$EA_ENV" "$STUDIO_ENV"; do env_set "$f" TRELLIS_PORTAL_SECRET "$portal"; done
     say "TRELLIS_PORTAL_SECRET: copied from the Portal's EGERIA_ADVISOR_SSO_SECRET"
   else
-    say "TRELLIS_PORTAL_SECRET: not set — Portal SSO stays off (the tile reads"
-    say "  'Not configured'). To enable it, set the SAME value here and as"
-    say "  EGERIA_ADVISOR_SSO_SECRET in egeria-quickstart/.env."
+    say "TRELLIS_PORTAL_SECRET: not set — Portal SSO stays off (the Portal's Trellis tile"
+    say "  reads 'Not configured'). It must be the SAME value as EGERIA_ADVISOR_SSO_SECRET in the"
+    say "  QuickStart's .env (compose-configs/egeria-quickstart/.env). To have this script copy it,"
+    say "  point EGERIA_WORKSPACES_FS at your egeria-workspaces checkout and run it again; or set"
+    say "  TRELLIS_PORTAL_SECRET by hand in the RE, EA and Studio .env files."
   fi
 }
 
