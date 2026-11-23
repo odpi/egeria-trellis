@@ -26,6 +26,7 @@ trellis-auth = { workspace = true }
 trellis-feedback = { workspace = true }
 trellis-ui = { workspace = true }
 trellis-accel = { workspace = true }
+trellis-llm = { workspace = true }
 trellis-studio = { workspace = true }
 trellis-analytics-re = { workspace = true }
 # The Analytic Library left trellis in LS2 (odpi/egeria-trellis-analytics). It has no entry here on purpose: since
@@ -58,6 +59,7 @@ dev = [
     "trellis-feedback[dev]",
     "trellis-ui",
     "trellis-accel",
+    "trellis-llm",
     "trellis-studio[dev]",
     "trellis-analytics-re[dev]",
     "trellis-step-change-rates",
