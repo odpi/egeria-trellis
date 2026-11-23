@@ -578,11 +578,7 @@ async def health_ready() -> JSONResponse:
             status_code=503,
             content={"status": "error", "database": "unreachable", "detail": str(exc), "boot_id": _BOOT_ID},
         )
-    from resource_explorer.github.token_status import status as github_token_status
-
-    gh = github_token_status()      # TR-53: booleans and a number, never the token
-    return JSONResponse(content={"status": "ok", "database": "ok", "boot_id": _BOOT_ID,
-                                 "github": {"token_set": gh["token_set"], "requests_per_hour": gh["requests_per_hour"]}})
+    return JSONResponse(content={"status": "ok", "database": "ok", "boot_id": _BOOT_ID})
 
 
 _NEXT_SHELL = _STATIC / "next" / "index.html"

@@ -3,8 +3,9 @@
 
 Without a token GitHub allows 60 API requests an hour; one survey of a modest repository spends them in its first calls,
 so the commit history, diff stats and contributor lists come back empty or partial. `GitHubConfig.token` defaults to "",
-and nothing said so. This reports it: a WARNING at web and worker start-up, a boolean in /health/ready, and one yellow
-line at the start of the CLI commands that call GitHub. The token's VALUE never appears anywhere here.
+and nothing said so. This reports it: a WARNING at web and worker start-up and one yellow line at the start of the CLI
+commands that call GitHub. Not in /health/ready: that is the unauthenticated readiness probe, and a configuration fact
+about GitHub is not readiness. The token's VALUE never appears anywhere here.
 """
 from __future__ import annotations
 

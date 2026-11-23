@@ -2,7 +2,7 @@
 
 Without it GitHub allows 60 requests an hour, which one survey of a modest repo spends. config.py defaults it to "", and
 nothing said so: no startup warning, no status field, and QUICKSTART, the deploy guide and the admin guide presented it as
-optional. Now: a WARNING at web and worker start-up, a `github` field in /health/ready (a boolean, never the value), a
+optional. Now: a WARNING at web and worker start-up, a
 yellow line at the start of the CLI commands that call GitHub, and the three docs say what happens without one.
 """
 from __future__ import annotations
@@ -79,16 +79,17 @@ def test_web_and_worker_startup_call_it():
     assert "log_at_startup" in inspect.getsource(worker.run_worker)
 
 
-def test_health_ready_reports_the_token_state_without_the_value(no_token):
+def test_health_ready_says_nothing_about_github(no_token):
+    """W-53-1: /health/ready is the unauthenticated readiness probe (k8s, the chart canary, the Portal tile). Whether a
+    token exists and its rate budget is a configuration fact, not readiness, and not for anyone who can reach /health."""
     from resource_explorer.web.app import app
 
     registry = MagicMock()
     with patch("resource_explorer.registry.ProjectRegistry", return_value=registry):
-        data = TestClient(app).get("/health/ready").json()
-    assert data["github"] == {"token_set": False, "requests_per_hour": 60}
-    with _patch(SENTINEL), patch("resource_explorer.registry.ProjectRegistry", return_value=registry):
         text = TestClient(app).get("/health/ready").text
-    assert SENTINEL not in text and '"token_set":true' in text.replace(" ", "")
+    assert "github" not in text.lower() and "token" not in text.lower() and "requests_per_hour" not in text
+    with _patch(SENTINEL), patch("resource_explorer.registry.ProjectRegistry", return_value=registry):
+        assert SENTINEL not in TestClient(app).get("/health/ready").text
 
 
 def test_the_console_warning_prints_once_per_process_without_a_token(no_token):

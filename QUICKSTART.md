@@ -138,7 +138,7 @@ GITHUB_TOKEN=ghp_...
 Without one GitHub allows 60 API calls an hour, which one survey of a modest repository spends in its
 first calls: the commit history, diff stats and contributors then come back empty or partial. Resource
 Explorer warns at startup when it is unset (and `resource-explorer survey` and `refresh` say so before
-they run); `/health/ready` shows `github.token_set`.
+they run).
 
 ### 5. Run
 
