@@ -80,6 +80,9 @@ def judge(cadence_raw, looks: list[dict]) -> analyses.OpenDataResult:
     if late:
         summary = (f"late: stated cadence {cadence.raw}; the look on {worst_look} saw a modified date of {worst_modified}, "
                    f"{_plural(worst_age, 'day')} old, more than the {allowed:g} the cadence allows ({read})")
+        now_age = (last_look - last_modified).days
+        if now_age <= allowed:      # it lapsed at some look but the last look found it current: say both
+            summary += f"; current now (last modified {last_modified}, {_plural(now_age, 'day')} before the last look)"
     elif looks_interval > allowed:
         summary = (f"kept in the looks RE has; RE looked every ~{int(looks_interval + 0.5)} days, longer than the cadence "
                    f"({cadence.raw}), so a late update between looks cannot be seen; last modified {last_modified} at the look on {last_look} ({read})")

@@ -242,3 +242,18 @@ def test_od_cadence_kept_is_built_and_still_answers_no_question_until_b5():
     assert by[ID]["declaration"]["built"] is True and by["od_licence_usable"]["declaration"]["built"] is True
     assert by["od_profile"]["declaration"]["built"] is True and not by[ID].get("answers_questions")      # od_profile: built in B4
     assert "Not built" not in by[ID]["description"]
+
+
+def test_a_dataset_that_lapsed_once_but_is_current_now_says_so():
+    from resource_explorer.open_data.cadence_kept import judge
+
+    r = judge("P1M", _looks(("2026-08-02", "2026-08-01"), ("2026-10-31", "2026-08-01"), ("2026-11-02", "2026-11-01")))
+    assert r.measures["verdict"] == "late" and r.measures["worst_look"] == "2026-10-31"
+    assert r.summary.endswith("; current now (last modified 2026-11-01, 1 day before the last look)")
+
+
+def test_a_dataset_still_lapsed_at_the_last_look_is_not_called_current():
+    from resource_explorer.open_data.cadence_kept import judge
+
+    r = judge("P1M", _looks(("2026-08-02", "2026-08-01"), ("2026-11-15", "2026-08-01")))
+    assert r.measures["verdict"] == "late" and "current now" not in r.summary
