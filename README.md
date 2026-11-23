@@ -93,6 +93,10 @@ cp packages/egeria-advisor/advisor/configdata/mcp_servers.json.example \
    packages/egeria-advisor/advisor/configdata/mcp_servers.json
 ```
 
+The MCP config names no user and holds no password: EA runs its pyegeria MCP server as its own **service account** (set
+`EA_DAEMON_USER_ID` and `EA_DAEMON_USER_PASSWORD` in `packages/egeria-advisor/.env`), never as a person's persona such as
+`erinoverview`. People sign in to EA as themselves.
+
 ### Databases
 
 Both apps share one Postgres/pgvector instance (`egeria_advisor` database, default port `5442`).
