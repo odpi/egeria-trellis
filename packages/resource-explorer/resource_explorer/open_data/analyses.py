@@ -58,6 +58,22 @@ def register(analysis_id: str, run: Callable[[RunContext], OpenDataResult],
     RUNNERS[analysis_id] = Runner(analysis_id, run, calls)
 
 
+#: Analyses RE ships a runner for: id -> the module that holds its `RUNNER`. Loaded when first asked for, so a worker that never
+#: runs one never imports it. A runner registered with `register` (a test's stand-in) wins.
+BUILT_IN = {"od_licence_usable": "resource_explorer.open_data.licence_usable"}
+
+
+def runner_for(analysis_id: str) -> Runner | None:
+    if analysis_id in RUNNERS:
+        return RUNNERS[analysis_id]
+    module = BUILT_IN.get(analysis_id)
+    if module is None:
+        return None
+    import importlib
+
+    return importlib.import_module(module).RUNNER
+
+
 def _declared() -> dict[str, Any]:
     from resource_explorer.surveyors import analysis_catalog_reader
 
@@ -70,7 +86,7 @@ def refusal(analysis_id: str) -> str | None:
     if analysis_id not in declared:
         return (f"'{analysis_id}' is not an open data analysis: the ones declared for a dataset are "
                 f"{', '.join(sorted(declared))}.")
-    if analysis_id in RUNNERS:
+    if runner_for(analysis_id) is not None:
         return None
     if getattr(declared[analysis_id], "availability", "") == "inline":
         return (f"'{analysis_id}' runs from a work list press today, one call per dataset in the list; it is not a per-dataset "
@@ -81,7 +97,7 @@ def refusal(analysis_id: str) -> str | None:
 def price(analysis_id: str, dataset: dict) -> dict:
     """The price line shown BEFORE the press: the portal calls one run makes on this dataset. Not priced (never 0) when the
     analysis has no reader yet."""
-    runner = RUNNERS.get(analysis_id)
+    runner = runner_for(analysis_id)
     if runner is None:
         return {"analysis_id": analysis_id, "priced": False, "calls": None,
                 "line": f"not priced · {analysis_id} has no reader yet"}

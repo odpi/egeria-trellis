@@ -94,11 +94,18 @@ def licence_id_from_iri(raw) -> str:
 class Classified(NamedTuple):
     id: object      # a licence identifier (an id RE may or may not know, or a URL), else NOT_REPORTED
     text: object    # a licence STATED AS TEXT (a sentence, a name, HTML), else NOT_REPORTED
+    placeholder: object = None   # the raw word a portal put where a licence goes but that states none ("None", "TBD"), else None
 
 
 #: A bare token a portal uses as a licence id ("cc-by-4.0", "OGL-Canada-2.0"): no spaces, no markup.
 _ID_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+\-]{0,63}$")
 _URL = re.compile(r"^https?://\S+$", re.IGNORECASE)
+
+
+#: Words a portal puts in the licence field that state no licence. Read as "not reported", with the raw word kept as a note: never
+#: as an id ("licence None"). Compared case-insensitively.
+PLACEHOLDERS = frozenset({"none", "unknown", "other", "n/a", "na", "tbd", "null", "nil", "not specified", "not stated",
+                          "unspecified", "not available", "-", "?"})
 
 
 def classify_licence(raw) -> Classified:
@@ -109,6 +116,8 @@ def classify_licence(raw) -> Classified:
     if not isinstance(raw, str) or not raw.strip() or raw == NOT_REPORTED:
         return Classified(NOT_REPORTED, NOT_REPORTED)
     text = raw.strip()
+    if text.lower() in PLACEHOLDERS:
+        return Classified(NOT_REPORTED, NOT_REPORTED, text)
     if _URL.match(text):
         return Classified(licence_id_from_iri(text), NOT_REPORTED)
     if text.lower() in _FLAGS:

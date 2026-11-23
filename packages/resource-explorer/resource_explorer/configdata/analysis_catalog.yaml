@@ -4101,8 +4101,10 @@ open_data_analyses:
   - id: od_licence_usable
     name: "Open Data Licence Usable"
     description: >
-      Not built. Declared 2026-11-02 so the open data question it will answer reads "no reader yet" rather than
-      claiming a runnable analysis. Will say whether the dataset's licence fits a stated purpose and what it requires of the user (attribution, share-alike, commercial use), from the publisher's licence record.
+      Says what a dataset's licence requires of the person who uses it (attribution, share-alike, commercial use) and whether that
+      fits the purpose its investigation states, from the licence identifier the publisher stated and RE's table of SPDX, Creative
+      Commons and ODC ids. A licence id the table does not know is "not judged: licence <id> is not in RE's table"; a licence stated
+      only in words is read and not judged; no licence stated is nothing found. It reads the stored licence: no portal call.
     resource_types: ["open_data"]
     intent: assessment
     perspectives: ["all", "Steward"]
@@ -4117,7 +4119,7 @@ open_data_analyses:
       candidate: false
       native_process_ref: null
     declaration:
-      built: false
+      built: true
       result_kind: measure
       measures:
       - name: licences_read
@@ -4125,7 +4127,7 @@ open_data_analyses:
         as_of: retrieved_at
         value_field: licences_read
       absence:
-        not_measured: 'Not built: the licence check has no reader yet, so no licence has been judged against a purpose.'
+        not_measured: 'Not measured: the licence check has not run on this dataset, so no licence has been judged against a purpose.'
         not_permitted: 'Not permitted: the source refused the read.'
         not_applicable: 'Not applicable: the dataset is not on a portal RE can read yet.'
         nothing_found: 'Measured: the source states nothing for this question.'

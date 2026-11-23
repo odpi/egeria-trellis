@@ -830,7 +830,7 @@ def run_open_data_analysis(slug: str, analysis_id: str, *, registry=None, activi
         return DatabaseAnalysisRunResult(status="error", error=why)
     ctx = analyses.RunContext(registry=registry, store=OpenDataStore(registry), dataset=dataset,
                               requested_by=requested_by(), transport_factory=transport_factory)
-    result = analyses.RUNNERS[analysis_id].run(ctx)
+    result = analyses.runner_for(analysis_id).run(ctx)
     measured_at = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     record = analyses.annotation_record(analysis_id, dataset, result, measured_at)
     registry.record_step_annotations("open_data", slug, analysis_id, run=activity_id or str(uuid.uuid4()),

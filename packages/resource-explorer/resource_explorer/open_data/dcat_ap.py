@@ -438,6 +438,9 @@ class DcatApAdapter(Adapter):
             record["_licence_note"] = note
         classified = classify_licence(licence_raw)
         licence_id, licence_text = classified.id, classified.text
+        if classified.placeholder:
+            note = (note + "; " if note else "") + f"the portal's licence field says {classified.placeholder!r}, which states no licence"
+            record["_licence_note"] = note
         if licence_text != NOT_REPORTED:
             record[LICENCE_TEXT_KEY] = licence_text      # kept with the stored record: the licence is stated, and not judged
         modified = next((t for t in (_text(v) for ns_local in (("dct", "modified"), ("dct", "issued"))
