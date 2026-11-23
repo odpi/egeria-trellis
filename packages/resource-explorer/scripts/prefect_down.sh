@@ -5,6 +5,8 @@
 # The pid file holds the PID of `nohup env ... uv run ... prefect worker`, a wrapper: the `prefect worker` process it
 # spawned is a CHILD (TR-68). Killing the wrapper alone left that child running while this printed "Stopped", so the
 # whole tree is stopped here (children first), and "Stopped" is printed only once every process in it is gone.
+# A pid file whose pid is no longer a Prefect process (a stale file; the pid was reused) is reported and removed, and nothing
+# is killed (W-68-1).
 # PREFECT_DOWN_WAIT is how many seconds to wait for them to exit after SIGTERM (default 10); one that is still alive
 # after that is named, left alone, and makes this exit 1 (a second run tries again).
 set -euo pipefail
@@ -40,6 +42,19 @@ _stop() {
     rm -f "$pidfile"
     return 0
   fi
+  # W-68-1: after a reboot or crash the pid file survives and its pid can belong to ANY process by now. Only a process
+  # whose command line says it is the Prefect $name that prefect_up.sh started (`... prefect worker ...` / `... prefect
+  # server start`, also the `uv run` wrapper line) is touched; anything else, and its children, are left alone.
+  local args
+  args="$(ps -o args= -p "$pid" 2>/dev/null || true)"
+  case "$args" in
+    *"prefect $name"*) ;;
+    *)
+      echo "- pid $pid is not a Prefect process (stale pid file); not touching it"
+      rm -f "$pidfile"
+      return 0
+      ;;
+  esac
   local pids
   pids="$(_tree "$pid")"
   local p

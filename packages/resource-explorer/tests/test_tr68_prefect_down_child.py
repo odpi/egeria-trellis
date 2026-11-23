@@ -36,11 +36,14 @@ def _alive(pid: int) -> bool:
 
 
 def _tree(home: Path, name: str, child_ignores_term: bool = False):
-    """Start parent -> child like `uv run` -> `prefect worker`; the pidfile holds the PARENT's pid. Returns (parent, child)."""
+    """Start parent -> child like `uv run` -> `prefect worker`; the pidfile holds the PARENT's pid. Returns (parent, child).
+    The parent's command line carries `prefect <name>` the way prefect_up.sh's `uv run ... prefect worker` wrapper does
+    (W-68-1: prefect_down only touches a pid it can see is a Prefect process)."""
     child_pidfile = home / f"{name}.child"
     trap = "trap '' TERM; " if child_ignores_term else ""
     parent = subprocess.Popen(
-        ["bash", "-c", f"({trap}exec sleep 300) & echo $! > {child_pidfile}; wait"],
+        ["bash", "-c", f"# uv run --package resource-explorer resource-explorer prefect {name} --pool p\n"
+                       f"({trap}exec sleep 300) & echo $! > {child_pidfile}; wait"],
         start_new_session=True)
     for _ in range(50):
         if child_pidfile.exists() and child_pidfile.read_text().strip():
@@ -114,3 +117,51 @@ def test_a_stale_pidfile_is_not_reported_as_stopped(home):
     out = _down(home)
     assert "Stopped worker" not in out.stdout and "worker not running" in out.stdout
     assert not (home / ".prefect-run" / "worker.pid").exists()
+
+
+def _unrelated(home: Path, name: str):
+    """A live process that is not Prefect, with a pid file pointing at it: what a pid file left over from before a reboot
+    or crash looks like once the pid has been reused."""
+    proc = subprocess.Popen(["sleep", "300"], start_new_session=True)
+    (home / ".prefect-run" / f"{name}.pid").write_text(str(proc.pid))
+    return proc
+
+
+def test_a_pid_file_that_points_at_an_unrelated_process_leaves_it_alone(home):
+    proc = _unrelated(home, "worker")
+    try:
+        out = _down(home)
+        time.sleep(0.2)
+        assert _alive(proc.pid), "an unrelated process was killed"
+        assert f"pid {proc.pid} is not a Prefect process (stale pid file); not touching it" in out.stdout
+        assert "Stopped worker" not in out.stdout
+        assert not (home / ".prefect-run" / "worker.pid").exists()           # the stale file is removed
+        assert out.returncode == 0
+    finally:
+        _reap(proc.pid)
+
+
+def test_an_unrelated_process_with_children_is_not_killed_with_its_tree(home):
+    proc = subprocess.Popen(["bash", "-c", "sleep 300 & wait"], start_new_session=True)
+    time.sleep(0.3)
+    (home / ".prefect-run" / "server.pid").write_text(str(proc.pid))
+    kids = subprocess.run(["pgrep", "-P", str(proc.pid)], capture_output=True, text=True).stdout.split()
+    try:
+        out = _down(home)
+        time.sleep(0.2)
+        assert _alive(proc.pid) and all(_alive(int(k)) for k in kids)
+        assert "not a Prefect process" in out.stdout
+    finally:
+        _reap(proc.pid, *[int(k) for k in kids])
+
+
+def test_a_worker_pid_file_pointing_at_a_prefect_server_is_not_stopped_as_a_worker(home):
+    parent, child = _tree(home, "server")
+    (home / ".prefect-run" / "server.pid").unlink()                              # only the mislabelled file remains
+    (home / ".prefect-run" / "worker.pid").write_text(str(parent.pid))          # mislabelled: a server under worker.pid
+    try:
+        out = _down(home)
+        assert _alive(parent.pid) and _alive(child)
+        assert f"pid {parent.pid} is not a Prefect process" in out.stdout
+    finally:
+        _reap(parent.pid, child)
