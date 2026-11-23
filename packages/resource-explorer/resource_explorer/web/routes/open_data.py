@@ -329,7 +329,8 @@ def list_datasets() -> list[dict]:
 def get_dataset(slug: str) -> dict:
     """The resource page: the verbatim record, the normalised fields with who stated them and when, and the
     absence word for every question a survey will answer (OD2)."""
-    d = _store().get_dataset(slug)
+    store = _store()
+    d = store.get_dataset(slug)
     if not d:
         raise HTTPException(status_code=404, detail=f"No open data '{slug}'.")
     from resource_explorer.open_data.licences import licence_statement
@@ -337,6 +338,9 @@ def get_dataset(slug: str) -> dict:
     d["stated_by"] = d["portals"]
     d["survey"] = "Not yet run"
     d["licence_statement"] = licence_statement(d)       # identified / stated in words, not identified / not stated
+    from resource_explorer.open_data import licence_usable
+
+    d["licence_check"] = licence_usable.view(store.registry, store, d)   # the shared facts + THIS reader's fit; None until it has run
     return d
 
 

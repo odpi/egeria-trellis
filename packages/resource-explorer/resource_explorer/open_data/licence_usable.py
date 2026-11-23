@@ -6,8 +6,8 @@ or not, commercial use allowed or not. Anything the table does not map is "not j
 portal states only in words is read and "not judged"; no licence stated is `nothing_found`. Never "usable" by a guess, and never "not
 usable" for a licence that is missing.
 
-A stated purpose is the licence need an investigation the dataset belongs to has stated (its data request: commercial use needed,
-share-alike not acceptable). With none, the requirements are listed and no fit is judged.
+The STORED result is shared by everyone who can see the dataset, so it holds dataset facts only. A purpose (the licence need an
+investigation the dataset belongs to has stated) is read per reader at read time (`view`), and the fit is never stored.
 """
 from __future__ import annotations
 
@@ -29,13 +29,10 @@ def _requirements(licence_id: str) -> dict | None:
             "commercial_use": "allowed" if flags["commercial"] else "not allowed"}
 
 
-def _for(fit: list[dict]) -> str:
-    """"; could not check for 'Water study'" after a summary, one clause per purpose; nothing when no purpose is stated."""
-    return "".join(f"; {f['verdict'].replace('_', ' ')} for '{f['title']}'" for f in fit)
-
-
-def judge(dataset: dict, purposes: list[dict] | None = None) -> analyses.OpenDataResult:
-    """The result of one dataset, from its stored licence and the purposes (`purposes_for`) given. Pure: reads nothing else."""
+def judge(dataset: dict) -> analyses.OpenDataResult:
+    """The STORED result of one dataset, from its stored licence alone. Dataset facts only: the licence id or words, what the table
+    says it requires, and whether it was judged. Pure, and it reads nothing per-user: the result is one shared row per dataset, so
+    no investigation, title or fit may be in it (the fit is `fit`, computed per reader at read time by `view`)."""
     statement = licence_statement(dataset)
     if statement["state"] == "not_stated":
         return analyses.OpenDataResult(
@@ -45,40 +42,48 @@ def judge(dataset: dict, purposes: list[dict] | None = None) -> analyses.OpenDat
     if statement["state"] == "stated_in_words":
         text = licence_text(dataset) or ""
         shown = text if len(text) <= 200 else text[:200] + "…"
-        fit = [{"investigation": p["investigation"], "title": p.get("title") or p["investigation"], "verdict": "could_not_check",
-                "words": "the licence is stated in words and not identified"} for p in purposes or []]
         return analyses.OpenDataResult(
-            state="measured", summary="not judged: licence stated in words, not identified" + _for(fit),
+            state="measured", summary="not judged: licence stated in words, not identified",
             explanation=f"The portal states the licence as: {shown}",
-            measures={"licences_read": 1, "judged": False, "licence_id": None, "fit": fit})
+            measures={"licences_read": 1, "judged": False, "licence_id": None})
     licence_id = licence_id_from_iri(str(dataset["licence_id"]))
     requirements = _requirements(str(licence_id))
     if requirements is None:
-        fit = [{"investigation": p["investigation"], "title": p.get("title") or p["investigation"], "verdict": "could_not_check",
-                "words": f"licence {dataset['licence_id']} is not in RE's table"} for p in purposes or []]
         return analyses.OpenDataResult(
-            state="measured", summary=f"not judged: licence {dataset['licence_id']} is not in RE's table" + _for(fit),
+            state="measured", summary=f"not judged: licence {dataset['licence_id']} is not in RE's table",
             explanation="RE judges only the licence ids in its own table; this one is stated, and not judged.",
-            measures={"licences_read": 1, "judged": False, "licence_id": str(dataset["licence_id"]), "fit": fit})
-    say = (f"{licence_id}: attribution {requirements['attribution']}; share-alike {requirements['share_alike']}; "
-           f"commercial use {requirements['commercial_use']}")
-    fit = []
-    flags = licence_flags(licence_id)
-    for purpose in purposes or []:
-        cell = _license_cell({"licence": flags, "licence_id": licence_id}, DataRequest.from_dict({"licence": purpose["licence"]}))
-        fit.append({"investigation": purpose["investigation"], "title": purpose.get("title") or purpose["investigation"],
-                    "verdict": cell["status"], "words": cell["words"]})
-    say += _for(fit)
+            measures={"licences_read": 1, "judged": False, "licence_id": str(dataset["licence_id"])})
     return analyses.OpenDataResult(
-        state="measured", summary=say,
-        explanation=("Judged from the licence identifier through RE's table of licence ids; "
-                     + ("against the purpose the investigation states." if fit
-                        else "no purpose stated, so what the licence requires is listed and no fit is judged.")),
-        measures={"licences_read": 1, "judged": True, "licence_id": str(licence_id), "requirements": requirements, "fit": fit})
+        state="measured",
+        summary=(f"{licence_id}: attribution {requirements['attribution']}; share-alike {requirements['share_alike']}; "
+                 f"commercial use {requirements['commercial_use']}"),
+        explanation="Judged from the licence identifier through RE's table of licence ids; it says what the licence requires, not whether it fits a purpose.",
+        measures={"licences_read": 1, "judged": True, "licence_id": str(licence_id), "requirements": requirements})
+
+
+def fit(measures: dict, purposes: list[dict]) -> list[dict]:
+    """The fit of a stored result to each purpose given (`purposes_for`), computed from the STORED requirements. Pure; computed per
+    reader at read time and never stored. A result that was not judged could not be checked, and says why."""
+    out = []
+    requirements = measures.get("requirements")
+    flags = None if not requirements else {"attribution": requirements["attribution"] == "required",
+                                           "share_alike": requirements["share_alike"] == "required",
+                                           "commercial": requirements["commercial_use"] == "allowed"}
+    for purpose in purposes or []:
+        base = {"investigation": purpose["investigation"], "title": purpose.get("title") or purpose["investigation"]}
+        if flags is None:
+            out.append({**base, "verdict": "could_not_check", "words": "the licence was not judged, so it cannot be checked"})
+            continue
+        cell = _license_cell({"licence": flags, "licence_id": measures.get("licence_id")},
+                             DataRequest.from_dict({"licence": purpose["licence"]}))
+        out.append({**base, "verdict": cell["status"], "words": cell["words"]})
+    return out
 
 
 def purposes_for(registry, store, dataset: dict) -> list[dict]:
-    """The licence needs stated by the investigations this dataset is a member of (visible to the person running the check)."""
+    """The licence needs stated by the investigations this dataset is a member of, as the CURRENT caller may see them: it reads
+    through the registry's per-user scoping, so call it only for a reader (a web request) or inside `run_queue._run_as_requester`
+    (the presser). With no identity at all the registry's shared view sees every investigation: `view` refuses that case."""
     out = []
     for inv in registry.list_investigations(include_closed=True):
         slug = inv.get("slug")
@@ -91,8 +96,30 @@ def purposes_for(registry, store, dataset: dict) -> list[dict]:
     return out
 
 
+def view(registry, store, dataset: dict) -> dict | None:
+    """What a reader sees of the stored check: the shared dataset facts, plus the fit to the purposes THIS reader's investigations
+    state. None when the check has not run on the dataset. A reader with no identity gets no fit (never the shared view of everyone's)."""
+    from resource_explorer.registry import current_user_id
+
+    _, rows = registry.query_step_annotations("open_data", dataset["slug"], ANALYSIS_ID)
+    if not rows:
+        return None
+    row = rows[0]
+    measures = (row.get("detail") or {}).get("additionalProperties", {}).get("measures") or {}
+    out = {"state": row["result_state"], "summary": row["summary"], "measured_at": row["measured_at"],
+           "licence_id": measures.get("licence_id"), "judged": measures.get("judged"), "requirements": measures.get("requirements"),
+           "fit": [], "fit_words": ""}
+    if not current_user_id():
+        out["fit_words"] = "fit not judged: no signed-in reader"
+        return out
+    out["fit"] = fit(measures, purposes_for(registry, store, dataset))
+    out["fit_words"] = "" if out["fit"] else "no purpose stated by your investigations"
+    return out
+
+
 def run(ctx: analyses.RunContext) -> analyses.OpenDataResult:
-    return judge(ctx.dataset, purposes_for(ctx.registry, ctx.store, ctx.dataset))
+    """Dataset facts only, and no per-user read: a queued run, scheduled or pressed, stores the same shared result."""
+    return judge(ctx.dataset)
 
 
 RUNNER = analyses.Runner(ANALYSIS_ID, run, lambda dataset: 0)        # reads the stored licence: no portal call
