@@ -5,6 +5,7 @@ import re
 from pathlib import Path, PurePath
 
 from rich.console import Console
+from rich.markup import escape
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
@@ -210,6 +211,8 @@ class OnboardingWizard:
         self._post_ingestion(slug, plan.github_url)
 
     def _post_ingestion(self, slug: str, github_url: str) -> None:
+        from resource_explorer.github import stats_summary
+
         # Store initial commit SHA so incremental refresh has a baseline
         try:
             from resource_explorer.github.client import GitHubClient
@@ -217,25 +220,21 @@ class OnboardingWizard:
             repo = client.get_repo(github_url)
             sha = client.get_latest_commit_sha(repo)
             self.registry.update_commit_sha(slug, sha)
-        except Exception:
-            pass
+        except Exception as exc:
+            # TR-63: said, not swallowed: without a baseline the first incremental refresh starts from scratch
+            hint = "" if stats_summary.token_is_set() else f" ({stats_summary.TOKEN_HINT})"
+            self.console.print(
+                f"[yellow]Warning:[/yellow] the latest commit could not be recorded as the refresh baseline: "
+                f"{escape(str(exc))}{hint}")
 
         # Fetch initial GitHub stats into SQLite
         self.console.print("[dim]Fetching project statistics...[/dim]")
         try:
             from resource_explorer.github.stats_fetcher import StatsFetcher
             result = StatsFetcher().fetch(slug)
-            if "commits_fetch_error" in result:
-                self.console.print(
-                    f"[yellow]Warning:[/yellow] commit history could not be fetched: "
-                    f"{result['commits_fetch_error']}\n"
-                    f"[dim]Run 'project-explorer refresh {slug}' to retry.[/dim]"
-                )
-            else:
-                n = result.get("commits_fetched", 0)
-                self.console.print(f"[dim]Stats fetched ({n} commits stored).[/dim]")
+            stats_summary.print_summary(self.console, result, retry=f"resource-explorer refresh {slug}")
         except Exception as exc:
-            self.console.print(f"[dim]Stats fetch skipped: {exc}[/dim]")
+            self.console.print(f"[yellow]Stats fetch skipped:[/yellow] {escape(str(exc))}")
 
     def _augment_plan_for_extra_paths(self, plan, extra_docs_paths: list[str], local_path: str | None):
         """
