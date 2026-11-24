@@ -17,6 +17,9 @@ from resource_explorer.open_data.absence import NOT_REPORTED
 
 KEPT = "the earlier values were kept"
 
+#: How many of a dataset's newest analysis-run entries `work_list_runs` reads looking for a run of one analysis.
+RUN_SCAN_LIMIT = 500
+
 
 def _failed(ds: dict, words: str, kept: str = KEPT) -> analyses.RunnerFailed:
     return analyses.RunnerFailed(f"{ds.get('title') or ds['slug']}: {words}; {kept}")
@@ -106,8 +109,9 @@ def work_list_runs(registry, store, work_list_slug: str, analysis_id: str) -> di
     fail says WHICH dataset failed and why. A dataset never run says so. Dataset facts only; nothing per-user."""
     runs = []
     for ds in store.datasets_in_work_list(work_list_slug):
-        newest = None
-        for entry in registry.list_activity(entity_type="open_data", entity_slug=ds["slug"], limit=50):
+        newest, entries = None, registry.list_activity(entity_type="open_data", entity_slug=ds["slug"], operation="analysis_run",
+                                                       limit=RUN_SCAN_LIMIT)
+        for entry in entries:
             try:
                 detail = json.loads(entry.get("detail") or "{}")
             except (TypeError, ValueError):
@@ -115,9 +119,15 @@ def work_list_runs(registry, store, work_list_slug: str, analysis_id: str) -> di
             if detail.get("analysis_id") == analysis_id:
                 newest = entry
                 break
+        if newest is None and len(entries) >= RUN_SCAN_LIMIT:
+            # Not "never run": the newest entries were all other work, and an older run may sit beyond them.
+            runs.append({"slug": ds["slug"], "title": ds["title"], "status": "unknown", "activity_id": None,
+                         "summary": f"no run among the last {RUN_SCAN_LIMIT} entries"})
+            continue
         runs.append({"slug": ds["slug"], "title": ds["title"], "status": newest["status"] if newest else "never_run",
                      "summary": (newest.get("summary") or "") if newest else "never run",
                      "activity_id": newest.get("id") if newest else None})
     count = lambda status: sum(1 for r in runs if r["status"] == status)        # noqa: E731
     return {"work_list": work_list_slug, "analysis_id": analysis_id, "runs": runs,
-            "ok": count("ok"), "failed": count("error"), "running": count("running"), "never_run": count("never_run")}
+            "ok": count("ok"), "failed": count("error"), "running": count("running"), "never_run": count("never_run"),
+            "unknown": count("unknown")}
