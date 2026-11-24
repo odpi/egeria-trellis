@@ -488,6 +488,7 @@ def test_preview_and_import_routes(client, registry):
     assert bad.status_code == 400
 
 
+@pytest.mark.usefixtures("mock_egeria_client_connections")
 def test_export_routes_name_their_files(client, registry):
     day = batch_io.export_filename("x").split("-")[-3:]
     date = "-".join(day).removesuffix(".csv")
@@ -506,11 +507,22 @@ def test_export_routes_name_their_files(client, registry):
     from resource_explorer.work_lists import WorkLists
     wl = WorkLists(registry).create("Q4 cohort", ["regional_pg_orders"], entity_type="database",
                                     investigation=inv["slug"])
-    r = client.get(f"/api/work-lists/{wl['slug']}/export.csv")
+    # TR-147: a work list linked to an investigation is read only by a signed-in person who can see that investigation. The investigation
+    # was created by "importer" (the autouse fixture above), so "importer" signs in with a real token; nobody signed in is refused and nothing
+    # of the list is served or changed.
+    from resource_explorer.auth import create_access_token
+
+    importer = {"Authorization": "Bearer " + create_access_token(user_id="importer", egeria_token="tok")}
+    before = WorkLists(registry).get(wl["slug"])
+    refused = client.get(f"/api/work-lists/{wl['slug']}/export.csv")
+    assert refused.status_code == 401 and "regional_pg_orders" not in refused.text and "in scope" not in refused.text
+    assert WorkLists(registry).get(wl["slug"]) == before                       # the refused call wrote nothing
+
+    r = client.get(f"/api/work-lists/{wl['slug']}/export.csv", headers=importer)
     assert r.status_code == 200, r.text
     assert f'filename="re-work-list-q4-cohort-{date}.csv"' in r.headers["content-disposition"]
     assert "regional_pg_orders" in r.text and "in scope" in r.text
-    assert client.get("/api/work-lists/nope/export.csv").status_code == 404
+    assert client.get("/api/work-lists/nope/export.csv", headers=importer).status_code == 404
 
     r = client.post("/api/discovery/candidates.csv", json={
         "label": "Regional PG", "server_slug": "regional-pg",
