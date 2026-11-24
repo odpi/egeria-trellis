@@ -4268,7 +4268,8 @@ open_data_questions:
       the cap, in a format not read here, or past the first three is named as not read, never counted
       as zero rows, a portal that does not answer leaves the earlier profile and says so, and its portal
       calls are priced before the press and counted after it. Until the question is wired to it, the row
-      shows no answer from the publisher''s record and reads ''no reader yet''.'
+      gives no answer: od_profile''s result is not read by this question yet, and the publisher''s record
+      holds nothing that answers it.'
   answering_mechanism: Value Profiling
   rationale: A summary of what a profile of the dataset's distributions has read, and which were not read
     (over the size cap, not tabular, not downloaded). It will never report an unread distribution as empty.

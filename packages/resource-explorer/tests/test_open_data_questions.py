@@ -163,3 +163,15 @@ def test_q0114_is_partial_and_states_the_absence_rules_in_words():
     assert "one refresh is 'not enough history', never 'kept'" in cell and "states no cadence is 'not judged'" in cell
     assert "reads stored refresh history only, with no portal call" in cell and "GAP" not in r["Answering Mechanism"]
     assert r["Catalog History"].endswith("2026-11-23: od_cadence_kept built (TR-54 B3): GAP → PARTIAL; it answers the question once wired (B5).")
+
+
+def test_q0115_says_the_check_is_built_and_not_yet_read_by_the_question_not_that_it_has_no_reader():
+    import csv
+
+    r = {x["Question ID"]: x for x in csv.DictReader(open(ROOT / "docs/dr-egeria/resource_questions.csv", newline="", encoding="utf-8"))}["Q-0115"]
+    cell = r["Answering Analysis"]
+    assert cell.startswith("PARTIAL: od_profile reads a dataset's tabular distributions")
+    assert cell.endswith("Until the question is wired to it, the row gives no answer: od_profile's result is not read by this question yet, "
+                         "and the publisher's record holds nothing that answers it.")
+    assert "no reader yet" not in cell                     # od_profile IS built: that sentence would be false
+    assert r["Answering Mechanism"] == "Value Profiling" and r["Catalog History"].endswith("it answers the question once wired (B5).")
