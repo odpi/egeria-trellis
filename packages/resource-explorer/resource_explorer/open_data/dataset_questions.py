@@ -233,7 +233,17 @@ def _absence(entry, key: str) -> str:
         return ""
 
 
-def _open_data_row(e: dict, d: dict, registry, declared: dict) -> dict:
+def _reader_fit(registry, store, d: dict) -> dict | None:
+    """The licence check as THIS reader sees it (`licence_usable.view`, under the request's caller): the fit to the licence needs their own
+    investigations state. None when there is no store to read those from. Nothing is stored."""
+    if store is None:
+        return None
+    from resource_explorer.open_data import licence_usable
+
+    return licence_usable.view(registry, store, d)
+
+
+def _open_data_row(e: dict, d: dict, registry, declared: dict, store=None) -> dict:
     lead = (e["answering"]["analysis_ids"] or [""])[0]
     entry = declared.get(lead)
     built = bool(entry is not None and getattr(getattr(entry, "declaration", None), "built", False))
@@ -262,6 +272,18 @@ def _open_data_row(e: dict, d: dict, registry, declared: dict) -> dict:
     when = f" · measured {stored['measured_at']}" if stored["measured_at"] else ""
     result, summary = stored["state"], stored["summary"]
     if result == "measured" and stored["measures"].get(_NOT_AN_ANSWER, True) is not False:
+        if lead == "od_licence_usable":      # "usable for OUR purpose": the purpose is the reader's own, so the fit is theirs, at read time
+            mine = _reader_fit(registry, store, d)
+            fit_rows = (mine or {}).get("fit") or []
+            if not fit_rows:
+                why = (mine or {}).get("fit_words") or "fit not judged: no signed-in reader"
+                why = why if why.startswith("fit not judged") else f"usable for your purpose: {why}"
+                row.update(state="partial", answer=f"{summary} · {why}",
+                           words=f"Read, and half answered: what the licence requires is stored, {why}; not counted{when}.")
+                return row
+            fit_words = "; ".join(f"{f['title']}: {str(f['verdict']).replace('_', ' ')} — {f['words']}" for f in fit_rows)
+            row.update(state="answered", has_data=True, answer=f"{summary} · {fit_words}", words=f"Answered by {check}{when}, with your fit.")
+            return row
         row.update(state="answered", has_data=True, answer=summary, words=f"Answered by {check}{when}.")
     elif result == "measured":
         row.update(state="partial", answer=summary, words=f"Read, and not judged: in part, not counted as the answer{when}.")
@@ -273,11 +295,12 @@ def _open_data_row(e: dict, d: dict, registry, declared: dict) -> dict:
     return row
 
 
-def build(d: dict, registry=None, declared: dict | None = None) -> dict:
+def build(d: dict, registry=None, declared: dict | None = None, store=None) -> dict:
     """The dataset's questions. `registry` is where the stored results are read (None: nothing has run, as far as this knows);
+    `store` is where the reader's investigations' data requests are read (the licence row's fit to THEIR purpose);
     `declared` is the analysis catalogue to judge "built" and "wired" against (default: the real one; a test passes its own)."""
     declared = _declared_default() if declared is None else declared
-    rows = [_open_data_row(e, d, registry, declared) for e in get_questions("open_data")]
+    rows = [_open_data_row(e, d, registry, declared, store) for e in get_questions("open_data")]
     rows += _generic_rows(d)
     rows.sort(key=lambda r: (STAGE_ORDER.index(_strip_stage(r["stage"])) if _strip_stage(r["stage"]) in STAGE_ORDER else 99,
                              r["id"]))

@@ -37,7 +37,17 @@ def _save(client, headers, slug, analysis_id=LICENCE, **kw):
     return client.post(f"/api/schedules/open_data/{slug}", headers=headers, json={"analysis_id": analysis_id, "schedule": "daily", **kw})
 
 
+
+@pytest.fixture
+def a_reader_with_a_purpose(monkeypatch):
+    """These tests are about the STORED result deciding the row. The licence row also needs a reader whose investigations state a licence
+    need (W-B5-1); that reader's fit is tested with real callers in test_tr54_w_b5_1_reader_fit.py."""
+    monkeypatch.setattr("resource_explorer.open_data.dataset_questions._reader_fit", lambda registry, store, d: {
+        "fit": [{"investigation": "mine", "title": "Mine", "verdict": "fits", "words": "meets the stated licence needs"}], "fit_words": ""})
+
+
 @pytest.mark.usefixtures("mock_egeria_client_connections")
+
 def test_a_built_check_can_be_scheduled_on_a_dataset_without_any_egeria_publish_right(api, reg, dataset, monkeypatch):
     from resource_explorer.web.routes import curate
 
@@ -98,7 +108,7 @@ def test_a_missing_dataset_or_an_unrunnable_analysis_is_an_error_not_a_pass(reg,
 
 
 @pytest.mark.usefixtures("mock_egeria_client_connections")
-def test_the_timer_runs_a_due_schedule_writes_its_activity_and_the_question_row_reads_the_result(api, reg, store, dataset):
+def test_the_timer_runs_a_due_schedule_writes_its_activity_and_the_question_row_reads_the_result(api, reg, store, dataset, a_reader_with_a_purpose):
     from resource_explorer import scheduler
     from resource_explorer.open_data import dataset_questions
 

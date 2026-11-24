@@ -391,7 +391,7 @@ def get_dataset_questions(slug: str) -> dict:
     d = store.get_dataset(slug)
     if not d:
         raise HTTPException(status_code=404, detail=f"No open data '{slug}'.")
-    return dataset_questions.build(d, registry=store.registry)
+    return dataset_questions.build(d, registry=store.registry, store=store)
 
 
 @router.get("/datasets/{slug}/analyses/{analysis_id}/price")

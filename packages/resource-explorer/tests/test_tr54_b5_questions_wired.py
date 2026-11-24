@@ -62,6 +62,15 @@ def _build(reg, store, ds, declared=None):
 
 # ── (1) not built: "no reader yet" ───────────────────────────────────────────
 
+
+@pytest.fixture
+def a_reader_with_a_purpose(monkeypatch):
+    """These tests are about the STORED result deciding the row. The licence row also needs a reader whose investigations state a licence
+    need (W-B5-1); that reader's fit is tested with real callers in test_tr54_w_b5_1_reader_fit.py."""
+    monkeypatch.setattr(dataset_questions, "_reader_fit", lambda registry, store, d: {
+        "fit": [{"investigation": "mine", "title": "Mine", "verdict": "fits", "words": "meets the stated licence needs"}], "fit_words": ""})
+
+
 def test_an_analysis_that_is_not_built_reads_no_reader_yet(reg, store, dataset):
     _bare(reg, dataset["slug"])
     res = _build(reg, store, dataset, _fixture_catalogue(built=False))
@@ -102,7 +111,7 @@ def test_a_wired_check_that_has_not_run_on_a_bare_dataset_reads_not_run_never_an
     assert all("Not run on this dataset yet" in q["words"] for q in _rows(res).values())
 
 
-def test_after_a_run_the_licence_row_has_data_and_the_stage_strip_counts_it(reg, store, dataset):
+def test_after_a_run_the_licence_row_has_data_and_the_stage_strip_counts_it(reg, store, dataset, a_reader_with_a_purpose):
     _set_licence(reg, dataset["slug"], "cc-by-sa-4.0")
     _run(reg, dataset, LICENCE)
     res = _build(reg, store, dataset, _fixture_catalogue(built=True, wired=True))
@@ -165,7 +174,7 @@ def test_an_activity_entry_that_says_ok_with_no_stored_result_is_not_an_answer(r
     assert "Not run on this dataset yet" in q["words"] and q["state"] != "answered"
 
 
-def test_a_failed_run_leaves_the_row_not_run_and_a_failed_activity_does_not_change_an_earlier_answer(reg, store, dataset):
+def test_a_failed_run_leaves_the_row_not_run_and_a_failed_activity_does_not_change_an_earlier_answer(reg, store, dataset, a_reader_with_a_purpose):
     from resource_explorer.activity_logger import log_analysis_run
 
     _set_licence(reg, dataset["slug"], "cc0-1.0")
@@ -228,7 +237,7 @@ def served(reg, store, monkeypatch):
     return TestClient(app)
 
 
-def test_the_route_serves_the_stored_result_after_a_run_and_only_known_states(reg, store, dataset, served):
+def test_the_route_serves_the_stored_result_after_a_run_and_only_known_states(reg, store, dataset, served, a_reader_with_a_purpose):
     _bare(reg, dataset["slug"])
     url = f"/api/open-data/datasets/{dataset['slug']}/questions"
     before = served.get(url).json()
