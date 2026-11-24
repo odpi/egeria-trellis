@@ -435,7 +435,21 @@ class WorkLists:
                 d.pop("filter_json", None)
                 d["hidden"] = d["slug"] in hidden_slugs
                 out.append(d)
-        return out
+        return self._visible_to(out, user_id)
+
+    def _visible_to(self, lists: list[dict], user_id: str) -> list[dict]:
+        """TR-147: a list linked to an investigation the caller cannot see is not theirs to know about, so it is left out (not marked, not
+        counted): the investigation's visibility rule is the list's. A list with no investigation stays visible to everyone. The shared
+        identity (no caller: a daemon or a script) sees every investigation by design, so it sees every list."""
+        seen: dict[str, bool] = {}
+        keep = []
+        for wl in lists:
+            inv = (wl.get("investigation") or "").strip()
+            if inv and inv not in seen:
+                seen[inv] = self.registry.get_investigation(inv, user_id=user_id) is not None
+            if not inv or seen[inv]:
+                keep.append(wl)
+        return keep
 
     def set_hidden(self, slug: str, hidden: bool, *, user_id: str | None = None) -> None:
         """Hide or unhide a list for ONE person (W38). A view preference: the list, its members and everyone else's
@@ -775,6 +789,18 @@ class WorkLists:
             raise CurationDenied("; ".join(sorted(set(refused))))
         return {"work_list_slug": work_list_slug, "runs": runs, "not_run": not_run,
                 "words": f"{len([r for r in runs if r['runs']])} run(s), one per kind"}
+
+    def batch_set_owner(self, set_id: str) -> dict | None:
+        """Who a batch set belongs to, or None when there is no such set: `{work_list_slug, requested_by}`. The set's work list ("" when it
+        was run over explicit slugs), and the person its runs were queued for ("" when a daemon or a script queued it). TR-147: a set id is
+        a capability that leaks (logs, history, shared links), so reading a set's progress asks who it belongs to."""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT wr.work_list_slug AS work_list_slug, r.requested_by AS requested_by"
+                "  FROM work_list_runs wr LEFT JOIN runs r ON r.id = wr.run_id WHERE wr.set_id = ? LIMIT 1", (set_id,)).fetchone()
+        if row is None:
+            return None
+        return {"work_list_slug": (row["work_list_slug"] or "").strip(), "requested_by": (row["requested_by"] or "").strip()}
 
     def batch_progress(self, set_id: str) -> dict | None:
         """What every run in this set is doing right now.

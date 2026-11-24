@@ -22,8 +22,11 @@ def client(registry, monkeypatch):
     monkeypatch.setattr("resource_explorer.registry.ProjectRegistry.__init__",
                         lambda self, db_path=None: setattr(self, "__dict__", registry.__dict__) or None)
     monkeypatch.setenv("TRELLIS_ANONYMOUS_READ", "true")
+    from resource_explorer.auth import create_access_token
     from resource_explorer.web.app import app
-    return TestClient(app)
+
+    # TR-147: a work list linked to an investigation is reached only by a signed-in caller who can see that investigation
+    return TestClient(app, headers={"Authorization": "Bearer " + create_access_token(user_id="tester", egeria_token="tok")})
 
 
 @pytest.fixture
