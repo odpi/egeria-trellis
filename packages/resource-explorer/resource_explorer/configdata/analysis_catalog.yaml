@@ -4113,6 +4113,7 @@ open_data_analyses:
     source: local
     run_time: fast
     availability: queued
+    answers_questions: true      # TR-54 B5: wired to its open data question (Q-0113/4/5), whose row reads this analysis's stored result
     action: survey
     target_shape: whole_resource_only
     recommended: false
@@ -4158,6 +4159,7 @@ open_data_analyses:
     source: local
     run_time: fast
     availability: queued
+    answers_questions: true      # TR-54 B5: wired to its open data question (Q-0113/4/5), whose row reads this analysis's stored result
     action: survey
     target_shape: whole_resource_only
     recommended: false
@@ -4203,6 +4205,7 @@ open_data_analyses:
     source: local
     run_time: fast
     availability: queued
+    answers_questions: true      # TR-54 B5: wired to its open data question (Q-0113/4/5), whose row reads this analysis's stored result
     action: survey
     target_shape: whole_resource_only
     recommended: false

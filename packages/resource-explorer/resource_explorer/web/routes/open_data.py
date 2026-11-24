@@ -378,18 +378,20 @@ def get_dataset(slug: str) -> dict:
 
 @router.get("/datasets/{slug}/questions")
 def get_dataset_questions(slug: str) -> dict:
-    """The open data questions asked of one dataset, each with its state from the record alone.
+    """The open data questions asked of one dataset, each with its state.
 
-    The lead analyses are declared and not built, so a row is `no_reader` (◌ "no reader yet") unless the publisher's
-    record already states something that answers part of it: the licence and its three flags, the modified date and
-    the stated cadence. Those rows are `partial` (◐) and say whose record and when it was retrieved. Nothing here
-    runs an analysis; "none stated" is `no_reader`, never an answer."""
+    A row follows its lead analysis (TR-54 B5): not built is `no_reader` (◌), or `partial` (◐) where the publisher's own record states a
+    field that answers part of it (the licence and its flags; the modified date and stated cadence); built and not wired to the question
+    is the same, said not to be counted; built and wired reads the STORED result: `unrun` (○) before the first run, `answered` (✓) for a
+    measured and judged result, `partial`, `nothing` (∅) or `not_established` (?) for one that is not an answer. Never the Activity
+    status. Nothing here runs an analysis, and nothing is a bare zero."""
     from resource_explorer.open_data import dataset_questions
 
-    d = _store().get_dataset(slug)
+    store = _store()
+    d = store.get_dataset(slug)
     if not d:
         raise HTTPException(status_code=404, detail=f"No open data '{slug}'.")
-    return dataset_questions.build(d)
+    return dataset_questions.build(d, registry=store.registry)
 
 
 @router.get("/datasets/{slug}/analyses/{analysis_id}/price")
@@ -402,10 +404,10 @@ def dataset_analysis_price(slug: str, analysis_id: str) -> dict:
     dataset = _store().get_dataset(slug)
     if not dataset:
         raise HTTPException(status_code=404, detail=f"No open data '{slug}'.")
-    return analyses.price(analysis_id, dataset)
-
     if analysis_id not in analyses._declared():
         raise HTTPException(status_code=400, detail=analyses.refusal(analysis_id))
+    return analyses.price(analysis_id, dataset)
+
 
 def _stale_cutoff() -> str:
     """A claimed or running row with no sign of life since this does not block a new run: a worker that died must not lock a dataset out."""

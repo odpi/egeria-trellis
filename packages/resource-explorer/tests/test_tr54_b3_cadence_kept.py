@@ -234,13 +234,13 @@ def test_other_datasets_refreshes_are_not_read(reg, store, dataset):
 
 # ── the catalog ──────────────────────────────────────────────────────────────
 
-def test_od_cadence_kept_is_built_and_still_answers_no_question_until_b5():
+def test_od_cadence_kept_is_built_and_wired_to_its_question_by_b5():
     import yaml
 
     cat = yaml.safe_load((Path(__file__).resolve().parents[1] / "resource_explorer/configdata/analysis_catalog.yaml").read_text())
     by = {a["id"]: a for a in cat["open_data_analyses"]}
     assert by[ID]["declaration"]["built"] is True and by["od_licence_usable"]["declaration"]["built"] is True
-    assert by["od_profile"]["declaration"]["built"] is True and not by[ID].get("answers_questions")      # od_profile: built in B4
+    assert by["od_profile"]["declaration"]["built"] is True and by[ID].get("answers_questions") is True      # od_profile: built in B4; all three wired in B5
     assert "Not built" not in by[ID]["description"]
 
 

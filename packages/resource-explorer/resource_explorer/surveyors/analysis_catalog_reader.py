@@ -149,6 +149,12 @@ class AnalysisCatalogEntry:
     #: still listed and runnable, and says why it has no declaration.
     declaration_refused: str = ""
 
+    #: What the entry says about whether its results answer a catalogue question: True, False, or None when the key is absent. Read, not
+    #: generated: `declaration.answers` is generated from the question catalogue's bindings (`generated_answers`), and `false` is the only
+    #: value that changes that. An open data analysis is WIRED to its question only when this is explicitly True (TR-54 B5); absent or
+    #: False means the check may exist and is still not this question's answer. Not part of `to_dict`: no screen reads it yet.
+    answers_questions: bool | None = None
+
     def to_dict(self) -> dict:
         return {
             "id": self.id,
@@ -302,6 +308,7 @@ def _entry_from_yaml(raw: dict) -> AnalysisCatalogEntry:
         provided_by=dict(raw.get("provided_by") or {}),
         declaration=declared,
         declaration_refused=refused,
+        answers_questions=raw.get("answers_questions") if isinstance(raw.get("answers_questions"), bool) else None,
     )
 
 

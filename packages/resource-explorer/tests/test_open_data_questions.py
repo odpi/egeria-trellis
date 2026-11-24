@@ -64,8 +64,17 @@ def _by(res):
     return {q["id"]: q for q in res["questions"]}
 
 
+def _not_built():
+    """A fixture catalogue with the three analyses NOT built: what these tests were written against, before the checks existed (TR-54 B5
+    moved the real catalogue on: built and wired, so a row follows the stored result; tests/test_tr54_b5_questions_wired.py covers that)."""
+    from types import SimpleNamespace as NS
+
+    return {a: NS(id=a, answers_questions=None, declaration=NS(built=False, absence=NS(sentence=lambda k: k)))
+            for a in ("od_licence_usable", "od_cadence_kept", "od_profile")}
+
+
 def test_a_dataset_with_nothing_stated_is_three_no_reader_rows_and_says_why():
-    res = dataset_questions.build(_dataset())
+    res = dataset_questions.build(_dataset(), declared=_not_built())
     od = [q for q in res["questions"] if q["kind"] == "open_data"]       # the page also asks the generic questions (TR-54 A2)
     assert [q["state"] for q in od] == ["no_reader"] * 3
     assert all(q["answer"] == "" and q["words"].startswith("No mechanism exists for this yet — ") for q in od)
@@ -76,7 +85,7 @@ def test_a_dataset_with_nothing_stated_is_three_no_reader_rows_and_says_why():
 def test_licence_and_modified_in_the_record_make_the_two_rows_partial_with_their_source():
     d = _dataset(licence_id="cc-by-4.0", licence={"attribution": True, "share_alike": False, "commercial": True},
                  modified="2026-10-30T02:00:47", record={"accrualPeriodicity": "R/P1Y"})
-    by = _by(dataset_questions.build(d))
+    by = _by(dataset_questions.build(d, declared=_not_built()))
     assert by["Q-0113"]["state"] == "partial"
     assert by["Q-0113"]["answer"] == ("Licence cc-by-4.0 · attribution ✓ · share-alike ✗ · commercial ✓ — from the "
                                       "publisher's record at data_gov_ie, retrieved 2026-11-02")
@@ -86,10 +95,10 @@ def test_licence_and_modified_in_the_record_make_the_two_rows_partial_with_their
 
 
 def test_a_licence_id_alone_or_a_modified_date_alone_is_still_partial_and_unknown_flags_say_so():
-    only_id = _by(dataset_questions.build(_dataset(licence_id="https://open.fda.gov/license")))
+    only_id = _by(dataset_questions.build(_dataset(licence_id="https://open.fda.gov/license"), declared=_not_built()))
     assert only_id["Q-0113"]["answer"].startswith("Licence https://open.fda.gov/license · attribution ? · share-alike ? · commercial ?")
     assert only_id["Q-0114"]["state"] == "no_reader"
-    only_mod = _by(dataset_questions.build(_dataset(modified="2025-09-06")))
+    only_mod = _by(dataset_questions.build(_dataset(modified="2025-09-06"), declared=_not_built()))
     assert only_mod["Q-0114"]["answer"].startswith("Last modified 2025-09-06 —") and only_mod["Q-0113"]["state"] == "no_reader"
 
 
@@ -125,9 +134,10 @@ def test_the_route_returns_the_three_with_and_without_the_record_fields(client):
          modified="2026-10-30", record={"accrualPeriodicity": "R/P1M"})
     bare = client.get("/api/open-data/datasets/bare/questions").json()
     od = lambda res: [q for q in res["questions"] if q["kind"] == "open_data"]       # noqa: E731  (the generic ones are A2's)
-    assert [q["state"] for q in od(bare)] == ["no_reader"] * 3
+    # the real catalogue: the three checks are built and WIRED (TR-54 B5), and nothing has run: ○ not run on a bare record
+    assert [q["state"] for q in od(bare)] == ["unrun"] * 3 and bare["answered"] == 0
     stated = client.get("/api/open-data/datasets/stated/questions").json()
-    assert {q["id"]: q["state"] for q in od(stated)} == {"Q-0113": "partial", "Q-0114": "partial", "Q-0115": "no_reader"}
+    assert {q["id"]: q["state"] for q in od(stated)} == {"Q-0113": "partial", "Q-0114": "partial", "Q-0115": "unrun"}
     assert sum(1 for q in od(stated) if q["state"] == "partial") == 2
     assert client.get("/api/open-data/datasets/nope/questions").status_code == 404
 

@@ -207,7 +207,7 @@ def test_nothing_per_user_is_stored_by_any_of_the_runs(reg, store, three):
 
 # ── the catalog and the question ─────────────────────────────────────────────
 
-def test_the_three_work_list_entries_are_queued_and_od_profile_is_built_and_no_analysis_answers_a_question_yet():
+def test_the_three_work_list_entries_are_queued_and_the_three_built_checks_are_wired_to_their_questions_by_b5():
     import yaml
 
     cat = yaml.safe_load((Path(__file__).resolve().parents[1] / "resource_explorer/configdata/analysis_catalog.yaml").read_text())
@@ -215,7 +215,7 @@ def test_the_three_work_list_entries_are_queued_and_od_profile_is_built_and_no_a
     for aid in ("external_data_scout", "external_data_profile", "external_data_refresh"):
         assert by[aid]["availability"] == "queued" and by[aid].get("answers_questions") is False
     assert all(by[a]["declaration"]["built"] is True for a in ("od_licence_usable", "od_cadence_kept", "od_profile"))
-    assert not by["od_profile"].get("answers_questions") and "Not built" not in by["od_profile"]["description"]
+    assert by["od_profile"].get("answers_questions") is True and "Not built" not in by["od_profile"]["description"]   # wired in B5
 
 
 def test_every_declared_open_data_analysis_now_has_a_runner():
