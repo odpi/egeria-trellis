@@ -395,7 +395,8 @@ def get_dataset_questions(slug: str) -> dict:
 @router.get("/datasets/{slug}/analyses/{analysis_id}/price")
 def dataset_analysis_price(slug: str, analysis_id: str) -> dict:
     """The price line of one analysis on one dataset, shown BEFORE the press: the portal calls it makes. Not priced (never 0)
-    when the analysis has no reader yet. Registry-only: it calls nothing."""
+    when the analysis is declared and has no reader yet. An id that is not declared at all is a 400 in the refusal's own words, as
+    the run route says it (W-B1-1): "has no reader yet" is true only of an analysis that exists. Registry-only: it calls nothing."""
     from resource_explorer.open_data import analyses
 
     dataset = _store().get_dataset(slug)
@@ -403,6 +404,8 @@ def dataset_analysis_price(slug: str, analysis_id: str) -> dict:
         raise HTTPException(status_code=404, detail=f"No open data '{slug}'.")
     return analyses.price(analysis_id, dataset)
 
+    if analysis_id not in analyses._declared():
+        raise HTTPException(status_code=400, detail=analyses.refusal(analysis_id))
 
 def _stale_cutoff() -> str:
     """A claimed or running row with no sign of life since this does not block a new run: a worker that died must not lock a dataset out."""
