@@ -201,7 +201,30 @@ def _routes_client(reg, monkeypatch):
     monkeypatch.setattr(routes, "_store", lambda: OpenDataStore(reg))
     monkeypatch.setattr(routes, "_transport", lambda: SaFake())
     monkeypatch.setattr(routes, "_signed_in_user", lambda request: "tester")
+    # TR-147: the data-request routes now ask the REGISTRY whether the signed-in caller can see the investigation, so the caller is real
+    # (the identity the web middleware would publish) and the investigations these tests use exist, shared, and are visible to them.
+    from resource_explorer.a2a_auth import CallerIdentity, current_caller
+
+    monkeypatch.setattr("resource_explorer.registry.ProjectRegistry.__init__",
+                        lambda self, db_path=None, **k: setattr(self, "__dict__", reg.__dict__) or None)
+    identity = CallerIdentity(user_id="tester", egeria_token=None, auth_source="app-jwt")
+    reset = current_caller.set(identity)
+    try:
+        for name in ("inv-old", "inv-1", "inv-2", "inv-none"):
+            if not reg.get_investigation(name):
+                reg.create_investigation(name, project_classification="StudyProject")
+    finally:
+        current_caller.reset(reset)
     app = FastAPI()
+
+    @app.middleware("http")
+    async def _as_tester(request, call_next):
+        token = current_caller.set(identity)
+        try:
+            return await call_next(request)
+        finally:
+            current_caller.reset(token)
+
     app.include_router(routes.router, prefix="/api/open-data")
     return TestClient(app)
 

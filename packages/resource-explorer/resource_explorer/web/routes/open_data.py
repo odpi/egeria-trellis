@@ -33,6 +33,26 @@ def _egeria_lookup():
     return EgeriaIdentifierLookup()
 
 
+def _missing_list_words(slug: str) -> str:
+    """What a work-list route says for a list with no open data: also what it says for one the caller may not see (TR-147)."""
+    return f"No open data in work list '{slug}'."
+
+
+def _guard_list(request: Request, slug: str, words: str | None = None) -> None:
+    """TR-147: a work list linked to an investigation the caller cannot see is a 404 with the words THIS route uses for a list that is not
+    there (`words`, else the generic ones), so it never confirms the list exists (401 with nobody signed in)."""
+    from resource_explorer.web.visibility import visible_work_list_or_404
+
+    visible_work_list_or_404(request, slug, not_found=words or _missing_list_words(slug))
+
+
+def _guard_investigation(request: Request, slug: str) -> None:
+    """TR-147: the investigation as the signed-in caller sees it, else 401, else 404 in the words of a slug that does not exist."""
+    from resource_explorer.web.visibility import visible_investigation_or_404
+
+    visible_investigation_or_404(request, slug)
+
+
 def _signed_in_user(request: Request) -> str:
     from resource_explorer.auth import get_current_user
 
@@ -231,6 +251,10 @@ def search_price(slug: str, pages: int = service.DEFAULT_SEARCH_PAGES) -> dict:
 @router.post("/portals/{slug}/import")
 def import_rows(slug: str, req: ImportRequest, request: Request) -> dict:
     who = _signed_in_user(request)
+    if req.investigation:
+        _guard_investigation(request, req.investigation)
+    if req.work_list_slug:
+        _guard_list(request, req.work_list_slug)
     chosen = [service.Chosen(c.portal_slug or slug, c.dataset_id) for c in req.rows]
     name = req.work_list_name or service.default_work_list_name("", req.terms)
     try:
@@ -256,6 +280,10 @@ def repository_dataset_state(repo_slug: str) -> dict:
 def import_from_repository(req: RepositoryImportRequest, request: Request) -> dict:
     """One `open_data` row from a registered repository's stored dataset descriptor. Writes nothing to Egeria."""
     who = _signed_in_user(request)
+    if req.investigation:
+        _guard_investigation(request, req.investigation)
+    if req.work_list_slug:
+        _guard_list(request, req.work_list_slug)
     try:
         return service.import_from_repository(
             _store(), repo_slug=req.repo_slug, descriptor_path=req.descriptor_path, transport=_transport(),
@@ -266,12 +294,13 @@ def import_from_repository(req: RepositoryImportRequest, request: Request) -> di
 
 
 @router.post("/lens-terms")
-def lens_terms(lens: dict, investigation: str = "") -> dict:
+def lens_terms(lens: dict, request: Request, investigation: str = "") -> dict:
     """Search terms from a data request's lens {subjects, period, places}; editable by the caller. A lens that states
     nothing, sent with an investigation, is that investigation's stored data request (when it has one); otherwise the
     investigation's name is the fallback and the answer says so."""
     fallback = ""
     if investigation:
+        _guard_investigation(request, investigation)
         stored = _store().get_data_request(investigation)
         if stored and not any(lens.get(k) for k in ("subjects", "period", "places")):
             lens = stored
@@ -296,9 +325,11 @@ class DataRequestBody(BaseModel):
 
 
 @router.get("/investigations/{slug}/data-request")
-def get_data_request(slug: str) -> dict:
+def get_data_request(slug: str, request: Request) -> dict:
     """The investigation's data request. `stated` is false when none was saved (every old investigation) or the table
-    is not applied yet; `stored` says which: false = the table does not exist yet, so a save would be refused."""
+    is not applied yet; `stored` says which: false = the table does not exist yet, so a save would be refused.
+    TR-147: only for an investigation the signed-in caller can see (401, else 404 in the words of a slug that does not exist)."""
+    _guard_investigation(request, slug)
     store = _store()
     request = store.get_data_request(slug)
     return {"investigation": slug, "stated": request is not None, "stored": store.data_request_table_present(),
@@ -308,6 +339,7 @@ def get_data_request(slug: str) -> dict:
 @router.put("/investigations/{slug}/data-request")
 def put_data_request(slug: str, body: DataRequestBody, request: Request) -> dict:
     who = _signed_in_user(request)
+    _guard_investigation(request, slug)          # TR-147: a request is replaced only by someone who can see its investigation
     from resource_explorer.open_data.store import DataRequestTableMissing
 
     try:
@@ -445,6 +477,7 @@ def _press_work_list(slug: str, analysis_id: str, request: Request) -> dict:
     from resource_explorer.open_data import analyses
 
     _signed_in_user(request)
+    _guard_list(request, slug)      # TR-147: a list linked to an investigation the caller cannot see is a 404 in a missing list's words
     registry = _store().registry
     datasets = _store().datasets_in_work_list(slug)
     if not datasets:
@@ -473,8 +506,9 @@ class FitRequest(BaseModel):
 
 
 @router.get("/work-lists/{slug}/scout-price")
-def scout_price(slug: str) -> dict:
+def scout_price(slug: str, request: Request) -> dict:
     """The scout's price line for a work list of open data, before the press."""
+    _guard_list(request, slug)
     n = len(_store().datasets_in_work_list(slug))
     if not n:
         raise HTTPException(status_code=404, detail=f"No open data in work list '{slug}'.")
@@ -488,10 +522,11 @@ def scout(slug: str, request: Request) -> dict:
 
 
 @router.get("/work-lists/{slug}/profile")
-def profile_view(slug: str) -> dict:
+def profile_view(slug: str, request: Request) -> dict:
     """The price line of a profile run and the newest stored profile of each dataset (None = never run)."""
     from resource_explorer.open_data import profile
 
+    _guard_list(request, slug)
     if not _store().datasets_in_work_list(slug):
         raise HTTPException(status_code=404, detail=f"No open data in work list '{slug}'.")
     return profile.view(_store(), slug)
@@ -504,10 +539,11 @@ def profile_run(slug: str, request: Request) -> dict:
 
 
 @router.get("/work-lists/{slug}/refresh-price")
-def refresh_price(slug: str) -> dict:
+def refresh_price(slug: str, request: Request) -> dict:
     """The price line of an ExternalDataRefresh, before the press."""
     from resource_explorer.open_data import refresh
 
+    _guard_list(request, slug)
     n = len(_store().datasets_in_work_list(slug))
     if not n:
         raise HTTPException(status_code=404, detail=f"No open data in work list '{slug}'.")
@@ -521,11 +557,12 @@ def refresh_run(slug: str, request: Request) -> dict:
 
 
 @router.get("/work-lists/{slug}/runs")
-def work_list_runs(slug: str, analysis_id: str) -> dict:
+def work_list_runs(slug: str, analysis_id: str, request: Request) -> dict:
     """The newest run of `analysis_id` on each dataset of the work list: its status and words, so a press where one portal did not
-    answer says which dataset failed and why (the others are done)."""
+    answer says which dataset failed and why (the others are done). TR-147: only for a list the caller can see."""
     from resource_explorer.open_data import analyses, queued
 
+    _guard_list(request, slug)
     store = _store()
     if not store.datasets_in_work_list(slug):
         raise HTTPException(status_code=404, detail=f"No open data in work list '{slug}'.")
@@ -570,6 +607,9 @@ def _egeria_port():
 def fit(slug: str, req: FitRequest, request: Request) -> dict:
     """The fit row and winnow over the stored columns. No outbound call."""
     _signed_in_user(request)
+    _guard_list(request, slug)
+    if req.investigation:
+        _guard_investigation(request, req.investigation)         # TR-147: the stored request of an investigation the caller cannot see
     try:
         return service.fit_work_list(_store(), slug, req.request, req.investigation)
     except service.OpenDataError as exc:
