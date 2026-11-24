@@ -4205,8 +4205,8 @@ open_data_questions:
     note: 'PARTIAL: od_licence_usable judges a dataset''s licence identifier against RE''s licence table
       (attribution, share-alike, commercial use) for a stated purpose, one dataset at a time on the run
       queue; a licence the table does not know, or one stated only in words, stays not judged, and RE
-      gives no legal advice. Until the question is wired to it, the row shows the licence and its three
-      flags from the publisher''s record.'
+      gives no legal advice. The row''s answer is the stored check, with its fit to the reader''s own
+      investigations'' stated licence needs.'
   answering_mechanism: Direct Field + Analysis
   rationale: 'What the publisher''s record states about the licence: its identifier, and the three flags
     (attribution, share-alike, commercial use) read from a known licence table. The check will judge those
@@ -4236,8 +4236,8 @@ open_data_questions:
     note: 'PARTIAL: od_cadence_kept compares the cadence a dataset''s publisher states with the modified
       dates RE has observed over the dataset''s refresh history, one dataset at a time on the run queue;
       one refresh is ''not enough history'', never ''kept'', a dataset that states no cadence is ''not
-      judged'', and it reads stored refresh history only, with no portal call. Until the question is wired
-      to it, the row shows the stated cadence and the modified date from the publisher''s record.'
+      judged'', and it reads stored refresh history only, with no portal call. The row''s answer is the
+      stored check.'
   answering_mechanism: Direct Field + Analysis
   rationale: 'What the publisher states: the update cadence it gives (accrualPeriodicity) and the modified
     date. The check will compare them; a publisher that states no cadence leaves the question unanswered,
@@ -4267,9 +4267,7 @@ open_data_questions:
       and reports what was profiled and what was not, one dataset at a time on the run queue; a file over
       the cap, in a format not read here, or past the first three is named as not read, never counted
       as zero rows, a portal that does not answer leaves the earlier profile and says so, and its portal
-      calls are priced before the press and counted after it. Until the question is wired to it, the row
-      gives no answer: od_profile''s result is not read by this question yet, and the publisher''s record
-      holds nothing that answers it.'
+      calls are priced before the press and counted after it. The row''s answer is the stored profile.'
   answering_mechanism: Value Profiling
   rationale: A summary of what a profile of the dataset's distributions has read, and which were not read
     (over the size cap, not tabular, not downloaded). It will never report an unread distribution as empty.

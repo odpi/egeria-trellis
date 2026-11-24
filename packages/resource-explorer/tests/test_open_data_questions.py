@@ -181,7 +181,22 @@ def test_q0115_says_the_check_is_built_and_not_yet_read_by_the_question_not_that
     r = {x["Question ID"]: x for x in csv.DictReader(open(ROOT / "docs/dr-egeria/resource_questions.csv", newline="", encoding="utf-8"))}["Q-0115"]
     cell = r["Answering Analysis"]
     assert cell.startswith("PARTIAL: od_profile reads a dataset's tabular distributions")
-    assert cell.endswith("Until the question is wired to it, the row gives no answer: od_profile's result is not read by this question yet, "
-                         "and the publisher's record holds nothing that answers it.")
+    assert cell.endswith("The row's answer is the stored profile.")
     assert "no reader yet" not in cell                     # od_profile IS built: that sentence would be false
     assert r["Answering Mechanism"] == "Value Profiling" and r["Catalog History"].endswith("it answers the question once wired (B5).")
+
+
+def test_the_catalogue_no_longer_says_the_question_is_not_yet_wired_and_the_kind_stays_partial():
+    """W-B5-2: B5 wired Q-0113/4/5 to their checks, so "Until the question is wired to it, ..." is false. Each now says whose answer the row
+    is (the CSV and the generated YAML alike), and each stays PARTIAL: the analysis answers part of the question."""
+    import csv
+
+    rows = {x["Question ID"]: x["Answering Analysis"] for x in
+            csv.DictReader(open(ROOT / "docs/dr-egeria/resource_questions.csv", newline="", encoding="utf-8"))}
+    said = {"Q-0113": "The row's answer is the stored check, with its fit to the reader's own investigations' stated licence needs.",
+            "Q-0114": "The row's answer is the stored check.", "Q-0115": "The row's answer is the stored profile."}
+    text = open(ROOT / "resource_explorer/configdata/question_catalog.yaml", encoding="utf-8").read()
+    assert "Until the question is wired" not in text and "Until the question is wired" not in "".join(rows.values())
+    for qid, sentence in said.items():
+        assert rows[qid].startswith("PARTIAL:") and rows[qid].endswith(sentence)
+        assert sentence.replace("'", "''") in " ".join(text.split())          # the generated YAML says it too (quoted, so '' for ')
