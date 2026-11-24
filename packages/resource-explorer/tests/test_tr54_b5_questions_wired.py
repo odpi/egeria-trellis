@@ -260,8 +260,8 @@ def test_every_state_the_server_can_send_is_in_the_shared_glyph_table():
 
 def test_the_page_says_the_counts_in_words_and_never_a_bare_zero():
     js = (NEXT / "open-data-questions.js").read_text(encoding="utf-8")
-    assert "export function stageWords" in js and "not run yet" in js and "answered" in js
-    assert "none of ${total} answered yet · no reader yet" in js and "none of ${total} answered yet · not run yet" in js
+    assert "export function stageWords" in js and "not yet run" in js and "answered" in js
+    assert "none of ${total} answered yet · no reader yet" in js and "none of ${total} answered yet · not yet run" in js
     assert "0 of" not in js and "Open data questions" in js and "glyphSpan(q.state)" in js
 
 

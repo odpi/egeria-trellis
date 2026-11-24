@@ -19,7 +19,7 @@ export function questionsCountWords(res) {
   const notRun = (res.questions || []).filter((q) => q.state === 'unrun').length;
   if (res.answered) return `${res.answered} of ${total} answered${res.partial ? ` · ${res.partial} in part` : ''}`;
   if (res.partial) return `none of ${total} answered in full · ${res.partial} in part from the publisher's record`;
-  if (notRun) return `none of ${total} answered yet · not run yet`;
+  if (notRun) return `none of ${total} answered yet · not yet run`;
   return `none of ${total} answered yet · no reader yet`;
 }
 
