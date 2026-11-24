@@ -63,11 +63,35 @@ class ScheduleEntry(BaseModel):
 #: How to find a resource of each schedulable kind. A schedule names a
 #: resource that must still exist when the cadence fires, and nothing checked
 #: that at the point the schedule was created.
+OPEN_DATA_ENTITY = "open_data"
+
+
+def _open_data_dataset(reg, slug: str):
+    from resource_explorer.open_data.store import OpenDataStore
+
+    return OpenDataStore(reg).get_dataset(slug)
+
+
 _RESOURCE_LOOKUP = {
     "repo": lambda reg, slug: reg.get(slug),
     "database": lambda reg, slug: reg.get_database(slug, allow_unreadable=True),
     "filesystem": lambda reg, slug: reg.get_filesystem(slug),
+    OPEN_DATA_ENTITY: _open_data_dataset,        # TR-54 B5: a dataset is schedulable for the checks that read it
 }
+
+
+def _require_open_data_analysis(entry: "ScheduleEntry") -> None:
+    """422 unless this is an open data analysis with a runner, run as an analysis. A schedule on a dataset can only ever fire a check
+    that exists, so a typo, an unbuilt analysis or a Survey Definition is refused when it is made, in the words the run route uses."""
+    from fastapi import HTTPException
+
+    from resource_explorer.open_data import analyses
+
+    if entry.target_kind != TARGET_ANALYSIS:
+        raise HTTPException(status_code=422, detail="a dataset is scheduled for an analysis (target_kind 'analysis'), not a survey")
+    why = analyses.refusal(entry.analysis_id)
+    if why:
+        raise HTTPException(status_code=422, detail=why)
 
 
 def _require_quality_work_list(registry, slug: str, entry: ScheduleEntry) -> None:
@@ -181,7 +205,7 @@ def run_schedule_now(entity_type: str, slug: str, analysis_id: str) -> dict:
 
     registry = ProjectRegistry()
     _require_resource(registry, entity_type, slug)
-    if entity_type != WORK_LIST_ENTITY:
+    if entity_type not in (WORK_LIST_ENTITY, OPEN_DATA_ENTITY):
         # TR-95: running a schedule starts the same work its target's Run does (a Survey Definition can start engine
         # actions), so the caller needs `start_action` on the resource. A work-list schedule is checked member by
         # member inside the batch (`definition_batch_refusal`).
@@ -249,6 +273,8 @@ def save_schedule(entity_type: str, slug: str, entry: ScheduleEntry) -> dict:
         _require_quality_work_list(registry, slug, entry)
     else:
         _require_resource(registry, entity_type, slug)
+        if entity_type == OPEN_DATA_ENTITY:
+            _require_open_data_analysis(entry)
     if entry.only_if_faster:
         current = next((s for s in registry.get_schedules(entity_type, slug)
                         if s.get("analysis_id") == entry.analysis_id), None)
@@ -257,7 +283,8 @@ def save_schedule(entity_type: str, slug: str, entry: ScheduleEntry) -> dict:
             return {"status": "unchanged", "entity_type": entity_type, "entity_slug": slug,
                     "analysis_id": entry.analysis_id, "schedule": now,
                     "reason": f"already scheduled {now}, which is at least as often as {entry.schedule}"}
-    if entry.enabled and entity_type != WORK_LIST_ENTITY:
+    if entry.enabled and entity_type not in (WORK_LIST_ENTITY, OPEN_DATA_ENTITY):
+        # (An open data check is stored and never published, so it asks for no Egeria write right.)
         # Brief Z2 round 2: a scheduled run publishes what it measures (auto-publish when the resource has an
         # Egeria Project), so the person creating the schedule must be allowed to publish the resource. Round 3:
         # they are recorded as `created_by` and every timer run runs as them, so the run re-checks their rights;

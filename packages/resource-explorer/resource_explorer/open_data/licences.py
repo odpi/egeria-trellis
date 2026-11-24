@@ -6,6 +6,9 @@ Keys are the lower-cased ids CKAN, DataCite (SPDX) and Socrata-style portals use
 """
 from __future__ import annotations
 
+import re
+from typing import NamedTuple
+
 from resource_explorer.open_data.absence import NOT_REPORTED
 
 # attribution: must credit; share_alike: derivatives must carry the same licence; commercial: commercial use allowed
@@ -86,3 +89,64 @@ def licence_id_from_iri(raw) -> str:
     if text.lower() in _FLAGS:
         return text.lower()
     return _IRIS.get(_iri_key(text), text)
+
+
+class Classified(NamedTuple):
+    id: object      # a licence identifier (an id RE may or may not know, or a URL), else NOT_REPORTED
+    text: object    # a licence STATED AS TEXT (a sentence, a name, HTML), else NOT_REPORTED
+    placeholder: object = None   # the raw word a portal put where a licence goes but that states none ("None", "TBD"), else None
+
+
+#: A bare token a portal uses as a licence id ("cc-by-4.0", "OGL-Canada-2.0"): no spaces, no markup.
+_ID_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+\-]{0,63}$")
+_URL = re.compile(r"^https?://\S+$", re.IGNORECASE)
+
+
+#: Words a portal puts in the licence field that state no licence. Read as "not reported", with the raw word kept as a note: never
+#: as an id ("licence None"). Compared case-insensitively.
+PLACEHOLDERS = frozenset({"none", "unknown", "other", "n/a", "na", "tbd", "null", "nil", "not specified", "not stated",
+                          "unspecified", "not available", "-", "?"})
+
+
+def classify_licence(raw) -> Classified:
+    """What a portal's licence field is: an identifier, or text it states. A URL or an id (known to RE's table or a bare token)
+    is the id (an IRI RE maps becomes its id; one it does not stays the IRI, and `licence_flags` then judges nothing). Anything
+    else (a sentence, a name with spaces, an HTML disclaimer) is stated text, and the id is NOT_REPORTED: text is never taken for
+    an identifier (TR-54 E1, ArcGIS Hub's 2 KB disclaimer in the licence_id field)."""
+    if not isinstance(raw, str) or not raw.strip() or raw == NOT_REPORTED:
+        return Classified(NOT_REPORTED, NOT_REPORTED)
+    text = raw.strip()
+    if text.lower() in PLACEHOLDERS:
+        return Classified(NOT_REPORTED, NOT_REPORTED, text)
+    if _URL.match(text):
+        return Classified(licence_id_from_iri(text), NOT_REPORTED)
+    if text.lower() in _FLAGS:
+        return Classified(text.lower(), NOT_REPORTED)
+    if _ID_TOKEN.match(text):
+        return Classified(text, NOT_REPORTED)
+    return Classified(NOT_REPORTED, text)
+
+
+#: The key a stored dataset's record keeps a licence STATED AS TEXT under (no column: a column on the shared open_data table is the
+#: owner-approved DDL process). The adapter writes it through this constant; `licence_text` is the ONE reader.
+LICENCE_TEXT_KEY = "_licence_text"
+
+
+def licence_text(dataset) -> str | None:
+    """The licence a portal stated in words (a sentence, a name, an HTML disclaimer), for a stored dataset or an adapter row;
+    None when it stated none (not reported). The one place that reads the stored key: nothing else reads it directly."""
+    record = dataset.get("record") if isinstance(dataset, dict) else None
+    text = record.get(LICENCE_TEXT_KEY) if isinstance(record, dict) else None
+    return text.strip() if isinstance(text, str) and text.strip() and text != NOT_REPORTED else None
+
+
+def licence_statement(dataset: dict) -> dict:
+    """What the portal said about the licence, in the words the UI and API use: identified (an id or URL), stated in words (text
+    and no id: "licence stated in words, not identified", never "no licence"), or not stated."""
+    lid = dataset.get("licence_id") if isinstance(dataset, dict) else None
+    text = licence_text(dataset)
+    if lid not in (None, "", NOT_REPORTED):
+        return {"state": "identified", "id": lid, "text": text, "words": f"licence {lid}"}
+    if text:
+        return {"state": "stated_in_words", "id": None, "text": text, "words": "licence stated in words, not identified"}
+    return {"state": "not_stated", "id": None, "text": None, "words": "the portal states no licence"}

@@ -109,16 +109,3 @@ def refresh_dataset(store: OpenDataStore, ds: dict, *, transport, registry=None)
                                  executor="local", metrics={**out, "snapshot": new})
         return out
     return {**base, "words": problem or "no portal to read from"}
-
-
-def refresh_work_list(store: OpenDataStore, work_list_slug: str, *, transport, registry=None) -> dict:
-    datasets = store.datasets_in_work_list(work_list_slug)
-    if not datasets:
-        from resource_explorer.open_data.service import NotFound
-
-        raise NotFound(f"No open data in work list '{work_list_slug}'.")
-    rows = [refresh_dataset(store, ds, transport=transport, registry=registry) for ds in datasets]
-    count = lambda o: sum(1 for r in rows if r["outcome"] == o)          # noqa: E731
-    return {"work_list": work_list_slug, "price": refresh_price(len(datasets)), "rows": rows,
-            "changed": count("changed"), "unchanged": count("unchanged"), "first_look": count("first_look"),
-            "could_not_refresh": count("could_not_refresh"), "ran_at": now()}

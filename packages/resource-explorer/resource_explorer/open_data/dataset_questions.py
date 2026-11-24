@@ -104,12 +104,20 @@ def _source(d: dict) -> str:
 
 
 def _licence_partial(d: dict) -> str | None:
+    from resource_explorer.open_data.licences import licence_statement
+
     lic = d.get("licence") or {}
     flags_known = any(isinstance(lic.get(k), bool) for k in ("attribution", "share_alike", "commercial"))
-    if not _stated(d.get("licence_id")) and not flags_known:
+    statement = licence_statement(d)
+    if not _stated(d.get("licence_id")) and not flags_known and statement["state"] != "stated_in_words":
         return None
-    ident = d["licence_id"] if _stated(d.get("licence_id")) else "licence identifier not reported"
-    return (f"Licence {ident} · attribution {_flag(lic.get('attribution'))} · share-alike "
+    if _stated(d.get("licence_id")):
+        ident = d["licence_id"]
+    elif statement["state"] == "stated_in_words":
+        ident = statement["words"]                       # "licence stated in words, not identified": never "no licence"
+    else:
+        ident = "licence identifier not reported"
+    return (f"{'Licence ' if ident and not ident.startswith('licence ') else ''}{ident} · attribution {_flag(lic.get('attribution'))} · share-alike "
             f"{_flag(lic.get('share_alike'))} · commercial {_flag(lic.get('commercial'))} — {_source(d)}")
 
 
@@ -185,26 +193,122 @@ def _strip_stage(stage: str) -> str:
     return (stage or "").split("/")[0].strip()
 
 
-def build(d: dict) -> dict:
-    rows = []
-    for e in get_questions("open_data"):
-        lead = (e["answering"]["analysis_ids"] or [""])[0]
-        partial = _PARTIAL.get(lead, lambda _d: None)(d)
-        will = _WILL.get(lead, "an analysis will answer it")
-        rows.append({
-            "id": e["id"], "kind": "open_data", "question": e["question"], "stage": e["stage"],
-            "perspectives": e["perspectives"],
-            "purposes": e["purposes"], "analysis_ids": e["answering"]["analysis_ids"], "rationale": e["rationale"],
-            "state": "partial" if partial else "no_reader",
-            "answer": partial or "",
-            "words": ("Answered in part by the record alone; " if partial else f"{NO_MECHANISM} — ") + f"{will}.",
-        })
+_CHECK = {"od_licence_usable": "the licence check", "od_cadence_kept": "the cadence check", "od_profile": "the dataset profile"}
+#: A stored result is "not counted as the answer" when it says so itself: measures.judged False (a licence RE's table does not know, a
+#: licence stated in words, a cadence that is not an interval). Absent means the check has no such notion (the profile), so it counts.
+_NOT_AN_ANSWER = "judged"
+
+
+def _declared_default() -> dict:
+    try:
+        from resource_explorer.open_data import analyses
+
+        return analyses._declared()
+    except Exception:       # a catalogue that cannot be read declares nothing: nothing is built, every row reads "no reader yet"
+        return {}
+
+
+def _stored(registry, slug: str, analysis_id: str) -> dict | None:
+    """The one stored result of `analysis_id` on this dataset, or None when it has not run (or nothing can be read). It is read from
+    `step_annotations`, where the run put it; never from the Activity entry, whose status only says the run did not crash: a run that
+    measured nothing, found nothing or judged nothing ends its Activity "ok" (W-B1-2)."""
+    if registry is None:
+        return None
+    try:
+        _, rows = registry.query_step_annotations("open_data", slug, analysis_id)
+    except Exception:
+        return None
+    if not rows:
+        return None
+    row = rows[0]
+    props = (row.get("detail") or {}).get("additionalProperties") or {}
+    return {"state": row.get("result_state") or "", "summary": row.get("summary") or "", "measures": props.get("measures") or {},
+            "measured_at": str(row.get("measured_at") or "")[:10]}
+
+
+def _absence(entry, key: str) -> str:
+    try:
+        return entry.declaration.absence.sentence(key)
+    except Exception:
+        return ""
+
+
+def _reader_fit(registry, store, d: dict) -> dict | None:
+    """The licence check as THIS reader sees it (`licence_usable.view`, under the request's caller): the fit to the licence needs their own
+    investigations state. None when there is no store to read those from. Nothing is stored."""
+    if store is None:
+        return None
+    from resource_explorer.open_data import licence_usable
+
+    return licence_usable.view(registry, store, d)
+
+
+def _open_data_row(e: dict, d: dict, registry, declared: dict, store=None) -> dict:
+    lead = (e["answering"]["analysis_ids"] or [""])[0]
+    entry = declared.get(lead)
+    built = bool(entry is not None and getattr(getattr(entry, "declaration", None), "built", False))
+    wired = bool(entry is not None and getattr(entry, "answers_questions", None) is True)
+    partial = _PARTIAL.get(lead, lambda _d: None)(d)
+    will = _WILL.get(lead, "an analysis will answer it")
+    check = _CHECK.get(lead, "the check")
+    row = {"id": e["id"], "kind": "open_data", "question": e["question"], "stage": e["stage"], "perspectives": e["perspectives"],
+           "purposes": e["purposes"], "analysis_ids": e["answering"]["analysis_ids"], "rationale": e["rationale"],
+           "state": "partial" if partial else "no_reader", "answer": partial or "", "has_data": False,
+           "words": ("Answered in part by the record alone; " if partial else f"{NO_MECHANISM} — ") + f"{will}."}
+    if not built:                       # (1) the check does not exist yet: the record's own fields, if it states any, else "no reader yet"
+        return row
+    if not wired:                       # (2) the check exists and is NOT this question's answer: the record's fields, and it says so
+        row["words"] = (("Answered in part by the record alone; " if partial else "")
+                        + f"{check} is built and not counted as this question's answer.")
+        return row
+    stored = _stored(registry, d["slug"], lead)          # (3) wired: the stored result decides
+    if stored is None:
+        # Not run: ○ when the record says nothing; ◐ when the record states a field that answers part of it (as before the check was
+        # wired: the page does not lose what it showed), with "not run yet" said in the words either way.
+        row.update(state="partial" if partial else "unrun", answer=partial or "",
+                   words=("Answered in part by the record alone; " if partial else "")
+                         + f"Not run on this dataset yet · {check} is built and wired to this question.")
+        return row
+    when = f" · measured {stored['measured_at']}" if stored["measured_at"] else ""
+    result, summary = stored["state"], stored["summary"]
+    if result == "measured" and stored["measures"].get(_NOT_AN_ANSWER, True) is not False:
+        if lead == "od_licence_usable":      # "usable for OUR purpose": the purpose is the reader's own, so the fit is theirs, at read time
+            mine = _reader_fit(registry, store, d)
+            fit_rows = (mine or {}).get("fit") or []
+            if not fit_rows:
+                why = (mine or {}).get("fit_words") or "fit not judged: no signed-in reader"
+                why = why if why.startswith("fit not judged") else f"usable for your purpose: {why}"
+                row.update(state="partial", answer=f"{summary} · {why}",
+                           words=f"Read, and half answered: what the licence requires is stored, {why}; not counted{when}.")
+                return row
+            fit_words = "; ".join(f"{f['title']}: {str(f['verdict']).replace('_', ' ')} — {f['words']}" for f in fit_rows)
+            row.update(state="answered", has_data=True, answer=f"{summary} · {fit_words}", words=f"Answered by {check}{when}, with your fit.")
+            return row
+        row.update(state="answered", has_data=True, answer=summary, words=f"Answered by {check}{when}.")
+    elif result == "measured":
+        row.update(state="partial", answer=summary, words=f"Read, and not judged: in part, not counted as the answer{when}.")
+    elif result == "nothing_found":
+        row.update(state="nothing", answer=summary, words=_absence(entry, "nothing_found") or f"Measured: nothing found{when}.")
+    else:
+        row.update(state="not_established", answer=summary,
+                   words=_absence(entry, result) or f"Not established: the check ended '{result}'{when}.")
+    return row
+
+
+def build(d: dict, registry=None, declared: dict | None = None, store=None) -> dict:
+    """The dataset's questions. `registry` is where the stored results are read (None: nothing has run, as far as this knows);
+    `store` is where the reader's investigations' data requests are read (the licence row's fit to THEIR purpose);
+    `declared` is the analysis catalogue to judge "built" and "wired" against (default: the real one; a test passes its own)."""
+    declared = _declared_default() if declared is None else declared
+    rows = [_open_data_row(e, d, registry, declared, store) for e in get_questions("open_data")]
     rows += _generic_rows(d)
     rows.sort(key=lambda r: (STAGE_ORDER.index(_strip_stage(r["stage"])) if _strip_stage(r["stage"]) in STAGE_ORDER else 99,
                              r["id"]))
     partial_n = sum(1 for r in rows if r["state"] == "partial")
-    return {"slug": d["slug"], "questions": rows, "total": len(rows), "answered": 0, "partial": partial_n,
+    answered_n = sum(1 for r in rows if r["state"] == "answered")
+    return {"slug": d["slug"], "questions": rows, "total": len(rows), "answered": answered_n, "partial": partial_n,
             "not_applicable": _not_applicable(),
             "stages": [{"stage": s, "total": sum(1 for r in rows if _strip_stage(r["stage"]) == s),
+                        "answered": sum(1 for r in rows if _strip_stage(r["stage"]) == s and r["state"] == "answered"),
                         "partial": sum(1 for r in rows if _strip_stage(r["stage"]) == s and r["state"] == "partial")}
                        for s in STAGE_ORDER if any(_strip_stage(r["stage"]) == s for r in rows)]}

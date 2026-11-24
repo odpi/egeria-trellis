@@ -4,6 +4,7 @@ Read-only. Verified against demo.ckan.org on 2026-10-28 (fixtures in tests/fixtu
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from resource_explorer.open_data.absence import NOT_REPORTED, reported_or_absent
@@ -46,10 +47,36 @@ def _size(resources: list) -> Any:
     return total if seen else NOT_REPORTED
 
 
+class NotCkan(TransportError):
+    """At PROBE time: nothing at /api/3/action answered as CKAN (HTTP 404/410, or not JSON, or no CKAN envelope). Registration
+    moves on to DCAT. A portal already registered as CKAN never raises this: its 404 stays a plain TransportError, in its words."""
+
+
 class CkanAdapter(Adapter):
+    #: Registering a CKAN portal needs no probe call when no transport is given (as before TR-54 E1); with one, it probes.
+    PROBE_OPTIONAL = True
+
     manifest = AdapterManifest(
         name="ckan", api_kind="CKAN", api_kind_aliases=("CKAN API", "ckan api 3"), role="portal",
         registration_fields=("name", "base_url"), calls_per_page=1, page_size=20, needs_key=False)
+
+    @classmethod
+    def probe(cls, base_url: str, transport) -> dict:
+        """One read-only call at registration: does /api/3/action answer as CKAN? A 404/410 or a non-JSON answer is `NotCkan`
+        (the caller may try DCAT); any other failure (a 503, a timeout) is raised as it is, never read as "not CKAN"."""
+        base = (base_url or "").strip().rstrip("/")
+        url = f"{base}/api/3/action/package_search"
+        try:
+            body = transport.get_json(url, params={"rows": 0}, headers=None)
+        except TransportError as exc:
+            text = str(exc)
+            if re.search(r"HTTP (404|410)\b", text) or "was not JSON" in text:
+                raise NotCkan(f"{base}: not a CKAN portal (no /api/3/action here): {text}") from exc
+            raise
+        if not isinstance(body, dict) or "success" not in body:
+            raise NotCkan(f"{base}: not a CKAN portal (no /api/3/action here): it answered without CKAN's envelope")
+        result = body.get("result") if isinstance(body.get("result"), dict) else {}
+        return {"feed_url": base, "shape": "ckan", "page_size": None, "total": result.get("count", NOT_REPORTED)}
 
     def _action(self, name: str, params: dict) -> dict:
         body = self.transport.get_json(
