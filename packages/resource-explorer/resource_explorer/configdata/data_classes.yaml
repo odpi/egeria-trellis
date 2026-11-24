@@ -21,10 +21,15 @@
 #   dataPatterns  - one or more column-name KEYWORDS: lower case, letters, digits and underscores
 #                   (sent to Egeria as matchPropertyNames; the name `dataPatterns` is kept for existing files)
 # Optional:
-#   specification - a regular expression a VALUE of this class fully matches (python `re.fullmatch`). Give one
-#                   only where the shape is specific to the class. A generic shape (nine digits, a long number, any
-#                   date) matches columns that are not the class at all, so Phone, SSN, Credit Card and Date of
-#                   Birth ship with none and stay name-only until a value-AND-name rule exists (TR-131).
+#   specification     - a regular expression a VALUE of this class fully matches (python `re.fullmatch`).
+#   requiresNameMatch - true for a GENERIC value shape (a date, a run of digits), TR-131: the class is then
+#                       established only when the values conform AND the column name carries one of its keywords
+#                       (beyond generic words such as date, number, id). On its values alone it is held back. The
+#                       matcher also infers this for any value regex that matches a bare digit string or a plain
+#                       date, so leaving it out never loosens the rule; it is written to the class's
+#                       specificationDetails so the rule is visible in Egeria.
+#   valueCheck        - a named check every value must also pass, on top of the regex: `luhn` (the card checksum).
+# A class with no specification (Password) has no value rule and stays name_only (TR-127 ruling (b)).
 #
 # A second file may add entries without editing this one: set RE_DATA_CLASSES_FILE to its path (the
 # same shape). A name in both files is an error, not an override.
@@ -40,16 +45,27 @@ data_classes:
     displayName: Phone Number
     description: Telephone contact number.
     dataPatterns: [phone, phone_number, telephone, mobile, tel_num]
+    # North American or international numbers, written with +, or with a 00 / 011 exit code (001-808-617-6467), with
+    # an optional extension (x718, ext. 12, #22); never a plain decimal, a dotted quad, money or a short code.
+    specification: '(?:(?:(?:\+|00|011)?1[\s.\-]?)?(?:\(\d{3}\)\s?|\d{3}[\s.\-]?)\d{3}[\s.\-]?\d{4}|(?:\+|00|011)[\s\-]?(?=(?:[\s\-()]*\d){8,15}[\s\-()]*(?!\d))[2-9]\d{0,2}(?:[\s\-]?\(?\d{1,4}\)?){2,6})(?:\s*[,;]?\s*(?i:x|ext\.?|extension|#)\s*\d{1,6})?'
+    requiresNameMatch: true
 
   - name: SocialSecurityNumber
     displayName: Social Security Number
     description: Government issued social security identification number.
     dataPatterns: [ssn, socialsec, social_security, ssn_num]
+    # 9 digits, optionally 3-2-4 with hyphens; never an area 000, 666 or 9xx, a group 00 or a serial 0000.
+    specification: '(?!000|666|9\d\d)\d{3}-?(?!00)\d{2}-?(?!0000)\d{4}'
+    requiresNameMatch: true
 
   - name: CreditCardNumber
     displayName: Credit Card Number
     description: Financial credit or debit card identifier.
     dataPatterns: [creditcard, credit_card, cc_num, card_number]
+    # 13-19 digits, optionally grouped by spaces or hyphens, whose Luhn checksum holds.
+    specification: '\d(?:[ \-]?\d){12,18}'
+    requiresNameMatch: true
+    valueCheck: luhn
 
   - name: Password
     displayName: Password
@@ -60,3 +76,6 @@ data_classes:
     displayName: Date of Birth
     description: Individual date or anniversary of birth.
     dataPatterns: [dob, dateofbirth, birth_date, birthdate]
+    # A calendar date 1900-2099 (YYYY-MM-DD, YYYY/M/D, MM/DD/YYYY, DD.MM.YYYY), at most with a midnight time.
+    specification: '(?:(?:19|20)\d{2}[-/.](?:0?[1-9]|1[0-2])[-/.](?:0?[1-9]|[12]\d|3[01])|(?:0?[1-9]|1[0-2])/(?:0?[1-9]|[12]\d|3[01])/(?:19|20)\d{2}|(?:0?[1-9]|[12]\d|3[01])[.\-](?:0?[1-9]|1[0-2])[.\-](?:19|20)\d{2})(?:[ T]00:00(?::00(?:\.0+)?)?)?'
+    requiresNameMatch: true

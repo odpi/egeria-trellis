@@ -58,7 +58,7 @@ def data_dir(tmp_path):
     return d
 
 
-@pytest.fixture(params=["sqlite", "postgres"])
+@pytest.fixture(params=["sqlite", pytest.param("postgres", marks=pytest.mark.requires_pgvector)])
 def store(request, monkeypatch):
     feedback_store.reset_stores()
     if request.param == "postgres":

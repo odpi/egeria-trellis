@@ -1,15 +1,13 @@
 {
   "mcpServers": {
     "pyegeria": {
-      "_comment": "Launch from THIS project's own venv (installed pyegeria package) via `-m`, not a separate egeria-python checkout's venv with a direct file path. A separate checkout can drift out of sync with what's actually pip-installed here — e.g. missing PYEGERIA_MCP_REPORT_TIMEOUT/PYEGERIA_TIMEOUT_SECONDS env-var support that a newer installed version already has. See docs/PROJECT_SUMMARY.md Phase 22.",
+      "_comment": "No user or password belongs in this file: EA runs this server as its own service account (EA_DAEMON_USER_ID and EA_DAEMON_USER_PASSWORD in EA's .env, never a person) and drops any identity found here. Launch from THIS project's own venv (installed pyegeria package) via `-m`, not a separate egeria-python checkout's venv with a direct file path. A separate checkout can drift out of sync with what's actually pip-installed here — e.g. missing PYEGERIA_MCP_REPORT_TIMEOUT/PYEGERIA_TIMEOUT_SECONDS env-var support that a newer installed version already has. See docs/PROJECT_SUMMARY.md Phase 22.",
       "command": "/absolute/path/to/egeria-advisor/.venv/bin/python",
       "args": [
         "-m", "pyegeria.core.mcp_server"
       ],
       "env": {
-        "EGERIA_USER": "erinoverview",
         "EGERIA_VIEW_SERVER": "qs-view-server",
-        "EGERIA_PASSWORD": "secret",
         "EGERIA_VIEW_SERVER_URL": "https://localhost:9443"
       },
       "enabled": true,

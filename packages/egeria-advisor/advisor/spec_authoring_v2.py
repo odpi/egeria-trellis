@@ -1024,12 +1024,22 @@ def count_words(prev: Dict[str, Any]) -> str:
     return rows if end == "confirmed" and not prev.get("capped") else f"at least {rows}"
 
 
+def log_run_identity(client: Any) -> None:
+    """One INFO line naming who this v2 run reads Egeria as, and whether it carries a bearer token (TR-42). Names
+    only: never the token or a password. Without it "no service-account sign-in in the log" proves nothing."""
+    from loguru import logger
+    user = getattr(client, "user_id", None) or "(no user)"
+    how = "via bearer token" if getattr(client, "token", None) else "with no bearer token"
+    logger.info(f"v2 answer as {user} {how}")
+
+
 def answer(spec: Dict[str, Any], client: Any, *, max_rows: int = ANSWER_ROWS) -> Dict[str, Any]:
     """Run the spec as `client`'s user (structured TABLE, capped) and render it for the reply. A status
     the finder matches one value at a time runs once per value, merged."""
     import time
     from pyegeria.authoring import preview
     t = time.time()
+    log_run_identity(client)
     refused = (spec.get("conditions") or {}).get(STATUS_REFUSED)
     if refused:
         return {"ok": False, "refused": True, "error": refused, "s": 0.0,

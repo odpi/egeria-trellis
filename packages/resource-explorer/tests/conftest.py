@@ -577,6 +577,23 @@ def fresh_registry_schema_marker(request, registry_schema_template):
 
 
 @pytest.fixture(autouse=True)
+def identity_context_restored_after_each_test():
+    """Every test leaves RE's identity ContextVars as it found them.
+
+    `cli.session.activate()` sets `a2a_auth.current_caller` and never resets it: that is right for a CLI process, where
+    there is no next request to leak into. A test that runs a CLI command in-process (typer's CliRunner) would otherwise
+    leave that person as the caller for the rest of the pytest worker, and a later per-user test (working-set hiding,
+    for one) then reads or writes as the wrong person. Found by gate b501: TR-61's login test before test_web's
+    TestProjectsRouter gave exactly its 4 failures."""
+    from resource_explorer import a2a_auth, egeria_clients
+
+    tokens = [(var, var.set(var.get())) for var in (a2a_auth.current_caller, egeria_clients._acting, egeria_clients._scope)]
+    yield
+    for var, token in reversed(tokens):
+        var.reset(token)
+
+
+@pytest.fixture(autouse=True)
 def survey_run_rate_window_starts_empty():
     """TR-1's per-user run-POST backstop (`survey_definitions._run_posts`) is process memory. Without this, the
     eleventh run POST of a whole test session would be refused 429 in whichever test sent it."""

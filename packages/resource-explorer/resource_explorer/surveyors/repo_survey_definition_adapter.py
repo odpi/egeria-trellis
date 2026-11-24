@@ -396,27 +396,29 @@ def _acquire_zipball_root(project, registry, served: dict | None = None):
 
     pool = run_resource_pool.current()
     if pool is None:
-        with _fetch_zipball_root(project) as (root, sha):
+        with _fetch_zipball_root(project) as (root, sha, repo):
             if served is not None:
                 served["zipball_root"] = sha
+                served["github_repo"] = repo      # TR-132 C1: the repository object this run already fetched (no second lookup)
             yield root
         return
-    (root, sha), _reused = pool.get_or_acquire(
+    (root, sha, repo), _reused = pool.get_or_acquire(
         ("zipball_root", project.github_url), lambda: _fetch_zipball_root(project))
     if served is not None:
         served["zipball_root"] = sha
+        served["github_repo"] = repo
     yield root
 
 
 @contextmanager
 def _fetch_zipball_root(project):
-    """(extracted root, served commit SHA) — the actual acquisition."""
+    """(extracted root, served commit SHA, the GitHub repository object) — the actual acquisition."""
     from resource_explorer.github.client import GitHubClient
 
     client = GitHubClient()
     repo = client.get_repo(project.github_url)
     with client.zipball_root(repo) as root:
-        yield root, getattr(client, "last_served_sha", None)
+        yield root, getattr(client, "last_served_sha", None), repo
 
 
 @contextmanager
@@ -444,6 +446,7 @@ def _acquire_git_clone_root(project, registry, served: dict | None = None):
     with client.git_clone_root(repo) as root:
         if served is not None:
             served["git_clone_root"] = getattr(client, "last_served_sha", None)
+            served["github_repo"] = repo
         yield root
 
 
@@ -490,6 +493,10 @@ STEP_REGISTRY: dict[str, StepInfo] = {
         "step regardless, so this records the decision rather than enforcing it.",
         ["ClassificationAnnotation"],
         accepts_surveyed_at=True,
+        # TR-104: it asks GitHub for the head commit (get_repo + get_latest_commit_sha). It took the default "none"
+        # and every run logged a fetch disagreement; laz's 703 recorded runs made exactly 2 api.github.com calls each.
+        # So a max_fetch_cost="none" run (a republish from stored data) leaves it out.
+        fetch_cost="api",
     ),
     "repo_git_statistics": StepInfo(
         "repo_git_statistics", GitStatisticsSurveyor,

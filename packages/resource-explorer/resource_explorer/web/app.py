@@ -126,6 +126,8 @@ async def _lifespan(app: FastAPI):
     logging.getLogger(__name__).info("%s", await start_line_within(START_LINE_SECONDS))
     from resource_explorer.egeria_clients import log_daemon_identity_at_startup
     log_daemon_identity_at_startup()        # INFO: which source the daemon identity came from (Brief L)
+    from resource_explorer.github.token_status import log_at_startup as log_github_token_at_startup
+    log_github_token_at_startup(logging.getLogger(__name__))   # TR-53: WARNING when GITHUB_TOKEN is unset (60 requests/hour)
     from resource_explorer.bootstrap import log_heal_identity_at_startup
     log_heal_identity_at_startup()          # who the heal applies Dr.Egeria as, and from where; warns when unset
     _log_hardware_in_background(logging.getLogger(__name__))   # trellis-accel: device, build, findings

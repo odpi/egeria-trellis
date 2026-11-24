@@ -74,7 +74,7 @@ import {
 import { renderContext } from '/static/next/stages/context.js';
 import { openApiReference } from '/static/next/stages/api-reference.js';
 import { inPageConfirm, inPageNotice, inPagePrompt } from '/static/next/confirm-dialog.js';
-import { scoutingTilesHtml, scoutingSignalHtml, staleLinkBannerHtml, bindStaleLinkBanner, indexStateCueHtml } from '/static/next/stages/repo-header.js';
+import { scoutingTilesHtml, scoutingSignalHtml, staleLinkBannerHtml, bindStaleLinkBanner, indexStateCueHtml, branchesLineHtml } from '/static/next/stages/repo-header.js';
 import { bindFirstIndexDoor, ensureFirstIndexFresh } from '/static/next/first-index.js';
 import { bindReindexDoor, refreshReindexCue } from '/static/next/reindex.js';
 import { contextRecordedSpec, contextRecordedState } from '/static/next/context-recorded.js';
@@ -3674,7 +3674,7 @@ export function resourceHeaderHtml(slug) {
         </button>
       </span>
     </div>
-    <div class="mt-s1 text-provenance text-ink-muted">${surveyed} · ${published}${state.resourceType === 'repo' && indexStateCueHtml(p, state.firstIndex?.lines?.[slug]) ? ` · ${indexStateCueHtml(p, state.firstIndex?.lines?.[slug])}` : ''}${state.resourceType === 'repo' && p && p.index_state === 'indexed' ? '<span data-reindex-host></span>' : ''}</div>
+    <div class="mt-s1 text-provenance text-ink-muted">${surveyed} · ${published}${state.resourceType === 'repo' && indexStateCueHtml(p, state.firstIndex?.lines?.[slug]) ? ` · ${indexStateCueHtml(p, state.firstIndex?.lines?.[slug])}` : ''}${state.resourceType === 'repo' && p && p.index_state === 'indexed' ? '<span data-reindex-host></span>' : ''}</div>${state.resourceType === 'repo' ? branchesLineHtml(ov) : ''}
     ${credentialBanner}
     ${staleLinkBannerHtml(staleOv)}${state.resourceType === 'repo' ? scoutingTilesHtml(ov) + scoutingSignalHtml(state.scoutingSignal?.slug === slug ? state.scoutingSignal : null) : ''}
     ${state.resourceType === 'db' ? changeCredentialsLineHtml(p) : ''}

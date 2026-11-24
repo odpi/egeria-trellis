@@ -1,6 +1,10 @@
 # Trellis — Quickstart
 
-From a fresh clone to a running app. Fifteen minutes, most of it waiting for model downloads.
+From a fresh clone to a running app. **Allow about three hours on a fresh machine for the whole path**, clone to a first
+answer (measured on a fresh Mac install): the QuickStart builds in about 24 min cold, the Egeria Advisor knowledge-base
+clone takes about 34 min (5.1 GB), ingest about 80 min, and the whole path from clone to answer about 2 h 55 min, most of it
+waiting for downloads and ingest. Running Resource Explorer alone against an Egeria and Ollama that are already up is the
+[10-minute path](#the-10-minute-path).
 
 Trellis is a `uv` workspace holding three apps (Resource Explorer, Egeria Advisor and Trellis
 Studio) and its shared libraries. You do not need to
@@ -37,6 +41,8 @@ and there is no local user store, so without Egeria there is no way to sign in. 
   the QuickStart's user directory, egeria-workspaces'
   `compose-configs/egeria-quickstart/secrets/coco-user-directory.omsecrets` (each account's `clearPassword`). On
   any other Egeria, ask its administrator for the two accounts.
+- **The demo users' password** (the people you sign in as, such as `peterprofile`) is `QUICKSTART_PERSONA_PASSWORD` in
+  egeria-workspaces' `.env`.
 - Don't set `EGERIA_USER` / `EGERIA_USER_PASSWORD` for the apps: those are pyegeria's names for running its tools
   as yourself in a shell, and both apps warn at startup if they see them. You sign in to each app as yourself.
 
@@ -85,7 +91,14 @@ POSTGRES_PASSWORD="$PGVECTOR_PASSWORD" docker run -d --name trellis-postgres -p 
 ```
 
 Resource Explorer keeps its tables in a named schema, which is the one thing that is not
-created for you:
+created for you. With an `egeria-workspaces` checkout the container is `egeria-shared-postgres`:
+
+```bash
+docker exec egeria-shared-postgres psql -U egeria_advisor -d egeria_advisor \
+  -c 'CREATE SCHEMA IF NOT EXISTS resource_explorer AUTHORIZATION egeria_advisor;'
+```
+
+On the standalone path above it is `trellis-postgres`:
 
 ```bash
 docker exec trellis-postgres psql -U egeria_advisor -d egeria_advisor \
@@ -128,15 +141,17 @@ done
 This is for a standalone setup. A deployment that keeps the password in a separate secrets file (for
 example a shared host) should leave it out of the apps' `.env` files, so there is only one copy to rotate.
 
-The other defaults point at the Postgres and Ollama you just started. To let Resource Explorer read
-GitHub at a sensible rate limit, add a token to its `.env`:
+The other defaults point at the Postgres and Ollama you just started. Set `GITHUB_TOKEN` in Resource
+Explorer's `.env` (a personal token with read scope). It is not optional in practice:
 
 ```
 GITHUB_TOKEN=ghp_...
 ```
 
-Without one you get 60 API calls an hour, which is enough to look around and not enough to
-survey much.
+Without one GitHub allows 60 API calls an hour, which one survey of a modest repository spends in its
+first calls: the commit history, diff stats and contributors then come back empty or partial. Resource
+Explorer warns at startup when it is unset (and `resource-explorer survey` and `refresh` say so before
+they run).
 
 ### 5. Run
 
@@ -156,6 +171,15 @@ it with its first error line (full log in `logs/trellis-up/<app>.log`) and exits
 starts nothing.
 
 `make help` lists every target.
+
+**One more shared secret, for the Portal's Trellis tile.** The Egeria Portal hands a signed-in person to Resource
+Explorer and Egeria Advisor with a signed token, and both sides must hold the same secret: the QuickStart's
+`EGERIA_ADVISOR_SSO_SECRET` (in `egeria-workspaces/compose-configs/egeria-quickstart/.env`) and the apps'
+`TRELLIS_PORTAL_SECRET` (in RE's, EA's and Studio's `.env`; EA also reads `ADVISOR_PORTAL_SECRET`). It must be the
+same value in both places. Without it the Portal's Trellis tile reads "Not configured". `make up` copies it for you
+when it can find the QuickStart's `.env`: it looks beside this checkout for `egeria-workspaces`, or set
+`EGERIA_WORKSPACES_FS` to your checkout. If it cannot find it, it says so and leaves the secret unset (it never
+invents one: a made-up value would not verify), and you set the same value in both places by hand.
 
 ### 6. First real action
 

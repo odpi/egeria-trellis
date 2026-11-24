@@ -371,6 +371,11 @@ class SurveyResult:
     survey_commit_sha: str | None = None
     #: step_key -> that SHA, for each step that COMPLETED having read it (step_cost_observer.completed).
     commit_by_step: dict = field(default_factory=dict)
+    #: TR-132 C1: the repository ref this run READ (its name, kind, and the commit it pointed to), set only when the run
+    #: acquired code (the same rule as `survey_commit_sha`); None otherwise, never a made-up ref.
+    surveyed_ref: str | None = None
+    ref_kind: str | None = None
+    surveyed_commit: str | None = None
     annotations: list[Annotation] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)   # non-fatal issues during survey
     #: The re_analysis_step keys this run actually executed, set by
@@ -805,3 +810,10 @@ def annotation_qualified_name(prefix: str, index: int, annotation) -> str:
 def _sanitise_name_part(value: str) -> str:
     """Make one qualifiedName segment safe to join with '::'."""
     return value.replace("::", ":_:").strip()
+
+
+def ref_metrics(result) -> dict:
+    """{surveyed_ref, ref_kind, surveyed_commit} for a run that read code, {} for one that did not (TR-132 C1)."""
+    if not getattr(result, "surveyed_ref", None):
+        return {}
+    return {"surveyed_ref": result.surveyed_ref, "ref_kind": result.ref_kind or "", "surveyed_commit": result.surveyed_commit or ""}

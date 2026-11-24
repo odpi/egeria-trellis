@@ -163,3 +163,51 @@ def test_make_up_covers_studio_and_has_its_own_target():
     mk = (ROOT / "Makefile").read_text()
     assert "up-studio:" in mk and "./trellis-up --studio" in mk and "studio-web:" in mk
     assert "start RE, EA and Studio natively" in mk
+
+
+# ── TR-64: the one shared Trellis SSO secret ──────────────────────────────────
+
+def _portal_run(tmp_path, portal_env_text=None):
+    """`trellis-up` secrets step against throwaway .env files and a throwaway egeria-workspaces checkout."""
+    envs = {k: tmp_path / f"{k.lower()}.env" for k in ("RE", "EA", "STUDIO")}
+    ws = tmp_path / "egeria-workspaces"
+    if portal_env_text is not None:
+        (ws / "compose-configs" / "egeria-quickstart").mkdir(parents=True)
+        (ws / "compose-configs" / "egeria-quickstart" / ".env").write_text(portal_env_text)
+    else:
+        ws.mkdir()
+    port = _free_port()
+    env = {k: v for k, v in os.environ.items() if not k.startswith("TRELLIS_UP_")}
+    env.update({f"TRELLIS_UP_{k}_ENV": str(p) for k, p in envs.items()})
+    env.update({"TRELLIS_UP_LOG_DIR": str(tmp_path / "logs"), "TRELLIS_UP_START_TIMEOUT": "20",
+                "TRELLIS_UP_CMD_STUDIO": _server(port), "TRELLIS_UP_HEALTH_STUDIO": _health(port),
+                "EGERIA_WORKSPACES_FS": str(ws)})
+    r = subprocess.run(["bash", str(SCRIPT), "--no-preflight", "--start-check", "--studio"], env=env,
+                       capture_output=True, text=True, timeout=60, cwd=ROOT)
+    return r, envs
+
+
+def test_the_portal_secret_is_copied_into_all_three_env_files(tmp_path):
+    r, envs = _portal_run(tmp_path, "EGERIA_ADVISOR_SSO_SECRET=sso-from-the-quickstart\n")
+    assert r.returncode == 0, r.stdout + r.stderr
+    for p in envs.values():
+        assert "TRELLIS_PORTAL_SECRET=sso-from-the-quickstart" in p.read_text().splitlines()
+        assert oct(p.stat().st_mode & 0o777) == "0o600"
+    assert "copied from the Portal's EGERIA_ADVISOR_SSO_SECRET" in r.stdout
+
+
+def test_without_the_quickstart_env_the_message_says_how_to_set_it_and_invents_nothing(tmp_path):
+    r, envs = _portal_run(tmp_path, None)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert all("TRELLIS_PORTAL_SECRET" not in p.read_text() for p in envs.values())
+    out = r.stdout + r.stderr
+    assert "Not configured" in out and "EGERIA_ADVISOR_SSO_SECRET" in out
+    assert "EGERIA_WORKSPACES_FS" in out, "the message does not say how trellis-up finds the QuickStart's .env"
+    assert "TRELLIS_PORTAL_SECRET" in out
+
+
+def test_quickstart_documents_the_shared_sso_secret():
+    text = (ROOT / "QUICKSTART.md").read_text()
+    for needed in ("EGERIA_ADVISOR_SSO_SECRET", "TRELLIS_PORTAL_SECRET", "Not configured", "EGERIA_WORKSPACES_FS"):
+        assert needed in text, f"QUICKSTART.md does not mention {needed}"
+    assert "same value" in text

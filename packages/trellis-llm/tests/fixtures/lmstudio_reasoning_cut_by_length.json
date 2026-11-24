@@ -1,0 +1,29 @@
+{
+  "id": "chatcmpl-oq03nfwg9wekj4393vrbu",
+  "object": "chat.completion",
+  "created": 1795468689,
+  "model": "laguna-xs-2.1",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "",
+        "reasoning_content": "Okay, the user wants me to reply with just \"pong\". Let me",
+        "tool_calls": []
+      },
+      "logprobs": null,
+      "finish_reason": "length"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 26,
+    "completion_tokens": 16,
+    "total_tokens": 42,
+    "completion_tokens_details": {
+      "reasoning_tokens": 16
+    }
+  },
+  "stats": {},
+  "system_fingerprint": "laguna-xs-2.1"
+}

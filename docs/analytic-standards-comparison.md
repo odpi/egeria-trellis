@@ -102,7 +102,8 @@ surveyed, from an allow-list (a repo `https://github.com` + `owner/repo`, a
 database `postgres://host:port` + database name), never credentials; schema and
 table are not known at step level. A step that raised, or that caught its own
 error and called `openlineage.note_failure`, ends in FAIL with a scrubbed
-`errorMessage`. Delivery uses a bounded timeout; a failure is counted and logged
+`errorMessage`. A step stopped because its run was cancelled ends in ABORT,
+with no `errorMessage`: a cancel is not a failure (TR-90). Delivery uses a bounded timeout; a failure is counted and logged
 and never fails or stalls the step.
 
 ```json

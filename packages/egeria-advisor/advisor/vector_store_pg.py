@@ -30,7 +30,7 @@ from loguru import logger
 from trellis_vectorstore import CollectionSchema, ExtraColumn, PgVectorStoreConfig, translate_filter_expr
 from trellis_vectorstore.pg import PgVectorStore as _SharedPgVectorStore
 
-from advisor.config import settings
+from advisor.config import EA_PG_OPTIONS, settings
 
 # ---------------------------------------------------------------------------
 # Per-collection schema (was _TABLE_DDL / _EXTRA_COLUMNS / _COL_DEFAULTS /
@@ -124,6 +124,7 @@ class PgVectorStore(_SharedPgVectorStore):
             schema=None,  # EA's tables are always unqualified/public
             max_connections=max_connections or settings.pgvector_max_connections,
             ef_search=ef_search or settings.pgvector_ef_search,
+            options=EA_PG_OPTIONS,  # TR-60a: unqualified means public, whatever the role's search_path says
         )
         super().__init__(
             config,

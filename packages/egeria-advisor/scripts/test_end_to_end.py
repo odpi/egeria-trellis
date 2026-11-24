@@ -654,11 +654,11 @@ class EndToEndTestRunner:
     
     def _check_embedding_model(self) -> Tuple[str, str, Dict]:
         """Check embedding model"""
-        from advisor.embeddings import EmbeddingGenerator
+        from advisor.embeddings import EmbeddingGenerator, embedding_dimension
         
         try:
             gen = EmbeddingGenerator()
-            model_name = gen.model.get_sentence_embedding_dimension()
+            model_name = embedding_dimension(gen.model)
             return "PASS", f"Model loaded ({model_name}d)", {}
         except Exception as e:
             return "FAIL", str(e), {}

@@ -78,6 +78,19 @@ def name_signals(file_path: str) -> list[str]:
     return [w for w in dict.fromkeys(tokens) if w in PERSONAL_NAME_WORDS]
 
 
+def _missing(v) -> bool:
+    """An empty cell, not a value: None, NaN, NaT, or a string that is blank after strip (TR-131 W2). In CSV, Parquet
+    and JSON lines an empty cell is missing data; counted as a value it fails every value rule, so a genuine
+    date-of-birth column that is a quarter blanks read as "no match"."""
+    if v is None:
+        return True
+    if isinstance(v, str):
+        return not v.strip()
+    if isinstance(v, float) and v != v:
+        return True
+    return type(v).__name__ == "NaTType"
+
+
 def sample_values(path: Path, ext: str, *, limit: int = SAMPLE_BYTES, max_values: int = MAX_VALUES):
     """({column: [values]} or None, rows read, why-not). Reads the head of the file only: a delimited or JSON-lines file
     up to `limit` bytes cut at its last whole line, a Parquet file's first row group, a workbook's first `max_values` rows
@@ -130,7 +143,7 @@ def sample_values(path: Path, ext: str, *, limit: int = SAMPLE_BYTES, max_values
         return None, 0, f"the file could not be parsed for values: {type(exc).__name__}: {exc}"[:300]
     values = {}
     for col in df.columns:
-        vals = [v for v in df[col].tolist() if v is not None and not (isinstance(v, float) and v != v)]
+        vals = [v for v in df[col].tolist() if not _missing(v)]
         values[str(col)] = vals[:max_values]
     return values, len(df), ""
 

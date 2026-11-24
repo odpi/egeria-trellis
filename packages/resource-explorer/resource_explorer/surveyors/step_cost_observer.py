@@ -338,7 +338,7 @@ def observe(step_key: str, declared_fetch: str, declared_compute: str,
     from resource_explorer.observability import openlineage
 
     # R21: every step passes through here, so this is the one place a run
-    # event is emitted -- START now, COMPLETE/FAIL in the finally below.
+    # event is emitted -- START now, COMPLETE/FAIL/ABORT in the finally below.
     ol_state, ol_token = openlineage.begin(job_family, step_key, entity_type, slug, resource)
     raised: BaseException | None = None
 
@@ -626,7 +626,7 @@ def _analyses_for_step(step_key: str, entity_type: str) -> set[str] | None:
 
 
 def record(registry, slug: str, obs: Observation, surveyed_at: str | None = None,
-           entity_type: str = "repo", survey_commit_sha: str | None = None) -> str:
+           entity_type: str = "repo", survey_commit_sha: str | None = None, survey_ref: dict | None = None) -> str:
     """Persist one observation. Returns FIRST when this is the first ever for
     this step, RECORDED normally, NOT_RECORDED when persistence failed.
 
@@ -656,7 +656,8 @@ def record(registry, slug: str, obs: Observation, surveyed_at: str | None = None
             entity_type=entity_type,
             source=obs.source, executor=obs.executor,
             executor_ref=obs.executor_ref, demanded_by=obs.demanded_by,
-            metrics=obs.vector(), declared=obs.declared_vector(),
+            # TR-132 C1: which repository ref this run read (surveyed_ref, ref_kind, surveyed_commit); nothing added when it read none.
+            metrics={**obs.vector(), **(survey_ref or {})}, declared=obs.declared_vector(),
             disagreement=obs.disagreement,
             flow_run_id=obs.flow_run_id, dispatch_failed=obs.dispatch_failed,
             survey_commit_sha=survey_commit_sha,
