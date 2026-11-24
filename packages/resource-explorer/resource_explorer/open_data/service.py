@@ -367,7 +367,7 @@ def import_datasets(store: OpenDataStore, chosen: list[Chosen], *, work_list_nam
     # 1. describe each, collapse equal identifiers to one dataset listing every portal
     datasets: dict[str, dict] = {}
     errors: list[dict] = []
-    # One adapter per portal for the whole import, as `scout_work_list` does: a one-document feed (a Project Open
+    # One adapter per portal for the whole import, as `scout_dataset`'s callers do: a one-document feed (a Project Open
     # Data `data.json`; healthdata.gov's is 31 MB) is then read once, not once per chosen row. Reading it per row
     # tripled the time spent on the slowest source and gave a busy portal three chances to time out (2026-11-09).
     adapters_by_portal: dict[str, Adapter] = {}
@@ -748,19 +748,6 @@ def scout_dataset(store: OpenDataStore, d: dict, *, transport, adapters_by_porta
                        changed=changed)
         break
     return outcome
-
-
-def scout_work_list(store: OpenDataStore, work_list_slug: str, *, transport) -> dict:
-    """Every dataset of a work list, one after the other, in one call: a LIBRARY helper (tests, scripts). The press does not use it:
-    since TR-54 B4 a press enqueues one `external_data_scout` run per dataset (`open_data.queued`)."""
-    datasets = store.datasets_in_work_list(work_list_slug)
-    if not datasets:
-        raise NotFound(f"No open data in work list '{work_list_slug}'.")
-    adapters_by_portal: dict = {}
-    out = [scout_dataset(store, d, transport=transport, adapters_by_portal=adapters_by_portal) for d in datasets]
-    return {"work_list": work_list_slug, "price": scout_price(len(datasets)), "rows": out,
-            "scouted": sum(1 for o in out if o["outcome"] == "scouted"),
-            "could_not_scout": sum(1 for o in out if o["outcome"] != "scouted")}
 
 
 def _states_nothing(request: dict | None) -> bool:

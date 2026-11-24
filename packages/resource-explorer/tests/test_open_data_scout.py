@@ -33,11 +33,19 @@ def imported(store):
     return got["work_list"]
 
 
+def _scout_all(store, wl, t):
+    """One scout of each dataset of the list, as the queued `external_data_scout` runs do it, one run per dataset (TR-54 B4)."""
+    adapters: dict = {}
+    rows = [service.scout_dataset(store, d, transport=t, adapters_by_portal=adapters) for d in store.datasets_in_work_list(wl)]
+    return {"rows": rows, "scouted": sum(1 for r in rows if r["outcome"] == "scouted"),
+            "could_not_scout": sum(1 for r in rows if r["outcome"] != "scouted")}
+
+
 def test_the_scout_is_priced_as_n_calls_and_makes_exactly_n(store, imported):
     n = len(store.datasets_in_work_list(imported))
     assert service.scout_price(n)["line"] == "10 datasets × 1 call = 10 calls"
     t = SaFake()
-    out = service.scout_work_list(store, imported, transport=t)
+    out = _scout_all(store, imported, t)
     assert out["scouted"] == 10 and out["could_not_scout"] == 0 and len(t.calls) == 10
     assert all("no change on their side" in r["words"] for r in out["rows"])
 
@@ -49,7 +57,7 @@ def test_a_failed_read_keeps_what_the_dataset_had_and_is_said(store, imported):
         def get_json(self, url, params=None, headers=None):
             raise ConnectionError("portal is down")
 
-    out = service.scout_work_list(store, imported, transport=Down())
+    out = _scout_all(store, imported, Down())
     assert out["could_not_scout"] == 10 and "portal is down" in out["rows"][0]["words"]
     assert {d["slug"]: d["publisher"] for d in store.datasets_in_work_list(imported)} == before
 

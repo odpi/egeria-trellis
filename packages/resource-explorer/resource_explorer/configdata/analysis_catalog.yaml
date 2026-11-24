@@ -3955,8 +3955,9 @@ filesystem_analyses:
 
 # Open data (OD2, project owner approved 2026-10-30: "declare it"). The scout is a batch over a work list of
 # open_data members: definition × work list, one `describe` call per dataset, priced before the press
-# (open_data/service.py scout_price / scout_work_list; POST /api/open-data/work-lists/{slug}/scout). It runs inline
-# in that request, not through the queue, so availability says inline. It answers no catalog question yet.
+# (open_data/service.py scout_price; POST /api/open-data/work-lists/{slug}/scout). Since TR-54 B4 the press queues one run per
+# dataset (open_data/queued.py), so availability says queued: scout, profile and refresh are per-dataset queued runs. It answers
+# no catalog question yet.
 open_data_analyses:
   - id: external_data_scout
     name: "External Data Scout"

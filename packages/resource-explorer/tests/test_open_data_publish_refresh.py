@@ -183,13 +183,22 @@ def test_a_private_investigation_refuses_before_any_write(store, one, monkeypatc
 
 # ── refresh ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
+def _look(store, wl, *, transport):
+    """One look at each dataset of the list, one after the other: what the queued `external_data_refresh` runs do, one run per dataset
+    (TR-54 B4). The press itself no longer loops; an empty work list is the route's 404 (tested in test_tr54_b4_queued_runs)."""
+    rows = [refresh.refresh_dataset(store, d, transport=transport) for d in store.datasets_in_work_list(wl)]
+    count = lambda o: sum(1 for r in rows if r["outcome"] == o)          # noqa: E731
+    return {"rows": rows, "changed": count("changed"), "unchanged": count("unchanged"), "first_look": count("first_look"),
+            "could_not_refresh": count("could_not_refresh")}
+
+
 def test_the_price_is_two_calls_per_dataset():
     assert refresh.refresh_price(3)["line"] == "3 datasets × 2 calls (the dataset, its distributions) = 6 calls"
 
 
 def test_the_first_look_does_not_claim_no_change_about_distributions_it_never_held(store, one):
     wl, _ = one
-    out = refresh.refresh_work_list(store, wl, transport=Portal())
+    out = _look(store, wl, transport=Portal())
     r = out["rows"][0]
     assert r["outcome"] == "first_look" and "nothing earlier to compare" in r["words"] and NO_CHANGE_WORDS not in r["words"]
 
@@ -199,15 +208,15 @@ NO_CHANGE_WORDS = "no change on their side"
 
 def test_a_second_look_with_nothing_new_says_no_change_on_their_side(store, one):
     wl, _ = one
-    refresh.refresh_work_list(store, wl, transport=Portal())
-    again = refresh.refresh_work_list(store, wl, transport=Portal())
+    _look(store, wl, transport=Portal())
+    again = _look(store, wl, transport=Portal())
     assert again["rows"][0]["words"] == NO_CHANGE_WORDS and again["unchanged"] == 1
 
 
 def test_a_look_a_day_later_shows_the_diff(store, one):
     wl, _ = one
-    refresh.refresh_work_list(store, wl, transport=Portal())
-    later = refresh.refresh_work_list(store, wl, transport=Portal(later=True))
+    _look(store, wl, transport=Portal())
+    later = _look(store, wl, transport=Portal(later=True))
     r = later["rows"][0]
     assert r["outcome"] == "changed" and later["changed"] == 1
     whats = [c["words"] for c in r["changes"]]
@@ -217,22 +226,17 @@ def test_a_look_a_day_later_shows_the_diff(store, one):
 
 def test_a_portal_that_does_not_answer_keeps_the_earlier_look_and_values(store, one):
     wl, ds = one
-    refresh.refresh_work_list(store, wl, transport=Portal())
+    _look(store, wl, transport=Portal())
     before = store.get_dataset(ds["slug"])["modified"]
 
     class Down(Portal):
         def get_json(self, url, params=None, headers=None):
             raise TransportError("portal is down")
 
-    out = refresh.refresh_work_list(store, wl, transport=Down(later=True))
+    out = _look(store, wl, transport=Down(later=True))
     assert out["could_not_refresh"] == 1 and "portal is down" in out["rows"][0]["words"]
     assert store.get_dataset(ds["slug"])["modified"] == before
-    assert refresh.refresh_work_list(store, wl, transport=Portal())["rows"][0]["words"] == NO_CHANGE_WORDS
-
-
-def test_a_work_list_with_no_open_data_cannot_be_refreshed(store):
-    with pytest.raises(service.NotFound):
-        refresh.refresh_work_list(store, "none", transport=Portal())
+    assert _look(store, wl, transport=Portal())["rows"][0]["words"] == NO_CHANGE_WORDS
 
 
 def test_the_routes_publish_refresh_and_read_the_proof(store, one, monkeypatch):
