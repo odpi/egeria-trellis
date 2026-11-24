@@ -20,11 +20,9 @@ from __future__ import annotations
 from resource_explorer.byte_format import format_bytes
 
 import hashlib
-import os
 import re
 import tempfile
 from pathlib import Path, PurePosixPath
-from typing import Callable
 
 from resource_explorer.open_data.absence import NOT_REPORTED, NOT_REPORTED_WORDS
 from resource_explorer.open_data.store import OpenDataStore, now
@@ -39,8 +37,6 @@ DOC_CAP_BYTES = 1024 * 1024
 PASSAGES_PER_DOC = 6
 PASSAGE_CHARS = 280
 MAX_MATCHES_KEPT = 60
-CLAIM_STALE_SECONDS = 900
-ALREADY_RUNNING_WORDS = "a profile of {slug} is already running"
 
 OVER_CAP_WORDS = "not profiled · over the cap"
 PROFILED, OVER_CAP, NOT_READ_FORMAT, NO_URL, DOWNLOAD_FAILED, UNREADABLE, NOT_CHOSEN = (
@@ -50,13 +46,6 @@ _DOC_WORDS = re.compile(r"data[\s_-]*dictionary|codebook|readme|citation|licen[c
 _DOC_EXTENSIONS = {"txt", "md", "markdown", "rst", "text"}
 _FOCUS_WORDS = ("dictionary", "codebook", "citation", "licence", "license", "methodology", "readme")
 
-
-class NothingToProfile(RuntimeError):
-    pass
-
-
-class AlreadyRunning(RuntimeError):
-    pass
 
 
 def cap_bytes() -> int:
@@ -322,12 +311,12 @@ def profile_dataset(store: OpenDataStore, ds: dict, *, transport, catalog, regis
     base = {"slug": ds["slug"], "title": ds["title"], "ran_at": now(), "cap_bytes": cap}
     if not portal:
         return {**base, "outcome": "not_profiled", "words": f"no portal '{ds['portal_slug']}' is registered now",
-                "distributions": [], "documents": [], "provenance": provenance_of(store, ds)}
+                "portal_failed": True, "distributions": [], "documents": [], "provenance": provenance_of(store, ds)}
     try:
         dists = portal_adapter(portal, transport).distributions(_dataset_id(ds))
     except Exception as exc:
         return {**base, "outcome": "not_profiled", "words": f"could not list the distributions: {exc}"[:240],
-                "distributions": [], "documents": [], "provenance": provenance_of(store, ds)}
+                "portal_failed": True, "distributions": [], "documents": [], "provenance": provenance_of(store, ds)}
     data, docs, other = split_distributions(dists)
     chosen, rest = data[:MAX_DATA_DISTRIBUTIONS], data[MAX_DATA_DISTRIBUTIONS:]
     results, documents = [], []
@@ -359,34 +348,6 @@ def _dataset_id(ds: dict) -> str:
     """The id the portal knows the dataset by: the portal's own name for it, kept in the verbatim record."""
     rec = ds.get("record") or {}
     return rec.get("name") or rec.get("id") or str(ds["identifier"]).split(":", 1)[-1]
-
-
-def profile_work_list(store: OpenDataStore, work_list_slug: str, *, transport,
-                      catalog_loader: Callable[[], object] | None = None, registry=None) -> dict:
-    """The press. Raises NothingToProfile (no dataset in the work list) and AlreadyRunning."""
-    from resource_explorer.surveyors.filesystem import file_class_match as fcm
-
-    registry = registry or store.registry
-    datasets = store.datasets_in_work_list(work_list_slug)
-    if not datasets:
-        raise NothingToProfile("This work list holds no open data to profile.")
-    key = f"{STEP_KEY}:{work_list_slug}"
-    holder = f"{os.getpid()}:{now()}"
-    if not registry.take_claim(key, holder, stale_after_seconds=CLAIM_STALE_SECONDS):
-        raise AlreadyRunning(ALREADY_RUNNING_WORDS.format(slug=work_list_slug))
-    try:
-        catalog = (catalog_loader or fcm.default_catalog)()
-        results = []
-        for ds in datasets:
-            r = profile_dataset(store, ds, transport=transport, catalog=catalog, registry=registry)
-            registry.record_step_run(ds["slug"], STEP_KEY, r["ran_at"], entity_type=ENTITY_TYPE, source=SOURCE,
-                                     executor="local", metrics=r)
-            results.append(r)
-    finally:
-        registry.release_claim(key, holder)
-    profiled = sum(1 for r in results if r["outcome"] == "profiled")
-    return {"work_list": work_list_slug, "price": profile_price(len(datasets)), "profiled": profiled,
-            "not_profiled": len(results) - profiled, "datasets": results, "ran_at": now()}
 
 
 def view(store: OpenDataStore, work_list_slug: str, registry=None) -> dict:

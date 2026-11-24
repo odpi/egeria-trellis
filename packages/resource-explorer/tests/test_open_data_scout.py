@@ -33,11 +33,19 @@ def imported(store):
     return got["work_list"]
 
 
+def _scout_all(store, wl, t):
+    """One scout of each dataset of the list, as the queued `external_data_scout` runs do it, one run per dataset (TR-54 B4)."""
+    adapters: dict = {}
+    rows = [service.scout_dataset(store, d, transport=t, adapters_by_portal=adapters) for d in store.datasets_in_work_list(wl)]
+    return {"rows": rows, "scouted": sum(1 for r in rows if r["outcome"] == "scouted"),
+            "could_not_scout": sum(1 for r in rows if r["outcome"] != "scouted")}
+
+
 def test_the_scout_is_priced_as_n_calls_and_makes_exactly_n(store, imported):
     n = len(store.datasets_in_work_list(imported))
     assert service.scout_price(n)["line"] == "10 datasets × 1 call = 10 calls"
     t = SaFake()
-    out = service.scout_work_list(store, imported, transport=t)
+    out = _scout_all(store, imported, t)
     assert out["scouted"] == 10 and out["could_not_scout"] == 0 and len(t.calls) == 10
     assert all("no change on their side" in r["words"] for r in out["rows"])
 
@@ -49,7 +57,7 @@ def test_a_failed_read_keeps_what_the_dataset_had_and_is_said(store, imported):
         def get_json(self, url, params=None, headers=None):
             raise ConnectionError("portal is down")
 
-    out = service.scout_work_list(store, imported, transport=Down())
+    out = _scout_all(store, imported, Down())
     assert out["could_not_scout"] == 10 and "portal is down" in out["rows"][0]["words"]
     assert {d["slug"]: d["publisher"] for d in store.datasets_in_work_list(imported)} == before
 
@@ -126,7 +134,8 @@ def test_scout_and_fit_routes(reg, monkeypatch):
     r = c.get(f"/api/open-data/work-lists/{wl}/scout-price")
     assert r.status_code == 200, (wl, r.text)
     assert r.json()["line"] == "3 datasets × 1 call = 3 calls"
-    assert c.post(f"/api/open-data/work-lists/{wl}/scout").json()["scouted"] == 3
+    pressed = c.post(f"/api/open-data/work-lists/{wl}/scout").json()           # B4: queued, one run per dataset, not done inline
+    assert pressed["queued"] == 3 and len(pressed["runs"]) == 3 and "scouted" not in pressed
     assert c.post(f"/api/open-data/work-lists/{wl}/fit", json={"request": {"formats": ["CSV"]}}).json()["passes"] == 0
     assert c.get("/api/open-data/work-lists/nope/scout-price").status_code == 404
     assert c.post("/api/open-data/work-lists/nope/fit", json={}).status_code == 404
@@ -174,9 +183,9 @@ def test_the_scout_is_declared_in_the_analysis_catalog_once():
 
     entries = reader.get_analyses("open_data", include_egeria_live=False)
     assert [e["id"] for e in entries][:3] == ["external_data_scout", "external_data_profile", "external_data_refresh"]   # + OD3, OD4
-    assert {"od_licence_usable", "od_cadence_kept", "od_profile"} <= {e["id"] for e in entries}                     # declared, not built
+    assert {"od_licence_usable", "od_cadence_kept", "od_profile"} <= {e["id"] for e in entries}                     # declared (built since B2-B4)
     e = entries[0]
-    assert e["resource_types"] == ["open_data"] and e["availability"] == "inline" and e["action"] == "survey"
+    assert e["resource_types"] == ["open_data"] and e["availability"] == "queued" and e["action"] == "survey"       # B4: one queued run per dataset
     assert not [x for x in reader.get_analyses("repo", include_egeria_live=False) if x["id"] == "external_data_scout"]
 
 
@@ -192,7 +201,30 @@ def _routes_client(reg, monkeypatch):
     monkeypatch.setattr(routes, "_store", lambda: OpenDataStore(reg))
     monkeypatch.setattr(routes, "_transport", lambda: SaFake())
     monkeypatch.setattr(routes, "_signed_in_user", lambda request: "tester")
+    # TR-147: the data-request routes now ask the REGISTRY whether the signed-in caller can see the investigation, so the caller is real
+    # (the identity the web middleware would publish) and the investigations these tests use exist, shared, and are visible to them.
+    from resource_explorer.a2a_auth import CallerIdentity, current_caller
+
+    monkeypatch.setattr("resource_explorer.registry.ProjectRegistry.__init__",
+                        lambda self, db_path=None, **k: setattr(self, "__dict__", reg.__dict__) or None)
+    identity = CallerIdentity(user_id="tester", egeria_token=None, auth_source="app-jwt")
+    reset = current_caller.set(identity)
+    try:
+        for name in ("inv-old", "inv-1", "inv-2", "inv-none"):
+            if not reg.get_investigation(name):
+                reg.create_investigation(name, project_classification="StudyProject")
+    finally:
+        current_caller.reset(reset)
     app = FastAPI()
+
+    @app.middleware("http")
+    async def _as_tester(request, call_next):
+        token = current_caller.set(identity)
+        try:
+            return await call_next(request)
+        finally:
+            current_caller.reset(token)
+
     app.include_router(routes.router, prefix="/api/open-data")
     return TestClient(app)
 

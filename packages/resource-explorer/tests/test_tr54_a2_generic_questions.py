@@ -94,12 +94,17 @@ def test_what_the_publishers_record_states_is_partial_and_the_rest_says_no_reade
     d = _imported(store)
     rows = {r["id"]: r for r in dq.build(d)["questions"]}
     for r in rows.values():
-        assert r["state"] in ("partial", "no_reader") and r["words"]
-        assert (r["state"] == "partial") == bool(r["answer"])                         # an answer is only ever from the record
+        assert r["words"]
+        if r["kind"] == "generic":                  # the asked-of-every-kind questions have no check behind them: record or nothing
+            assert r["state"] in ("partial", "no_reader")
+            assert (r["state"] == "partial") == bool(r["answer"])                     # an answer is only ever from the record
+        else:                                       # the three open data rows follow their lead check (TR-54 B5): none has run here
+            assert r["state"] in ("partial", "no_reader", "unrun")
+            assert (r["state"] == "partial") == bool(r["answer"])
     blank = dict(d, title="not_reported", publisher="not_reported", licence_id="not_reported", licence={}, record={},
                  modified="not_reported")
     for r in dq.build(blank)["questions"]:
-        assert r["state"] == "no_reader" and r["answer"] == ""                        # unreported is never "none" or 0
+        assert r["state"] == ("no_reader" if r["kind"] == "generic" else "unrun") and r["answer"] == ""   # unreported is never "none" or 0
 
 
 def test_the_strip_names_every_stage_the_questions_sit_in_in_funnel_order(store):

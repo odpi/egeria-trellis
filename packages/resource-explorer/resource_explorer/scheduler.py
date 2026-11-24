@@ -675,6 +675,8 @@ def _execute(
         name, location, errors, _result = run_scheduled_batch(registry, entity_slug, analysis_id,
                                                               created_by=requested_by() or "")
         return (name, location, errors)
+    if entity_type == OPEN_DATA_ENTITY:
+        return _run_open_data(entity_slug, analysis_id, registry)
     if target_kind == TARGET_SURVEY:
         return _run_scheduled_survey(entity_type, entity_slug, analysis_id, registry, report=report)
     if entity_type == "repo":
@@ -683,6 +685,33 @@ def _execute(
         return _run_db_survey(entity_slug, analysis_id, registry, next_run)
     else:
         return (entity_slug, "", [f"Unknown entity_type '{entity_type}'"])
+
+
+OPEN_DATA_ENTITY = "open_data"
+
+
+def _run_open_data(slug: str, analysis_id: str, registry) -> tuple[str, str, list[str]]:
+    """A scheduled (or "run now") open data check, TR-54 B5: the same `run_open_data_analysis` a press queues, run here in the scheduler's own
+    thread as whoever `_as_schedule_creator` made the caller (or nobody). It stores the same shared dataset facts and reads no per-user data
+    (no investigation, no data request): a runner never does. A dataset that is gone, an analysis that cannot run, or a runner that fails (a
+    portal that does not answer) is an ERROR in the schedule's words, never a quiet ok."""
+    from resource_explorer.open_data import analyses
+    from resource_explorer.open_data.store import OpenDataStore
+    from resource_explorer.workflows.analysis import run_open_data_analysis
+
+    dataset = OpenDataStore(registry).get_dataset(slug)
+    if dataset is None:
+        return (slug, "", [f"No open data '{slug}'"])
+    name = str(dataset.get("title") or slug)
+    why = analyses.refusal(analysis_id)
+    if why:
+        return (name, "", [why])
+    try:
+        result = run_open_data_analysis(slug, analysis_id, registry=registry)
+    except Exception as exc:
+        log.exception("scheduled open data check %s failed for %s", analysis_id, slug)
+        return (name, "", [f"'{analysis_id}' failed: {exc}"])
+    return (name, "", [result.error or result.summary] if result.status == "error" else [])
 
 
 def _run_scheduled_survey(
