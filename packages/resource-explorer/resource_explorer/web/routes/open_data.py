@@ -372,21 +372,46 @@ def dataset_analysis_price(slug: str, analysis_id: str) -> dict:
     return analyses.price(analysis_id, dataset)
 
 
+def _stale_cutoff() -> str:
+    """A claimed or running row with no sign of life since this does not block a new run: a worker that died must not lock a dataset out."""
+    from datetime import datetime, timedelta, timezone
+
+    from resource_explorer.run_queue import HEARTBEAT_INTERVAL_SECONDS, STALE_AFTER_INTERVALS
+
+    return (datetime.now(timezone.utc) - timedelta(seconds=HEARTBEAT_INTERVAL_SECONDS * STALE_AFTER_INTERVALS)).isoformat()
+
+
 def _enqueue_dataset_run(registry, dataset: dict, analysis_id: str, pressed_on: str = "") -> dict:
-    """Queue ONE analysis run on ONE dataset: its activity row first (so a poll always has something), then the queue row. The
-    caller has already refused what cannot run. Returns {slug, title, analysis_id, activity_id, run_id}."""
+    """Queue ONE analysis run on ONE dataset, unless the same (dataset, analysis) is already queued or running (W-B4-1: a double click
+    or two people pressing must not queue a second full set of runs, each with its own downloads). The check and the insert are one
+    atomic step (`enqueue_run_once`). Its activity row opens first, so a poll always has something; a refused press opens none.
+    Returns {slug, title, analysis_id, activity_id, run_id, already_queued}; for an already-queued one the ids are the EXISTING run's."""
     from resource_explorer.activity_logger import log_analysis_run
     from resource_explorer.run_queue import requested_by
 
     slug = dataset["slug"]
-    activity_id = log_analysis_run(registry, "open_data", slug, str(dataset.get("title") or slug), "running",
-                                   f"Running '{analysis_id}' on {slug}…", analysis_id, published=None)
-    run_id = registry.enqueue_run("open_data_analysis_run",
-                                  {"slug": slug, "analysis_id": analysis_id,
-                                   **({"pressed_on": pressed_on[:40]} if pressed_on else {})},
-                                  result_ref=activity_id, requested_by=requested_by())
-    log.info("enqueued open_data_analysis_run %s for %s/%s (activity %s)", run_id, slug, analysis_id, activity_id)
-    return {"slug": slug, "title": dataset.get("title"), "analysis_id": analysis_id, "activity_id": activity_id, "run_id": run_id}
+    target = {"slug": slug, "analysis_id": analysis_id, **({"pressed_on": pressed_on[:40]} if pressed_on else {})}
+
+    def _same(existing: dict) -> bool:
+        return existing.get("slug") == slug and existing.get("analysis_id") == analysis_id
+
+    def _open_activity() -> str:
+        return log_analysis_run(registry, "open_data", slug, str(dataset.get("title") or slug), "running",
+                                f"Running '{analysis_id}' on {slug}…", analysis_id, published=None)
+
+    out = registry.enqueue_run_once("open_data_analysis_run", target, lock_key=f"open_data_analysis_run|{slug}|{analysis_id}",
+                                    same=_same, stale_before=_stale_cutoff(), before_insert=_open_activity,
+                                    requested_by=requested_by())
+    for row in out.get("stale") or []:
+        log.warning("open_data_analysis_run %s on %s/%s is %s with no sign of life: not blocking a new run", row.get("id"), slug,
+                    analysis_id, row.get("state"))
+    if not out["created"]:
+        existing = out["existing"]
+        return {"slug": slug, "title": dataset.get("title"), "analysis_id": analysis_id, "activity_id": existing.get("result_ref"),
+                "run_id": existing["id"], "already_queued": True}
+    log.info("enqueued open_data_analysis_run %s for %s/%s (activity %s)", out["run_id"], slug, analysis_id, out["result_ref"])
+    return {"slug": slug, "title": dataset.get("title"), "analysis_id": analysis_id, "activity_id": out["result_ref"],
+            "run_id": out["run_id"], "already_queued": False}
 
 
 @router.post("/datasets/{slug}/analyses/{analysis_id}/run")
@@ -407,8 +432,11 @@ def run_dataset_analysis(slug: str, analysis_id: str, request: Request, pressed_
     if why:
         raise HTTPException(status_code=400, detail=why)
     queued = _enqueue_dataset_run(registry, dataset, analysis_id, pressed_on)
-    return {"status": "started", "slug": slug, "analysis_id": analysis_id, "activity_id": queued["activity_id"],
-            "run_id": queued["run_id"], "price": analyses.price(analysis_id, dataset)}
+    price = analyses.price(analysis_id, dataset)
+    if queued["already_queued"]:      # nothing new was queued, so nothing new is priced
+        price = {**price, "calls": 0, "line": f"already queued · no new portal calls ({price['line']} was the price of the run in flight)"}
+    return {"status": "already queued" if queued["already_queued"] else "started", "slug": slug, "analysis_id": analysis_id,
+            "activity_id": queued["activity_id"], "run_id": queued["run_id"], "price": price}
 
 
 def _press_work_list(slug: str, analysis_id: str, request: Request) -> dict:
@@ -425,13 +453,16 @@ def _press_work_list(slug: str, analysis_id: str, request: Request) -> dict:
     if why:
         raise HTTPException(status_code=400, detail=why)
     runs = [_enqueue_dataset_run(registry, d, analysis_id, "Work list") for d in datasets]
-    calls = sum(int(analyses.runner_for(analysis_id).calls(d)) for d in datasets)
-    upper = " (at most: each file is read only up to its cap)" if analysis_id == "external_data_profile" else ""
-    n = len(datasets)
-    return {"work_list": slug, "analysis_id": analysis_id, "queued": n, "runs": runs,
+    fresh = [d for d, r in zip(datasets, runs) if not r["already_queued"]]       # priced: only what was newly queued
+    already = len(runs) - len(fresh)
+    calls = sum(int(analyses.runner_for(analysis_id).calls(d)) for d in fresh)
+    upper = " (at most: each file is read only up to its cap)" if analysis_id == "external_data_profile" and fresh else ""
+    n = len(fresh)
+    say = (service.scout_price(n)["line"] if analysis_id == "external_data_scout" and n else
+           f"{n} dataset{'s' if n != 1 else ''} · {calls} portal call{'s' if calls != 1 else ''}{upper}")
+    return {"work_list": slug, "analysis_id": analysis_id, "queued": n, "already_queued": already, "runs": runs,
             "price": {"datasets": n, "calls": calls,
-                      "line": (service.scout_price(n)["line"] if analysis_id == "external_data_scout" else
-                               f"{n} dataset{'s' if n != 1 else ''} · {calls} portal call{'s' if calls != 1 else ''}{upper}")}}
+                      "line": say + (f" · {already} already queued, not priced again" if already else "")}}
 
 
 # ── directories ──────────────────────────────────────────────────────────────

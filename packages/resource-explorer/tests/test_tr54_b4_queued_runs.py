@@ -221,3 +221,65 @@ def test_the_three_work_list_entries_are_queued_and_od_profile_is_built_and_no_a
 def test_every_declared_open_data_analysis_now_has_a_runner():
     declared = analyses._declared()
     assert all(analyses.refusal(a) is None for a in declared), {a: analyses.refusal(a) for a in declared if analyses.refusal(a)}
+
+
+# ── W-B4-1: a run already queued or running is not queued twice ──────────────
+
+def _runs(reg):
+    return [q for q in reg.list_runs(limit=100) if q["kind"] == "open_data_analysis_run"]
+
+
+@pytest.mark.usefixtures("signed_in_caller")
+@pytest.mark.parametrize("verb,analysis_id", PRESSES)
+def test_two_presses_in_a_row_give_one_queue_row_per_dataset_and_the_second_says_already_queued(api, reg, three, verb, analysis_id):
+    client, headers, _ = api
+    first = client.post(f"/api/open-data/work-lists/{three}/{verb}", headers=headers).json()
+    second = client.post(f"/api/open-data/work-lists/{three}/{verb}", headers=headers).json()
+    assert len(_runs(reg)) == 3                                         # not 6: no second full set of runs
+    assert (first["queued"], first["already_queued"]) == (3, 0) and first["price"]["calls"] > 0
+    assert (second["queued"], second["already_queued"]) == (0, 3)
+    assert second["price"]["calls"] == 0 and "already queued" in second["price"]["line"]      # priced only what was newly queued
+    assert all(r["already_queued"] for r in second["runs"])
+    assert [(r["slug"], r["run_id"], r["activity_id"]) for r in second["runs"]] == [(r["slug"], r["run_id"], r["activity_id"]) for r in first["runs"]]
+
+
+@pytest.mark.usefixtures("signed_in_caller")
+def test_the_per_dataset_route_says_already_queued_with_the_same_ids(api, reg, store, three):
+    client, headers, _ = api
+    slug = store.datasets_in_work_list(three)[0]["slug"]
+    a = client.post(f"/api/open-data/datasets/{slug}/analyses/od_licence_usable/run", headers=headers).json()
+    b = client.post(f"/api/open-data/datasets/{slug}/analyses/od_licence_usable/run", headers=headers).json()
+    assert a["status"] == "started" and b["status"] == "already queued"
+    assert (a["run_id"], a["activity_id"]) == (b["run_id"], b["activity_id"]) and len(_runs(reg)) == 1
+
+
+@pytest.mark.usefixtures("signed_in_caller")
+def test_a_different_analysis_or_a_different_dataset_is_not_blocked(api, reg, store, three):
+    client, headers, _ = api
+    one, other = [d["slug"] for d in store.datasets_in_work_list(three)][:2]
+    client.post(f"/api/open-data/datasets/{one}/analyses/od_licence_usable/run", headers=headers)
+    assert client.post(f"/api/open-data/datasets/{one}/analyses/od_cadence_kept/run", headers=headers).json()["status"] == "started"
+    assert client.post(f"/api/open-data/datasets/{other}/analyses/od_licence_usable/run", headers=headers).json()["status"] == "started"
+    assert len(_runs(reg)) == 3
+
+
+@pytest.mark.usefixtures("signed_in_caller")
+def test_a_finished_run_does_not_block_the_next_press(api, reg, store, three):
+    client, headers, _ = api
+    slug = store.datasets_in_work_list(three)[0]["slug"]
+    first = client.post(f"/api/open-data/datasets/{slug}/analyses/od_licence_usable/run", headers=headers).json()
+    with reg._conn() as conn:
+        conn.execute("UPDATE runs SET state = 'succeeded' WHERE id = ?", (first["run_id"],))
+    again = client.post(f"/api/open-data/datasets/{slug}/analyses/od_licence_usable/run", headers=headers).json()
+    assert again["status"] == "started" and again["run_id"] != first["run_id"]
+
+
+@pytest.mark.usefixtures("signed_in_caller")
+def test_a_run_whose_worker_died_does_not_lock_the_dataset_out(api, reg, store, three):
+    client, headers, _ = api
+    slug = store.datasets_in_work_list(three)[0]["slug"]
+    first = client.post(f"/api/open-data/datasets/{slug}/analyses/od_licence_usable/run", headers=headers).json()
+    with reg._conn() as conn:           # claimed long ago, never a heartbeat since: a dead worker's run
+        conn.execute("UPDATE runs SET state = 'running', claimed_at = '2020-01-01T00:00:00+00:00' WHERE id = ?", (first["run_id"],))
+    again = client.post(f"/api/open-data/datasets/{slug}/analyses/od_licence_usable/run", headers=headers).json()
+    assert again["status"] == "started" and again["run_id"] != first["run_id"]
