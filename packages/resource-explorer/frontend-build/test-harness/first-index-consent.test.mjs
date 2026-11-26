@@ -17,7 +17,7 @@ const REPOS = [
   { slug: 'r2', name: 'Beta', measured: true, files: 300, text_bytes: 5 * 1048576, source: 'from the survey of 10-17', repo_kb: 20480 },
   { slug: 'r3', name: 'Gamma', measured: false, files: null, text_bytes: null, source: 'no file inventory yet', repo_kb: null },
 ].map((r) => ({ index_state: 'not_yet_indexed', seconds: null, chunks: null, seconds_source: '', chunks_source: '',
-  fetch: `clones the repository${r.repo_kb ? ` (≈ ${Math.round(r.repo_kb / 1024)} MB)` : ''}`, ...r }));
+  fetch: `clones the repository${r.repo_kb ? ` (≈ ${Math.round(r.repo_kb * 1024 / 1_000_000)} MB)` : ''}`, ...r }));
 
 function backend() {
   const calls = [];
@@ -100,8 +100,8 @@ test('the cue offers "index it ›" and it opens the single ask with measured an
   await tick();
   const d = t.dialog();
   assert.match(text(d), /Index Alpha for chat\?/);
-  assert.match(text(d.querySelector('[data-figure="measured"]')), /1,240 files · 38 MB of text · from the survey of 10-17/);
-  assert.match(text(d.querySelector('[data-figure="fetch"]')), /clones the repository \(≈ 240 MB\)/);
+  assert.match(text(d.querySelector('[data-figure="measured"]')), /1,240 files · 39.8 MB of text · from the survey of 10-17/);
+  assert.match(text(d.querySelector('[data-figure="fetch"]')), /clones the repository \(≈ 252 MB\)/);
   assert.match(text(d.querySelector('[data-figure="estimate"]')), /time: unknown until the first index/);
   assert.match(text(d.querySelector('[data-figure="estimate"]')), /index size: unknown until the first index/);
   assert.equal(t.be.queueCalls().length, 0, 'opening the ask queues nothing');

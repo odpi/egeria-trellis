@@ -13,13 +13,26 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from resource_explorer.work_lists import WorkLists
 
 log = logging.getLogger(__name__)
-router = APIRouter()
+
+
+async def _guard_work_list_slug(request: Request) -> None:
+    """TR-147: every route that names a work list in its path (`/{slug}`, `/{slug}/members`, `/{slug}/export.csv`, ...) first asks whether the
+    caller may see the investigation the list is linked to. A list linked to one they cannot see is a 404 in the words of a list that does not
+    exist (401 with nobody signed in); a list with no investigation, or a slug that is not a list, is the route's own business as before."""
+    slug = request.path_params.get("slug")
+    if slug:
+        from resource_explorer.web.visibility import visible_work_list_or_404
+
+        visible_work_list_or_404(request, slug)
+
+
+router = APIRouter(dependencies=[Depends(_guard_work_list_slug)])
 
 
 def _requested_by() -> str:
@@ -116,8 +129,13 @@ async def list_work_lists(investigation: str = "") -> list[dict]:
 
 
 @router.post("/")
-async def create_work_list(body: WorkListCreate) -> dict:
+async def create_work_list(body: WorkListCreate, request: Request) -> dict:
     from resource_explorer.member_assets import MEMBER_ENTITY_TYPES
+
+    if body.investigation:        # TR-147: a list is linked only to an investigation the caller can see
+        from resource_explorer.web.visibility import visible_investigation_or_404
+
+        visible_investigation_or_404(request, body.investigation)
 
     if not body.display_name.strip():
         raise HTTPException(status_code=400, detail="display_name is required")
@@ -145,7 +163,7 @@ async def create_work_list(body: WorkListCreate) -> dict:
 
 
 @router.post("/runs/batch")
-async def enqueue_batch(body: BatchRunRequest) -> dict:
+async def enqueue_batch(body: BatchRunRequest, request: Request) -> dict:
     """Run one analysis across a set of resources, concurrently.
 
     Returns a `set_id` to watch. One `runs` row per resource, so one
@@ -153,6 +171,10 @@ async def enqueue_batch(body: BatchRunRequest) -> dict:
     whole point of doing this as a set rather than a loop in the browser.
     """
     wls = WorkLists()
+    if body.work_list_slug:       # TR-147: a batch over (or recorded against) a list linked to an investigation the caller cannot see
+        from resource_explorer.web.visibility import visible_work_list_or_404
+
+        visible_work_list_or_404(request, body.work_list_slug)
     slugs = body.entity_slugs
     entity_type = body.entity_type
     if slugs is None:
@@ -279,9 +301,23 @@ async def batch_progress(set_id: str) -> dict:
     missing reports `unknown` rather than being counted as finished — an
     unobserved run is not a successful one.
     """
-    progress = WorkLists().batch_progress(set_id)
+    wls = WorkLists()
+    not_found = f"run set {set_id!r} not found"
+    owner = wls.batch_set_owner(set_id)
+    if owner is None:
+        raise HTTPException(status_code=404, detail=not_found)
+    # TR-147: a set id is a capability, not a permission (it leaks through logs, history, shared links), and the progress names the datasets
+    # or resources of a list. A set run over a work list is as visible as that list (an invisible one reads as an unknown set id). A set with
+    # no work list is readable only by the person who queued it; one queued by a daemon or a script (no requester) by no web caller at all.
+    from resource_explorer.web.visibility import signed_in_user_id, visible_work_list_or_404
+
+    if owner["work_list_slug"] and wls.get(owner["work_list_slug"]) is not None:
+        visible_work_list_or_404(None, owner["work_list_slug"], not_found=not_found)
+    elif not owner["requested_by"] or owner["requested_by"] != signed_in_user_id(None):
+        raise HTTPException(status_code=404, detail=not_found)
+    progress = wls.batch_progress(set_id)
     if progress is None:
-        raise HTTPException(status_code=404, detail=f"run set {set_id!r} not found")
+        raise HTTPException(status_code=404, detail=not_found)
     return progress
 
 

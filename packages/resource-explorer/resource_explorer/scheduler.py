@@ -490,6 +490,7 @@ def _run_due() -> None:
         next_run = sched.get("next_run", "")
         analysis_name = _analysis_display_name(entity_type, analysis_id)
         batch_result: dict = {}
+        survey_report: dict = {}
         try:
             batch_key = (entity_slug, analysis_id)
             if entity_type == WORK_LIST_ENTITY:
@@ -507,14 +508,28 @@ def _run_due() -> None:
                 with _as_schedule_creator(sched):
                     entity_name, entity_location, errors = _execute(
                         entity_type, entity_slug, analysis_id, registry, next_run,
-                        target_kind=sched.get("target_kind") or TARGET_ANALYSIS)
+                        target_kind=sched.get("target_kind") or TARGET_ANALYSIS,
+                        # only a scheduled Survey Definition reports cancelled steps; an analysis calls _execute as before
+                        **({"report": survey_report} if sched.get("target_kind") == TARGET_SURVEY else {}))
             status = "error" if errors else "ok"
+            if survey_report.get("cancelled_count"):
+                # TR-93, the same rule as the run's own activity row (workflows.survey_definition): real errors stay
+                # errors; with nothing completed the run measured nothing and is cancelled, not "successful".
+                from resource_explorer.workflows.survey_definition import _status_and_summary_for_cancelled_steps
+
+                status, _ = _status_and_summary_for_cancelled_steps(
+                    errors, survey_report["cancelled_count"], survey_report.get("steps"))
             detail = "; ".join(errors) if errors else ""
         except Exception as exc:
             log.exception("Scheduler: failed %s/%s/%s", entity_type, entity_slug, analysis_id)
             entity_name, entity_location, status, detail = entity_slug, "", "error", str(exc)
 
         summary = f"Scheduled run of '{analysis_name}' " + ("completed with errors" if status == "error" else "completed successfully")
+        n_cancelled = survey_report.get("cancelled_count") or 0
+        if n_cancelled:
+            n = f"{n_cancelled} step{'' if n_cancelled == 1 else 's'} cancelled"
+            summary = (f"Scheduled run of '{analysis_name}' was cancelled · {n}, nothing measured" if status == "cancelled"
+                       else f"{summary} · {n}")
         if batch_result:
             # The batch says what it did per member, skips included ("says so", design §2.2): the sentence is the
             # summary and every member's outcome is the detail.
@@ -640,10 +655,14 @@ def _catalog_entry(entity_type: str, analysis_id: str) -> dict | None:
 
 def _execute(
     entity_type: str, entity_slug: str, analysis_id: str, registry,
-    next_run: str = "", target_kind: str = TARGET_ANALYSIS,
+    next_run: str = "", target_kind: str = TARGET_ANALYSIS, report: dict | None = None,
 ) -> tuple[str, str, list[str]]:
     """Returns (entity_name, entity_location, errors) — errors is [] on a
     clean run. Only truly unexpected failures propagate to the caller.
+
+    `report`, when given, is filled by a scheduled Survey Definition with what the 3-tuple cannot carry:
+    `cancelled_count` and `steps` (TR-93: a cancelled step is not an error, and a run where every step was
+    cancelled measured nothing).
 
     Dispatch — see module docstring for the (a)/(b)/(c)/(d) breakdown
     (database) and the repo-specific paragraph beneath it.
@@ -656,8 +675,10 @@ def _execute(
         name, location, errors, _result = run_scheduled_batch(registry, entity_slug, analysis_id,
                                                               created_by=requested_by() or "")
         return (name, location, errors)
+    if entity_type == OPEN_DATA_ENTITY:
+        return _run_open_data(entity_slug, analysis_id, registry)
     if target_kind == TARGET_SURVEY:
-        return _run_scheduled_survey(entity_type, entity_slug, analysis_id, registry)
+        return _run_scheduled_survey(entity_type, entity_slug, analysis_id, registry, report=report)
     if entity_type == "repo":
         return _run_repo_survey(entity_slug, analysis_id, registry)
     elif entity_type == "database":
@@ -666,8 +687,35 @@ def _execute(
         return (entity_slug, "", [f"Unknown entity_type '{entity_type}'"])
 
 
+OPEN_DATA_ENTITY = "open_data"
+
+
+def _run_open_data(slug: str, analysis_id: str, registry) -> tuple[str, str, list[str]]:
+    """A scheduled (or "run now") open data check, TR-54 B5: the same `run_open_data_analysis` a press queues, run here in the scheduler's own
+    thread as whoever `_as_schedule_creator` made the caller (or nobody). It stores the same shared dataset facts and reads no per-user data
+    (no investigation, no data request): a runner never does. A dataset that is gone, an analysis that cannot run, or a runner that fails (a
+    portal that does not answer) is an ERROR in the schedule's words, never a quiet ok."""
+    from resource_explorer.open_data import analyses
+    from resource_explorer.open_data.store import OpenDataStore
+    from resource_explorer.workflows.analysis import run_open_data_analysis
+
+    dataset = OpenDataStore(registry).get_dataset(slug)
+    if dataset is None:
+        return (slug, "", [f"No open data '{slug}'"])
+    name = str(dataset.get("title") or slug)
+    why = analyses.refusal(analysis_id)
+    if why:
+        return (name, "", [why])
+    try:
+        result = run_open_data_analysis(slug, analysis_id, registry=registry)
+    except Exception as exc:
+        log.exception("scheduled open data check %s failed for %s", analysis_id, slug)
+        return (name, "", [f"'{analysis_id}' failed: {exc}"])
+    return (name, "", [result.error or result.summary] if result.status == "error" else [])
+
+
 def _run_scheduled_survey(
-    entity_type: str, entity_slug: str, survey_ref: str, registry
+    entity_type: str, entity_slug: str, survey_ref: str, registry, report: dict | None = None
 ) -> tuple[str, str, list[str]]:
     """Run a scheduled Survey Definition.
 
@@ -692,6 +740,9 @@ def _run_scheduled_survey(
         log.exception("scheduled survey %s failed for %s", survey_ref, entity_slug)
         return (name, location, [f"Survey '{survey_ref}' failed: {exc}"])
     errors = list(result.get("errors") or [])
+    if report is not None:
+        report["cancelled_count"] = int(result.get("cancelled_count") or 0)
+        report["steps"] = result.get("steps")
     # A survey whose run could not be recorded still ran. Surfaced as an error
     # on the schedule rather than passed over, since the schedules view is
     # where someone would look to find out whether it did.

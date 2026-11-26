@@ -16,7 +16,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import shutil
 import sys
+from pathlib import Path
 
 TOKEN_ENV = "RE_DR_EGERIA_CHILD_TOKEN"
 PASSWORD_ENV = "RE_DR_EGERIA_CHILD_PASSWORD"
@@ -52,9 +54,19 @@ def main(argv: list[str] | None = None) -> int:
         purpose = "Dr.Egeria document run (named account)"
     clients = egeria_client(identity, purpose=purpose, view_server=args.server, platform_url=args.url, shared=False)
     client = clients.of(EgeriaTech)
-    asyncio.run(process_md_file_v2(input_file=args.input_file, output_folder="", directive="process",
-                                   client=client, parse_summary="none", attribute_logs="info",
-                                   usage_level="Basic", summary_only=True, debug=False))
+    # TR-117: Funnel Stages scope references go as guids (a name like "Assessment" is shared). Retire when PY-73 lands.
+    from resource_explorer.dr_egeria_scope_refs import rewrite_scope_refs
+
+    rewrite = rewrite_scope_refs(args.input_file, client)
+    if rewrite.words:
+        print(rewrite.words)
+    try:
+        asyncio.run(process_md_file_v2(input_file=str(rewrite.path), output_folder="", directive="process",
+                                       client=client, parse_summary="none", attribute_logs="info",
+                                       usage_level="Basic", summary_only=True, debug=False))
+    finally:
+        if rewrite.path != Path(args.input_file):
+            shutil.rmtree(rewrite.path.parent, ignore_errors=True)     # the rewritten copy's own temp directory
     return 0
 
 

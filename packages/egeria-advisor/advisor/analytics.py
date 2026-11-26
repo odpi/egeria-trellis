@@ -26,6 +26,11 @@ class AnalyticsManager:
         self.cache_dir = cache_dir or Path(settings.advisor_cache_dir)
         self.stats: Optional[Dict[str, Any]] = None
         self.directory_stats: Optional[Dict[str, Any]] = None
+        # The cached metrics files actually loaded, so an answer from them can say so (TR-51 d).
+        self.stats_file: Optional[Path] = None
+        self.directory_stats_file: Optional[Path] = None
+        # Track why stats failed (TR-98 absence-as-answer)
+        self.stats_problem: Optional[str] = None
         self._load_statistics()
         self._load_directory_statistics()
     
@@ -40,6 +45,8 @@ class AnalyticsManager:
             if not summary_file.exists():
                 logger.warning(f"Statistics file not found: {enhanced_file}")
                 self.stats = {}
+                self.stats_problem = (f"no metrics file found: looked for {enhanced_file.name} and {summary_file.name} "
+                                      f"in {self.cache_dir}")
                 return
             enhanced_file = summary_file
         
@@ -79,10 +86,15 @@ class AnalyticsManager:
                 else:
                     self.stats = data.get("statistics", {})
                     
+            self.stats_file = enhanced_file if self.stats else None
+            if not self.stats:
+                # A file that parses but carries no statistics measured nothing: not a zero (TR-98).
+                self.stats_problem = f"{enhanced_file.name} holds no statistics"
             logger.info(f"Loaded statistics from {enhanced_file}")
         except Exception as e:
             logger.error(f"Failed to load statistics: {e}")
             self.stats = {}
+            self.stats_problem = f"failed to read metrics file: {e}"
     
     def _load_directory_statistics(self):
         """Load per-directory statistics from cache."""
@@ -97,6 +109,7 @@ class AnalyticsManager:
         try:
             with open(dir_stats_file, 'r') as f:
                 self.directory_stats = json.load(f)
+            self.directory_stats_file = dir_stats_file if self.directory_stats else None
             logger.info(f"Loaded directory statistics from {dir_stats_file}")
             logger.info(f"Directories available: {', '.join([d for d in self.directory_stats.keys() if d != '_total'])}")
         except Exception as e:
@@ -413,6 +426,13 @@ class AnalyticsManager:
                 return f"There are **{count:,} functions** in {scope}."
 
         # ── Fall back to stale JSON cache for non-structural queries ──────
+        # TR-51 d: an answer from here was read from the cached metrics file, not the symbol store; record that file
+        # as its source (nothing, when no file was loaded).
+        self._record_cache_read(path_filter)
+
+        # TR-98: If stats failed to load, return "not measured" instead of 0 counts
+        if self.stats_problem:
+            return f"Codebase metrics were not measured ({self.stats_problem})."
 
         # Detect what the user is asking about
         if "how many class" in query_lower:
@@ -512,6 +532,14 @@ class AnalyticsManager:
             # Default: provide a general summary
             return self._format_summary(self.get_summary())
     
+    def _record_cache_read(self, path_filter: Optional[str]) -> None:
+        from advisor.agents.tools import lookup_source, record_lookup
+        files = [f for f in (self.stats_file, self.directory_stats_file if path_filter else None) if f]
+        if files:
+            record_lookup("analytics_cache", None, [lookup_source("analytics_cache", str(f), f.name,
+                                                                 "cached codebase metrics", kind="metrics_file")
+                                                   for f in files])
+
     def _format_summary(self, summary: Dict[str, Any]) -> str:
         """Format a summary dictionary into a readable string."""
         lines = ["**Codebase Statistics:**\n"]

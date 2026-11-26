@@ -118,27 +118,6 @@ def _re_version() -> str:
         return "unknown"
 
 
-def _egeria_binding() -> dict[str, str]:
-    """Which Egeria this A2A service is bound to.
-
-    In the index because an orchestrator holding an Egeria bearer token needs to
-    know *which* platform minted it before deciding this service will accept it
-    — a token for another deployment's view server is a token this service will
-    reject, and saying so up front is cheaper than a 401 nobody can explain.
-    """
-    try:
-        from resource_explorer.config import get_config
-
-        cfg = get_config()
-        return {
-            "platform_url": cfg.egeria.platform_url,
-            "view_server": cfg.egeria.view_server,
-        }
-    except Exception as exc:  # pragma: no cover - config is normally present
-        log.debug("a2a: could not read Egeria config for the index — %s", exc)
-        return {"platform_url": "", "view_server": ""}
-
-
 # ── the application ─────────────────────────────────────────────────────
 
 
@@ -219,7 +198,6 @@ def build_app(
             "version": _re_version(),
             "base_url": base_url,
             "default_agent": "orchestrator",
-            "egeria": _egeria_binding(),
             "authentication": {
                 "scheme": "Bearer",
                 "required": not settings.allow_anonymous,
@@ -230,8 +208,9 @@ def build_app(
                 "description": (
                     "Send Authorization: Bearer <token>. The token may be a trellis "
                     "app JWT (issued by this deployment's login or by the Portal's "
-                    "SSO exchange) or a raw Egeria bearer token for the view server "
-                    "named under 'egeria'. Agent cards and this index are public; "
+                    "SSO exchange) or a raw Egeria bearer token for the Egeria this "
+                    "service is bound to. Agent cards and this index are public (and "
+                    "name no internal address); "
                     "every agent endpoint is not."
                 ),
                 "anonymous_allowed": settings.allow_anonymous,

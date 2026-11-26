@@ -22,6 +22,20 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def newest_re_walk(registry, slug: str) -> dict | None:
+    """Newest RE-led walk of a file system: {"at", "kind": "re_walk", "capped"} or None."""
+    from resource_explorer.registry import is_re_walk_row
+    best = None
+    for row in registry.list_filesystem_surveys(slug):
+        if not is_re_walk_row(row):
+            continue
+        sd = row["survey_data"]
+        at = sd.get("surveyed_at") or row.get("surveyed_at") or ""
+        if at and (best is None or at > best["at"]):
+            best = {"at": at, "kind": "re_walk", "capped": bool((sd.get("walk_limits") or {}).get("capped"))}
+    return best
+
+
 def _newer(a: str, b: str) -> bool:
     """Whether ISO time `a` is later than `b` (a stamp with no zone is UTC, as the registry writes it)."""
     from datetime import datetime, timezone
@@ -729,7 +743,7 @@ async def list_candidates(
                 cand["coordinated_by_egeria"] = {"label": _nsr.COORDINATE_LABEL, "available": False,
                                                  "why_not": "could not be checked", "state": "", "line": ""}
 
-        return {
+        result = {
             "technology_type": adapter.technology_type,
             "candidates": _narrow_by_perspective(detailed, perspectives),
             "egeria_native_processes": native_processes,
@@ -741,6 +755,12 @@ async def list_candidates(
             "scoping_question_count": len(questions),
             "phase": phase or "",
         }
+        # TR-106b: add re_walk only for filesystem and when there's a Resource Explorer walk
+        if entity_type == "filesystem":
+            walk = newest_re_walk(_reg, slug)
+            if walk:
+                result["re_walk"] = walk
+        return result
 
     try:
         return await asyncio.to_thread(_do)
@@ -1095,10 +1115,14 @@ async def run_survey_definition_route(entity_type: str, slug: str,
         )
 
     registry = ProjectRegistry()
+    from resource_explorer.web.routes.curate import authorize_resource_write
+
+    # TR-95: running a definition starts engine actions, so it needs what the individual Run routes need
+    # (`start_action`), for every entity type, and before anything is queued.
+    await authorize_resource_write(registry, entity_type, slug, write="start_action")
     # Brief Z2: a run on a resource with an assigned Egeria Project publishes what it measures (the executor's own
     # gate, `has_assigned_egeria_project`). Refused here before anything is queued; the run checks again.
     if await asyncio.to_thread(registry.has_assigned_egeria_project, entity_type, slug):
-        from resource_explorer.web.routes.curate import authorize_resource_write
         await authorize_resource_write(registry, entity_type, slug, write="publish")
 
     if body.db_pwd:

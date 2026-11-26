@@ -1133,18 +1133,11 @@ def put_filesystem_review_verdict(slug: str, body: ReviewVerdictBody, request: R
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-#: Switches the confirmed-data-class write on. Off until the Architect rules on its shape (C3 item 5).
-DATA_CLASS_PUBLISH_ENV = "RE_FS_DATA_CLASS_PUBLISH"
-
-
 @router.post("/{slug}/review/publish-data-classes")
 @_logged_press("Publish data classes", publish=True,
                outcome=lambda r: (NOTHING_NEW_WORDS if r.get("nothing_new") else f"published {r.get('sent')} confirmed data-class matches"))
 def publish_filesystem_data_classes(slug: str) -> dict:
-    """Publish the data-class matches a person confirmed, one DataClassAnnotation each (`publish_confirmed_data_classes`).
-    PROPOSED SHAPE: refused (409) until `RE_FS_DATA_CLASS_PUBLISH=1`, which is set only after the Architect rules on it."""
-    import os
-
+    """Publish the data-class matches a person confirmed, one DataClassAnnotation each (`publish_confirmed_data_classes`)."""
     from resource_explorer import fs_review
     from resource_explorer.web.routes.curate import require_resource_write
 
@@ -1152,13 +1145,12 @@ def publish_filesystem_data_classes(slug: str) -> dict:
     fs = registry.get_filesystem(slug)
     if not fs:
         raise HTTPException(status_code=404, detail=f"FileSystem '{slug}' not found.")
-    if os.environ.get(DATA_CLASS_PUBLISH_ENV) != "1":
-        raise HTTPException(status_code=409, detail="Confirmed data classes are not sent to Egeria yet: the shape of the "
-                            "write waits for the Architect's ruling.")
     require_resource_write(registry, "filesystem", slug, "publish")
     run, confirmed = fs_review.confirmed_classes(registry, slug)
     if not confirmed:
         raise HTTPException(status_code=409, detail="No data-class match is confirmed on the newest run. Confirm one on Curate first.")
+    if not fs.egeria_asset_guid:      # TR-128(c): a conflict the person can resolve, not a server fault (was a 502)
+        raise HTTPException(status_code=409, detail="publish the file system to Egeria first")
     from resource_explorer.egeria_clients import Caller
     from resource_explorer.egeria_clients import refusal as egeria_refusal
     from resource_explorer.surveyors.filesystem.egeria_filesystem_surveyor import EgeriaFileSystemSurveyor
@@ -1176,6 +1168,72 @@ def publish_filesystem_data_classes(slug: str) -> dict:
         log.exception("Publishing the confirmed data classes failed for %s", slug)
         raise HTTPException(status_code=502, detail=f"not published · {exc}")
     return proof
+
+
+# ── TR-87: "Request action" on a file-system finding (a person's press; nothing files one by itself) ────────────────
+
+class FindingRequestBody(BaseModel):
+    step: str = ""
+    finding: str = ""
+    run_id: str = ""
+
+
+def _request_action_words(r: dict) -> str:
+    return "already requested · nothing new" if r.get("nothing_new") else f"requested · RFA {str(r.get('annotation_guid') or '')[:8]}"
+
+
+def _local_rfa_row_exists(registry: ProjectRegistry, slug: str, key: str) -> bool:
+    """Whether a local RFA row for this finding key is already in the Activity log (deduped by key, never by summary)."""
+    return registry.rfa_row_exists_for_finding_key(slug, key)
+
+
+@router.post("/{slug}/findings/request-action")
+@_logged_press("Request action", publish=True, outcome=lambda r: _request_action_words(r))
+def request_action_for_finding(slug: str, body: FindingRequestBody) -> dict:
+    """File ONE RequestForActionAnnotation for ONE finding of ONE step run (`request_action_for_finding`), once.
+    Its own endpoint: it never reads or writes the publish table's Publish / Keep in RE choice. Order: the permission
+    check; the allowlist (400); the re-read of the stored result (409); the file system must be in Egeria (409); then the
+    Egeria write and, only after it, the local row. Identity is always the caller's."""
+    from resource_explorer import fs_findings
+    from resource_explorer.activity_logger import log_rfa
+    from resource_explorer.egeria_clients import Caller
+    from resource_explorer.egeria_clients import refusal as egeria_refusal
+    from resource_explorer.run_queue import requested_by
+    from resource_explorer.surveyors.filesystem.egeria_filesystem_surveyor import EgeriaFileSystemSurveyor
+    from resource_explorer.web.routes.curate import require_resource_write
+
+    registry = ProjectRegistry()
+    fs = registry.get_filesystem(slug)
+    if not fs:
+        raise HTTPException(status_code=404, detail=f"FileSystem '{slug}' not found.")
+    require_resource_write(registry, "filesystem", slug, "publish")
+    try:
+        fs_findings.spec_for(body.step, body.finding)
+        found = fs_findings.reread(registry, slug, body.step, body.finding, body.run_id)
+    except fs_findings.FindingRefused as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.words) from exc
+    if not fs.egeria_asset_guid:
+        raise HTTPException(status_code=409, detail="publish the file system to Egeria first")
+    surveyor = EgeriaFileSystemSurveyor(platform_url=fs.egeria_url or None, view_server=fs.egeria_server or None,
+                                        identity=Caller())
+    who = requested_by() or ""
+    try:
+        proof = surveyor.request_action_for_finding(fs, found, who, registry)
+    except PermissionError:
+        raise
+    except Exception as exc:  # noqa: BLE001 -- nothing local is written; the failure is said
+        refused = egeria_refusal(exc)
+        if refused is not None:
+            raise refused from exc
+        log.exception("Request action failed for %s (%s)", slug, found["key"])
+        raise HTTPException(status_code=502, detail=f"not sent · {exc}")
+    if not _local_rfa_row_exists(registry, slug, found["key"]):
+        spec = found["spec"]
+        log_rfa(registry, "filesystem", slug, fs.display_name or slug, "local", proof["summary"],
+                detail=f"{spec.action} · requested by {who} from {spec.step} run {found['run_id']}",
+                analysis_name=spec.step_name, items=[{"type": "filesystem", "slug": slug}],
+                extra={"finding_key": found["key"], "egeria_annotation_guid": proof["annotation_guid"]})
+    return {**{k: v for k, v in proof.items() if k != "summary"}, "words": _request_action_words(proof)}
 
 
 # ── Files build step 6: the derived steps (Analytic Library steps over the walk's kept per-file rows) ───────────────

@@ -66,7 +66,7 @@ def curation_coverage_tile_for(entity_type: str, slug: str, url: str | None = No
     """The Portal tile dict: the library's `curation_coverage_kpi`, which renders the tile from the routine's
     declaration (`trellis_analytics.render.kpi_tile`, library 0.4). RE builds no part of it.
 
-    The library is a requirement of RE (`egeria-trellis-analytics>=0.4,<0.5`), so a missing library is a broken
+    The library is a requirement of RE (`egeria-trellis-analytics>=0.5,<0.6`), so a missing library is a broken
     install and surfaces as the ImportError; RE no longer hand-builds a tile for it (RS-W2-1b)."""
     from trellis_analytics.portal import curation_coverage_kpi
     return curation_coverage_kpi(slug, url or registry_url(), entity_type)

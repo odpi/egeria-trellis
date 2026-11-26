@@ -134,7 +134,7 @@ class HashBudget:
         return self._clock() - self._start >= self.max_seconds
 
     def words(self) -> str:
-        """"hashing stopped at 2.0 GiB: 14 files not hashed", or '' when the budget held."""
+        """"hashing stopped at 2.1 GB: 14 files not hashed", or '' when the budget held."""
         if not self.stopped_by:
             return ""
         at = f"{_fmt_bytes(self.max_bytes)}" if self.stopped_by == "bytes" else f"{int(self.max_seconds)} seconds"
@@ -475,9 +475,27 @@ def _clean(text: str, limit: int) -> str:
     return text[:limit]
 
 
+_HTML_COMMENT = re.compile(r"<!--.*?(?:-->|\Z)", re.S)      # an unterminated comment (a cut read) runs to the end
+#: A licence or copyright header line, whatever comment leader it wears (`# `, `// `, `* `, `-- `): SPDX tags, "Copyright 2024",
+#: "Copyright (c)", "Copyright by", "Copyright Contributors", "(c) 2024", "©". A heading that merely STARTS with the word
+#: ("# Copyright and licence terms") is not one.
+_LICENCE_HEADER_LINE = re.compile(
+    r"^[\W_]*(?:SPDX-[\w.-]+\s*:|copyright\s*(?:\(c\)|©|\d{4}|by\b|contributors\b)|\(c\)\s*\d{4}|©)", re.I)
+
+
+def strip_header_noise(text: str) -> str:
+    """The text with its HTML comments and SPDX/copyright header lines removed, for choosing a title and a description
+    (TR-124). An Egeria-style README opens with `<!-- SPDX-License-Identifier: CC-BY-4.0 -->` and a copyright comment, which
+    were being proposed as the folder's description. The licence is still read from the FULL text, never from this."""
+    text = _HTML_COMMENT.sub(" ", text)
+    return "\n".join(l for l in text.splitlines() if not _LICENCE_HEADER_LINE.match(l))
+
+
 def extract_narrative(text: str, file_name: str, folder_files: list[str]) -> dict:
-    """Title, first paragraph, licence, stated owner, source, dates and the folder's files the text names. All proposals."""
-    lines = text.splitlines()
+    """Title, first paragraph, licence, stated owner, source, dates and the folder's files the text names. All proposals.
+    The title and description skip the file's HTML comments and licence/copyright header lines (`strip_header_noise`); if
+    nothing else is left both are empty, so nothing is proposed."""
+    lines = strip_header_noise(text).splitlines()
     title = ""
     body_start = 0
     for i, line in enumerate(lines):
@@ -779,7 +797,9 @@ def attach_extensions(fs_entity, registry, survey_data: dict, *, led_by: str = L
 def run_alongside_egeria(fs_entity, registry, *, egeria_report_guid: str = "") -> dict:
     """Resource Explorer's extensions beside an Egeria-led folder survey: the same walk, but ONLY what Egeria's Folder
     Survey does not keep is stored and published (rows, folder bulk and depth, owner and mode, hashes, narratives). The stored
-    blob carries no counts, classification or inventory (Egeria has those) and no `surveyed_by`, so the folder-survey card
+    blob carries RE's own totals of this walk (`total_files`, `total_data_files`, `total_size_bytes`, `walk_limits`) but no
+    classification, `surveyed_by` or inventory: Egeria's Folder Survey is the inventory, so the row is stored with source
+    "walk-extensions" and every reader of the inventory skips it (`registry.is_re_walk_row`). The folder-survey card
     never mistakes it for the survey itself. Raises FileNotFoundError where Resource Explorer cannot read the mount."""
     from resource_explorer.surveyors.filesystem.local_filesystem_surveyor import LocalFileSystemSurveyor
 

@@ -106,6 +106,11 @@ async def _lifespan(app: FastAPI):
     check_public_url()  # refuses to start on a malformed RE_PUBLIC_URL, quoting it (PublicUrlInvalid)
     check_database_settings_at_startup()  # TR-12: refuses to start naming an unset shared-Postgres setting
     log_llm_tier_config()  # the resolved tier/model/num_ctx/budgets; the lazy first-call line predates logging setup
+    from resource_explorer.registry import schema_mode_from_env
+    if schema_mode_from_env() == "external":
+        # TR-115: refuse to start, naming the store, when the schema Job has not brought every store to this code's version.
+        from resource_explorer import schema_stores
+        schema_stores.require_ready()
 
     from resource_explorer.surveyors.prefect_adapter import alog_prefect_reachability_at_startup
 
@@ -121,6 +126,8 @@ async def _lifespan(app: FastAPI):
     logging.getLogger(__name__).info("%s", await start_line_within(START_LINE_SECONDS))
     from resource_explorer.egeria_clients import log_daemon_identity_at_startup
     log_daemon_identity_at_startup()        # INFO: which source the daemon identity came from (Brief L)
+    from resource_explorer.github.token_status import log_at_startup as log_github_token_at_startup
+    log_github_token_at_startup(logging.getLogger(__name__))   # TR-53: WARNING when GITHUB_TOKEN is unset (60 requests/hour)
     from resource_explorer.bootstrap import log_heal_identity_at_startup
     log_heal_identity_at_startup()          # who the heal applies Dr.Egeria as, and from where; warns when unset
     _log_hardware_in_background(logging.getLogger(__name__))   # trellis-accel: device, build, findings

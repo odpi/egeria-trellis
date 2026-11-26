@@ -3313,24 +3313,28 @@ filesystem_analyses:
         unit: files
         as_of: run.surveyed_at
         value_field: file_count
+        capped_field: capped
         annotation:
           type: ResourceMeasureAnnotation
       - name: directories
         unit: directories
         as_of: run.surveyed_at
         value_field: directory_count
+        capped_field: capped
         annotation:
           type: ResourceMeasureAnnotation
       - name: data_files
         unit: data files
         as_of: run.surveyed_at
         value_field: data_file_count
+        capped_field: capped
         annotation:
           type: ResourceMeasureAnnotation
       - name: total_size
         unit: bytes
         as_of: run.surveyed_at
         value_field: total_size_bytes
+        capped_field: capped
         annotation:
           type: ResourceMeasureAnnotation
       absence:
@@ -3951,19 +3955,20 @@ filesystem_analyses:
 
 # Open data (OD2, project owner approved 2026-10-30: "declare it"). The scout is a batch over a work list of
 # open_data members: definition × work list, one `describe` call per dataset, priced before the press
-# (open_data/service.py scout_price / scout_work_list; POST /api/open-data/work-lists/{slug}/scout). It runs inline
-# in that request, not through the queue, so availability says inline. It answers no catalog question yet.
+# (open_data/service.py scout_price; POST /api/open-data/work-lists/{slug}/scout). Since TR-54 B4 the press queues one run per
+# dataset (open_data/queued.py), so availability says queued: scout, profile and refresh are per-dataset queued runs. It answers
+# no catalog question yet.
 open_data_analyses:
   - id: external_data_scout
     name: "External Data Scout"
-    description: "Re-reads every dataset of a work list of open data from its portal (one call each, priced first) and refreshes what the portal states: license and its flags, publisher, modified date, formats, size, and the coverage and update cadence it gives. A portal that does not answer leaves the dataset's earlier values in place and says so; a field the portal does not state is reported as not reported by that source, never as empty."
+    description: "Re-reads every dataset of a work list of open data from its portal (one call each, priced first; one queued run per dataset, so one portal that does not answer fails only its own run) and refreshes what the portal states: license and its flags, publisher, modified date, formats, size, and the coverage and update cadence it gives. A portal that does not answer leaves the dataset's earlier values in place and says so; a field the portal does not state is reported as not reported by that source, never as empty."
     resource_types: ["open_data"]
     intent: scouting
     perspectives: ["all", "Steward"]
     annotation_types: []
     source: local
     run_time: minutes
-    availability: inline
+    availability: queued
     action: survey
     target_shape: whole_resource_only
     recommended: true
@@ -4009,7 +4014,7 @@ open_data_analyses:
     annotation_types: []
     source: local
     run_time: minutes
-    availability: inline
+    availability: queued
     action: survey
     target_shape: whole_resource_only
     recommended: false
@@ -4055,7 +4060,7 @@ open_data_analyses:
     annotation_types: []
     source: local
     run_time: minutes
-    availability: inline
+    availability: queued
     action: survey
     target_shape: whole_resource_only
     recommended: false
@@ -4097,8 +4102,10 @@ open_data_analyses:
   - id: od_licence_usable
     name: "Open Data Licence Usable"
     description: >
-      Not built. Declared 2026-11-02 so the open data question it will answer reads "no reader yet" rather than
-      claiming a runnable analysis. Will say whether the dataset's licence fits a stated purpose and what it requires of the user (attribution, share-alike, commercial use), from the publisher's licence record.
+      Says what a dataset's licence requires of the person who uses it (attribution, share-alike, commercial use) and whether that
+      fits the purpose its investigation states, from the licence identifier the publisher stated and RE's table of SPDX, Creative
+      Commons and ODC ids. A licence id the table does not know is "not judged: licence <id> is not in RE's table"; a licence stated
+      only in words is read and not judged; no licence stated is nothing found. It reads the stored licence: no portal call.
     resource_types: ["open_data"]
     intent: assessment
     perspectives: ["all", "Steward"]
@@ -4106,6 +4113,7 @@ open_data_analyses:
     source: local
     run_time: fast
     availability: queued
+    answers_questions: true      # TR-54 B5: wired to its open data question (Q-0113/4/5), whose row reads this analysis's stored result
     action: survey
     target_shape: whole_resource_only
     recommended: false
@@ -4113,7 +4121,7 @@ open_data_analyses:
       candidate: false
       native_process_ref: null
     declaration:
-      built: false
+      built: true
       result_kind: measure
       measures:
       - name: licences_read
@@ -4121,7 +4129,7 @@ open_data_analyses:
         as_of: retrieved_at
         value_field: licences_read
       absence:
-        not_measured: 'Not built: the licence check has no reader yet, so no licence has been judged against a purpose.'
+        not_measured: 'Not measured: the licence check has not run on this dataset, so no licence has been judged against a purpose.'
         not_permitted: 'Not permitted: the source refused the read.'
         not_applicable: 'Not applicable: the dataset is not on a portal RE can read yet.'
         nothing_found: 'Measured: the source states nothing for this question.'
@@ -4140,8 +4148,10 @@ open_data_analyses:
   - id: od_cadence_kept
     name: "Open Data Cadence Kept"
     description: >
-      Not built. Declared 2026-11-02 so the open data question it will answer reads "no reader yet" rather than
-      claiming a runnable analysis. Will compare the publisher's stated update cadence (accrualPeriodicity) with its modified dates and say whether the dataset is kept to it.
+      Says whether a dataset is kept to the update cadence its publisher states (accrualPeriodicity), by comparing it with the modified
+      dates RE observed over the dataset's refresh history. One refresh is "not enough history (1 refresh)", never "kept"; no cadence
+      stated is nothing found; a cadence that is not an interval (irregular, continuous) is stated and not judged. It reads the stored
+      history: no portal call.
     resource_types: ["open_data"]
     intent: scouting
     perspectives: ["all", "Steward"]
@@ -4149,6 +4159,7 @@ open_data_analyses:
     source: local
     run_time: fast
     availability: queued
+    answers_questions: true      # TR-54 B5: wired to its open data question (Q-0113/4/5), whose row reads this analysis's stored result
     action: survey
     target_shape: whole_resource_only
     recommended: false
@@ -4156,7 +4167,7 @@ open_data_analyses:
       candidate: false
       native_process_ref: null
     declaration:
-      built: false
+      built: true
       result_kind: measure
       measures:
       - name: cadence_checks
@@ -4164,7 +4175,7 @@ open_data_analyses:
         as_of: retrieved_at
         value_field: cadence_checks
       absence:
-        not_measured: 'Not built: the cadence check has no reader yet, so no dataset has been compared with its stated cadence.'
+        not_measured: 'Not measured: the cadence check has not run on this dataset, or its refresh history is too short to compare.'
         not_permitted: 'Not permitted: the source refused the read.'
         not_applicable: 'Not applicable: the dataset is not on a portal RE can read yet.'
         nothing_found: 'Measured: the source states nothing for this question.'
@@ -4183,8 +4194,10 @@ open_data_analyses:
   - id: od_profile
     name: "Open Data Profile"
     description: >
-      Not built. Declared 2026-11-02 so the open data question it will answer reads "no reader yet" rather than
-      claiming a runnable analysis. Will say what is known about the data itself (columns, size, formats) and what has not been read.
+      Says what is known about a dataset's data itself, one dataset at a time on the run queue: it reads the dataset's tabular
+      distributions (the first three, each capped, with Files step 5's profiler) and reports what was profiled and what was not. A file
+      over the cap, in a format not read here, or past the first three is named as not read, never counted as zero rows; a portal that
+      does not answer leaves the earlier profile and says so. Portal calls are priced before the press and counted after it.
     resource_types: ["open_data"]
     intent: discovery
     perspectives: ["all", "Steward"]
@@ -4192,6 +4205,7 @@ open_data_analyses:
     source: local
     run_time: fast
     availability: queued
+    answers_questions: true      # TR-54 B5: wired to its open data question (Q-0113/4/5), whose row reads this analysis's stored result
     action: survey
     target_shape: whole_resource_only
     recommended: false
@@ -4199,7 +4213,7 @@ open_data_analyses:
       candidate: false
       native_process_ref: null
     declaration:
-      built: false
+      built: true
       result_kind: measure
       measures:
       - name: distributions_profiled_summary
@@ -4207,7 +4221,7 @@ open_data_analyses:
         as_of: retrieved_at
         value_field: distributions_profiled_summary
       absence:
-        not_measured: 'Not built: the dataset-level profile summary has no reader yet, so nothing has been summarised.'
+        not_measured: 'Not measured: no distribution of this dataset has been profiled yet, so nothing has been summarised.'
         not_permitted: 'Not permitted: the source refused the read.'
         not_applicable: 'Not applicable: the dataset is not on a portal RE can read yet.'
         nothing_found: 'Measured: the source states nothing for this question.'

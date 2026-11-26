@@ -30,8 +30,12 @@ def client(registry, monkeypatch):
         "resource_explorer.registry.ProjectRegistry.__init__",
         lambda self, db_path=None: setattr(self, "__dict__", registry.__dict__) or None,
     )
+    from resource_explorer.auth import create_access_token
     from resource_explorer.web.app import app
-    return TestClient(app)
+
+    # TR-147: a batch set with no work list is readable only by the person who queued it, so this caller is a real one: the same person
+    # queues the batch and polls its progress
+    return TestClient(app, headers={"Authorization": "Bearer " + create_access_token(user_id="tester", egeria_token="tok")})
 
 
 class TestEnqueueBatchStoresEntityType:

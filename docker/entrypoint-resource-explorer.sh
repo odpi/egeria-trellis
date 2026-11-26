@@ -114,6 +114,12 @@ run_prefect_worker() {
         --name "re-worker-${sha12}-$(hostname)" "$@"
 }
 
+# Create or update the registry schema and write its version marker (TR-112b), then exit. A chart runs this as a
+# Job before the pods start with RE_SCHEMA_MODE=external. Same database URL as `web`.
+run_schema_apply() {
+    exec resource-explorer schema apply "$@"
+}
+
 run_cli() {
     exec resource-explorer "$@"
 }
@@ -133,9 +139,10 @@ case "$ROLE" in
     tui)    run_tui "$@" ;;
     a2a)    run_a2a "$@" ;;
     prefect-worker) run_prefect_worker "$@" ;;
+    schema-apply) run_schema_apply "$@" ;;
     *)
         echo "Unknown role '$ROLE'." >&2
-        echo "Usage: docker run ... trellis/resource-explorer:local {web|worker|cli|tui|a2a|prefect-worker} [args...]" >&2
+        echo "Usage: docker run ... trellis/resource-explorer:local {web|worker|cli|tui|a2a|prefect-worker|schema-apply} [args...]" >&2
         exit 1
         ;;
 esac

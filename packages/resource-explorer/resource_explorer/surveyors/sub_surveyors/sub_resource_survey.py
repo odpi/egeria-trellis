@@ -63,9 +63,8 @@ _CODEOWNERS_PATHS = ["CODEOWNERS", ".github/CODEOWNERS", "docs/CODEOWNERS"]
 def ancestor_folder_paths(file_path: str) -> list[str]:
     """Immediate parent first, then each ancestor folder up to (but not
     including) the repo root — a depth-1 folder attaches directly to the
-    repo's own Asset (see egeria_publisher.py's `publish_sub_resources` for
-    the exact relationship, currently a flagged gap post-2026-09-14's
-    SourceControlLibrary correction), so it never needs a synthetic root
+    repo's own SourceControlLibrary (see egeria_publisher.py's `publish_sub_resources`
+    for the relationship, CapabilityAssetUse, valid since TR-89), so it never needs a synthetic root
     *folder* above it. The synthetic root ("") is
     only needed when the file itself has no real containing folder at all
     — i.e. it sits at the repo root. Public/module-level (not just an

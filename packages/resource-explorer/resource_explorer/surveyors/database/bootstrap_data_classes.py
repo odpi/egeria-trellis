@@ -26,6 +26,24 @@ the DataClass by qualifiedName; the keyword set and keywords TYPED as `ValidValu
 definitions). A class already present is never re-created; its keywords are reconciled by one typed
 find on the keyword prefix. Nothing is ever changed or deleted.
 
+**What a DataClass is created with (TR-127).** The seed's `dataPatterns` are column-name KEYWORDS (they also
+become the keyword set and the Curate and PII keywords). They are sent to Egeria as the DataClass's
+`matchPropertyNames`; an optional per-entry `specification` (a real value regex, python `fullmatch`, validated
+at load) is sent as its `specification`; `dataPatterns` is not sent. DataClasses seeded before this change carry
+the keywords as `dataPatterns` and no specification: the bootstrap never updates them, so an owner who wants
+them tidy sets matchPropertyNames to the keywords, `specification` to the regex and clears `dataPatterns`
+by hand in Egeria (the value matcher already treats such keywords as name hints, so they do not disqualify).
+
+**Reconcile (TR-135).** The bootstrap never updates a class it finds, so a class seeded before TR-127 keeps its
+keywords as `dataPatterns` and has no `specification`. `python -m resource_explorer.surveyors.database.bootstrap_data_classes
+reconcile` lists, per seed class, the seed-owned fields that differ (`SEED_OWNED_FIELDS`, and the `requiresNameMatch` and
+`valueCheck` keys of `specificationDetails`; never displayName or description); it is a DRY RUN. With `--apply` it
+updates only those fields of those classes, keeping any other key in `specificationDetails`, ADDING the seed's keywords to
+`matchPropertyNames` (a keyword someone added in Egeria stays; only the additions are listed), and it never empties a list or
+removes a key (Egeria's merge update does not send those: they are reported as "needs a replace update; not applied"): never a delete, never a class the seed does not name, never a class that is
+missing from Egeria (the bootstrap creates it), and a second apply changes nothing and says so. Each update is read back;
+one that did not take is reported, not counted as done.
+
 **Edits are not propagated.** A class, set or keyword already present by qualifiedName is never
 updated: changing an existing entry's displayName, description or dataPatterns in the seed changes
 the fingerprint, so the next pass re-checks everything, but only ADDS what is missing (a new
@@ -73,7 +91,7 @@ CANARY_PREFIX = "ValidValueDefinition::ResourceExplorer::DataClassSeed::"
 
 _NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]*$")
 _KEYWORD_RE = re.compile(r"^[a-z0-9_]+$")
-_FIELDS = ("name", "displayName", "description", "dataPatterns")
+_FIELDS = ("name", "displayName", "description", "dataPatterns", "specification", "requiresNameMatch", "valueCheck")
 #: Caps on the seed: each keyword is one Egeria element and one link, created at start-up.
 MAX_DATA_CLASSES = 100
 MAX_KEYWORDS_PER_CLASS = 50
@@ -116,9 +134,37 @@ def _validate(raw: Any, source: str) -> list[dict]:
             raise SeedError(f"{where}: {len(patterns)} keywords, more than {MAX_KEYWORDS_PER_CLASS}")
         if len(set(patterns)) != len(patterns):
             raise SeedError(f"{where}: a keyword appears twice")
+        spec = entry.get("specification")
+        if spec is not None:
+            if not isinstance(spec, str) or not spec.strip():
+                raise SeedError(f"{where}: 'specification' must be a non-empty regular expression (a string)")
+            try:
+                re.compile(spec)
+            except re.error as exc:
+                raise SeedError(f"{where}: 'specification' is not a valid regular expression ({exc})") from exc
+        # TR-131: a generic value shape (a date, a run of digits) is established only with the column name.
+        needs_name = entry.get("requiresNameMatch")
+        if needs_name is not None and not isinstance(needs_name, bool):
+            raise SeedError(f"{where}: 'requiresNameMatch' must be true or false")
+        check = entry.get("valueCheck")
+        if check is not None:
+            from resource_explorer.surveyors.database.column_matching import VALUE_CHECKS
+            if not isinstance(check, str) or check not in VALUE_CHECKS:
+                raise SeedError(f"{where}: 'valueCheck' must be one of {sorted(VALUE_CHECKS)}")
+            if spec is None:
+                raise SeedError(f"{where}: 'valueCheck' needs a 'specification' to check values against")
+        if needs_name and spec is None:
+            raise SeedError(f"{where}: 'requiresNameMatch' needs a 'specification' (it qualifies the value rule)")
         seen.add(name)
-        out.append({"name": name, "displayName": entry["displayName"].strip(),
-                    "description": entry["description"].strip(), "dataPatterns": list(patterns)})
+        item = {"name": name, "displayName": entry["displayName"].strip(),
+                "description": entry["description"].strip(), "dataPatterns": list(patterns)}
+        if spec is not None:
+            item["specification"] = spec
+        if needs_name:
+            item["requiresNameMatch"] = True
+        if check is not None:
+            item["valueCheck"] = check
+        out.append(item)
     if not out:
         raise SeedError(f"{source}: no data classes")
     if len(out) > MAX_DATA_CLASSES:
@@ -250,6 +296,15 @@ def _sentence(exc: BaseException) -> str:
 
 # ── bodies ────────────────────────────────────────────────────────────────────
 
+def _spec_details(dc: dict) -> dict[str, str]:
+    details: dict[str, str] = {}
+    if dc.get("requiresNameMatch"):
+        details["requiresNameMatch"] = "true"
+    if dc.get("valueCheck"):
+        details["valueCheck"] = dc["valueCheck"]
+    return details
+
+
 def _data_class_body(dc: dict) -> dict:
     return {
         "class": "NewElementRequestBody",
@@ -261,7 +316,15 @@ def _data_class_body(dc: dict) -> dict:
             "qualifiedName": data_class_qn(dc["name"]),
             "displayName": dc["displayName"],
             "description": dc["description"],
-            "dataPatterns": dc["dataPatterns"],
+            # TR-127: the keywords are column NAMES, so they go in matchPropertyNames. They used to be sent as
+            # dataPatterns, which the value matcher fullmatches as value regexes, so every seeded class
+            # disqualified itself on real values. A real value regex goes in `specification`, where one exists;
+            # no dataPatterns at all is sent (no keywords there, and no blank list item).
+            "matchPropertyNames": list(dc["dataPatterns"]),
+            **({"specification": dc["specification"]} if dc.get("specification") else {}),
+            # TR-131: how the value rule is applied, in Egeria's own string map for it, so the matcher reads it back
+            # from the class: requiresNameMatch (a generic shape needs the column name too) and valueCheck (luhn).
+            **({"specificationDetails": _spec_details(dc)} if _spec_details(dc) else {}),
         },
     }
 
@@ -621,6 +684,220 @@ def status() -> dict:
         return _last_outcome.as_dict() if _last_outcome else {"status": "not checked yet", "line": ""}
 
 
+# ── reconcile the seed-owned fields (TR-135) ─────────────────────────────────
+
+IN_STEP = "in step"
+DIFFERS = "differs"
+NEEDS_REPLACE = "differs (needs a replace update)"
+ABSENT = "not in Egeria"
+UPDATED = "updated"
+DID_NOT_TAKE = "update did not take"
+
+NOT_APPLIED = "needs a replace update; not applied"
+
+
+def _empty(value: Any) -> bool:
+    return value is None or value == "" or value == [] or value == {}
+
+
+def _as_list(value: Any) -> list:
+    return [] if _empty(value) else sorted(value) if isinstance(value, (list, tuple, set)) else [value]
+
+
+#: The seed-owned PLAIN properties of a DataClass: Egeria property -> what the seed says it should be (a function of one
+#: seed entry). `displayName` and `description` are NOT here: people edit them in Egeria. Lists compare as sets (order and
+#: None-versus-[] are not differences). In the body the bootstrap creates (`_data_class_body`): `matchPropertyNames` the
+#: column-name keywords, `specification` the optional value regex, `dataPatterns` none.
+SEED_OWNED_FIELDS: dict[str, Any] = {
+    "matchPropertyNames": lambda dc: list(dc["dataPatterns"]),
+    "specification": lambda dc: dc.get("specification") or "",
+    "dataPatterns": lambda dc: [],
+}
+
+#: The list fields that are a UNION: the seed's values are added to what Egeria holds, and nothing in Egeria's list is removed.
+UNION_FIELDS = ("matchPropertyNames",)
+
+#: The seed-owned KEYS of the DataClass's `specificationDetails` string map (TR-131; `_spec_details` writes them). Any
+#: other key in that map belongs to someone else and is kept.
+SEED_OWNED_DETAIL_KEYS = ("requiresNameMatch", "valueCheck")
+DETAILS = "specificationDetails"
+
+
+def _same(have: Any, want: Any) -> bool:
+    """A list property compares as a set (order, None and [] are not differences); a text one, blank and None alike."""
+    if isinstance(want, list):
+        return _as_list(have) == _as_list(want)
+    return (have or "") == (want or "")
+
+
+@dataclass
+class ClassDiff:
+    name: str
+    qualified_name: str
+    status: str
+    guid: str | None = None
+    changes: dict = field(default_factory=dict)       # field -> (what Egeria has, what the seed says): an update sets it
+    not_applied: dict = field(default_factory=dict)   # field -> (have, want): emptying a list or removing a key needs a
+    #                                                   replace update, which this never sends
+    reason: str = ""
+
+    def line(self) -> str:
+        if self.status == ABSENT:
+            return f"{self.name}: {self.status} (the bootstrap creates it)"
+        if self.status == IN_STEP:
+            return f"{self.name}: {self.status}"
+        if not (self.changes or self.not_applied):
+            return f"{self.name}: {self.status}" + (f": {self.reason}" if self.reason else "")
+        parts = [(f"{k}: + {[x for x in b if x not in a]!r}" if k in UNION_FIELDS else f"{k}: {a!r} -> {b!r}")
+                 for k, (a, b) in self.changes.items()]
+        parts += [f"{k}: {a!r} -> {b!r}: {NOT_APPLIED}" for k, (a, b) in self.not_applied.items()]
+        return f"{self.name}: {self.status}: " + "; ".join(parts)
+
+
+@dataclass
+class ReconcileReport:
+    apply: bool
+    classes: list[ClassDiff] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return not any(c.status in (COULD_NOT_CHECK, DID_NOT_TAKE, FAILED) for c in self.classes)
+
+    def text(self) -> str:
+        lines = [c.line() for c in self.classes]
+        differing = [c for c in self.classes if c.status == DIFFERS]
+        updated = [c for c in self.classes if c.status == UPDATED]
+        held = [c for c in self.classes if c.not_applied]
+        if not self.apply and differing:
+            lines.append(f"dry run: {len(differing)} of {len(self.classes)} seed data classes differ; nothing changed. "
+                         f"Run with --apply to update only these fields.")
+        elif not self.apply:
+            lines.append(f"dry run: no changes needed; all {len(self.classes)} seed data classes match the seed.")
+        elif updated:
+            lines.append(f"applied: {len(updated)} data classes updated.")
+        else:
+            lines.append("no changes: every seed data class that is in Egeria already matches the seed.")
+        if held:
+            lines.append(f"{len(held)} data classes have a field that needs a replace update; this never applies one.")
+        return "\n".join(lines)
+
+
+def _class_properties(designer, guid: str) -> dict:
+    """The properties Egeria holds for one DataClass; CouldNotCheck when they cannot be read."""
+    try:
+        raw = designer.get_data_class_by_guid(guid, output_format="JSON")
+    except Exception as exc:  # noqa: BLE001
+        raise CouldNotCheck(f"could not read the data class: {_sentence(exc)}") from exc
+    if isinstance(raw, dict):
+        raw = [raw]
+    if not isinstance(raw, list) or not raw or not isinstance(raw[0], dict) or not isinstance(raw[0].get("properties"), dict):
+        raise CouldNotCheck(f"could not read the data class: unreadable answer {str(raw)[:80]!r}")
+    return raw[0]["properties"]
+
+
+def _diff(dc: dict, props: dict) -> tuple[dict, dict]:
+    """(changes an update can make, changes that need a replace update) between the seed entry and Egeria's properties.
+
+    Egeria's merge update (6.4 PropertyHelper) skips a null string only, so `specification: ""` is sent and sets "";
+    it skips an empty list and an empty map, so emptying a list or removing a key from the map cannot be sent."""
+    changes: dict = {}
+    held: dict = {}
+    for prop, wanted in SEED_OWNED_FIELDS.items():
+        want, have = wanted(dc), props.get(prop)
+        if prop in UNION_FIELDS:
+            # W-135-1: keywords people added in Egeria are theirs. The update sends Egeria's list as it is with the seed's
+            # missing keywords appended (Egeria's order, never a removal); only the additions are a difference.
+            have_list = list(have) if isinstance(have, (list, tuple)) else ([] if _empty(have) else [have])
+            missing = [k for k in want if k not in have_list]
+            if missing:
+                changes[prop] = (have_list, have_list + missing)
+            continue
+        if _same(have, want):
+            continue
+        if isinstance(want, list):
+            shown = (list(have) if isinstance(have, (list, tuple)) else ([] if _empty(have) else [have]), want)
+            (held if not want else changes)[prop] = shown        # an empty list is never sent
+        else:
+            changes[prop] = (have or "", want)
+    have_map = props.get(DETAILS) if isinstance(props.get(DETAILS), dict) else {}
+    want_map = _spec_details(dc)
+    for key in SEED_OWNED_DETAIL_KEYS:
+        want, have = want_map.get(key), have_map.get(key)
+        if have == want or (want is None and have in (None, "false")):
+            continue
+        (changes if want is not None else held)[f"{DETAILS}.{key}"] = (have, want)    # removing a key is never sent
+    return changes, held
+
+
+def _update_body(dc: dict, props: dict, changes: dict) -> dict:
+    sent = {k: v[1] for k, v in changes.items() if not k.startswith(f"{DETAILS}.")}
+    if any(k.startswith(f"{DETAILS}.") for k in changes):
+        # the map as it is, with only the seed's keys changed: Egeria merges per property, not per map key
+        current = props.get(DETAILS) if isinstance(props.get(DETAILS), dict) else {}
+        sent[DETAILS] = {**current, **{k.split(".", 1)[1]: v[1] for k, v in changes.items() if k.startswith(f"{DETAILS}.")}}
+    return {"class": "UpdateElementRequestBody", "mergeUpdate": True,
+            "properties": {"class": "DataClassProperties", **sent}}
+
+
+def reconcile_data_classes(designer, expert, seed: list[dict] | None = None, apply: bool = False) -> ReconcileReport:
+    """Per seed data class, the seed-owned fields (SEED_OWNED_FIELDS and the SEED_OWNED_DETAIL_KEYS of
+    specificationDetails) that differ from Egeria; with `apply`, update only those fields (a merge update) and read each
+    class back. Only the classes the seed names are read; a class missing from Egeria is reported, never created;
+    nothing is deleted. A class that cannot be read is reported and skipped (never updated); the others go on.
+    Emptying a list or removing a map key needs a replace update, which this never sends: it is reported, in the dry
+    run and after `apply`, as "needs a replace update; not applied"."""
+    report = ReconcileReport(apply=apply)
+    for dc in seed if seed is not None else current_seed():
+        qn = data_class_qn(dc["name"])
+        row = ClassDiff(dc["name"], qn, IN_STEP)
+        report.classes.append(row)
+        try:
+            row.guid = _existing_guid(expert, qn)
+            if row.guid is None:
+                row.status = ABSENT
+                continue
+            props = _class_properties(designer, row.guid)
+            row.changes, row.not_applied = _diff(dc, props)
+        except CouldNotCheck as exc:
+            row.status, row.reason = COULD_NOT_CHECK, str(exc)
+            continue
+        if row.not_applied:
+            row.status = NEEDS_REPLACE
+        if not row.changes:
+            continue
+        row.status = DIFFERS
+        if not apply:
+            continue
+        try:
+            designer.update_data_value_specification(row.guid, _update_body(dc, props, row.changes))
+            still, row.not_applied = _diff(dc, _class_properties(designer, row.guid))
+        except Exception as exc:  # noqa: BLE001
+            row.status, row.reason = FAILED, _sentence(exc)
+            continue
+        if still:
+            row.status, row.changes = DID_NOT_TAKE, still
+        else:
+            row.status = UPDATED
+    return report
+
+
+def reconcile_command(apply: bool = False, registry=None) -> int:
+    """The manual run: `reconcile` (dry run) or `reconcile --apply`, as RE's daemon. Prints the report."""
+    if not egeria_platform_url():
+        log.error("EGERIA_PLATFORM_URL environment variable is not set. Cannot connect to Egeria.")
+        return 1
+    try:
+        from resource_explorer.egeria_clients import Daemon, DaemonReason
+
+        designer, _ref_manager, expert = _clients(Daemon(DaemonReason.BOOTSTRAP), "reconcile data classes")
+    except Exception as e:  # noqa: BLE001
+        log.error(f"Failed to connect to Egeria: {e}")
+        return 1
+    report = reconcile_data_classes(designer, expert, apply=apply)
+    print(report.text())
+    return 0 if report.ok else 1
+
+
 # ── by hand ───────────────────────────────────────────────────────────────────
 
 def bootstrap_data_classes(registry=None) -> int:
@@ -642,6 +919,20 @@ def bootstrap_data_classes(registry=None) -> int:
     return 0 if outcome.status in (PRESENT, CREATED) else 1
 
 
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="bootstrap_data_classes", description=__doc__.split("\n")[0])
+    parser.add_argument("command", nargs="?", choices=["seed", "reconcile"], default="seed",
+                        help="seed (the default): create what is missing; reconcile: list the seed-owned fields "
+                             "that differ in Egeria (a dry run)")
+    parser.add_argument("--apply", action="store_true", help="with reconcile: update only those fields")
+    args = parser.parse_args(argv)
+    if args.apply and args.command != "reconcile":
+        parser.error("--apply is for the reconcile command")
+    return reconcile_command(apply=args.apply) if args.command == "reconcile" else bootstrap_data_classes()
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-    sys.exit(bootstrap_data_classes())
+    sys.exit(main())

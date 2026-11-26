@@ -19,28 +19,22 @@ export const GROUP_CAP = 25;
 
 const fmtN = (n) => (typeof n === 'number' ? n.toLocaleString('en-US') : String(n));
 
-export function fmtBytes(n) {
-  if (typeof n !== 'number' || !Number.isFinite(n)) return String(n);
-  if (n < 1024) return `${n} B`;
-  const u = ['KB', 'MB', 'GB', 'TB'];
-  let v = n;
-  let i = -1;
-  do { v /= 1024; i += 1; } while (v >= 1024 && i < u.length - 1);
-  return `${v >= 100 ? Math.round(v) : v.toFixed(1)} ${u[i]}`;
-}
-
-/** A size the way macOS Finder and the server's own price line say it (D12): decimal (1000), labelled B/KB/MB/GB, one
- *  decimal above bytes. The file-system card uses this for every size; `fmtBytes` above (1024) keeps its other callers. */
+/** The one size format in the UI (D12, TR-81): decimal (1 KB = 1,000 bytes), as macOS Finder and the server's price line
+ *  say it, labelled B/KB/MB/GB/TB with one decimal above bytes. Python twin: `resource_explorer/byte_format.py`. Every
+ *  size labelled KB/MB/GB goes through here; binary units belong only where the words say KiB/MiB/GiB. */
 export function fmtBytesDecimal(n) {
   if (typeof n !== 'number' || !Number.isFinite(n)) return String(n);
   if (n < 1000) return `${Math.round(n)} B`;
   let v = n;
-  for (const unit of ['KB', 'MB', 'GB']) {
+  for (const unit of ['KB', 'MB', 'GB', 'TB']) {
     v /= 1000;
-    if (Math.round(v * 10) / 10 < 1000 || unit === 'GB') return `${v.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${unit}`;
+    if (Math.round(v * 10) / 10 < 1000 || unit === 'TB') return `${v.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${unit}`;
   }
   return `${n} B`;
 }
+
+/** Older name for `fmtBytesDecimal`: kept so existing callers keep one format, not two. */
+export const fmtBytes = fmtBytesDecimal;
 
 /** The measured properties of one stored annotation: `json_properties` parsed, else the labelled map. */
 export function propsOf(a) {

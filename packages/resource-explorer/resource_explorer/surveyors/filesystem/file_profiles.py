@@ -82,7 +82,7 @@ STEP_KEY = "file_profiles"
 
 #: The existing profiling limit (data_profiler._MAX_PROFILE_SIZE_MB): a file larger than this is profiled from its first
 #: PROFILE_LIMIT_BYTES (sampled), never skipped.
-PROFILE_LIMIT_BYTES = 50 * 1024 * 1024
+PROFILE_LIMIT_BYTES = 50_000_000
 
 #: Profile runs kept per file system (the newest; older runs are removed when a newer run is written).
 RUNS_KEPT = 5
@@ -304,6 +304,7 @@ EGERIA_HALF_FS_NAME_UNKNOWN = "file_system_name_unknown"
 
 _DELIMITED = {"csv": ",", "tsv": "\t", "tab": "\t", "psv": "|"}
 _LINES_JSON = {"jsonl", "ndjson"}
+_SPREADSHEETS = {"xlsx", "xlsm", "xls", "ods"}
 _WHOLE_ONLY = {"json", "xlsx", "xlsm", "xls", "ods", "feather", "arrow", "avro"}
 _LIBRARY = {"xlsx": "openpyxl", "xlsm": "openpyxl", "xls": "xlrd", "ods": "odf", "avro": "fastavro"}
 

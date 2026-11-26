@@ -52,6 +52,33 @@ def _announce_registry() -> None:
     typer.echo(describe_registry(url), err=True)
 
 
+# ── schema (TR-112b) ─────────────────────────────────────────────────────────
+
+schema_app = typer.Typer(help="The registry's database schema.", no_args_is_help=True)
+app.add_typer(schema_app, name="schema")
+
+
+@schema_app.command("apply")
+def schema_apply() -> None:
+    """Create or update the registry schema and write its version marker, then exit 0.
+
+    Same database URL as `web`, including `?options=-csearch_path=...`. A second run sends no DDL and
+    prints the same line. A chart runs this as a Job before the pods start with RE_SCHEMA_MODE=external.
+    """
+    from resource_explorer.registry import ProjectRegistry
+
+    import time
+
+    from resource_explorer import schema_stores
+
+    t0 = time.perf_counter()
+    done = schema_stores.apply_all()
+    secs = time.perf_counter() - t0
+    n = done["registry"] + sum(v for k, v in done.items() if k not in ("registry", "stores"))
+    elapsed = f"{secs * 1000:.0f} ms" if secs < 1 else f"{secs:.1f} s"
+    typer.echo(f"schema ready · {n} statements · {elapsed}")
+
+
 # ── sign in / sign out ───────────────────────────────────────────────────────
 #
 # `docs/runtime-architecture-plan.md` §4: Egeria is the identity provider, its
@@ -393,6 +420,8 @@ def refresh(
       resource-explorer refresh --all
       resource-explorer refresh --all --top-level   # skip sub-projects
     """
+    from resource_explorer.github.token_status import warn_on_console
+    warn_on_console(console)      # TR-53: 60 GitHub requests an hour without GITHUB_TOKEN
     from resource_explorer.ingestion.incremental import IncrementalIndexer
     from resource_explorer.query_cache import QueryCache
     from resource_explorer.registry import ProjectRegistry
@@ -436,15 +465,10 @@ def refresh(
                 try:
                     from resource_explorer.github.stats_fetcher import StatsFetcher
                     result = StatsFetcher().fetch(slug, lookback_days=history)
-                    if "commits_fetch_error" in result:
-                        console.print(
-                            f"  [yellow]Commit history warning:[/yellow] {result['commits_fetch_error']}"
-                        )
-                    else:
-                        n = result.get("commits_fetched", 0)
-                        console.print(f"  [dim]Stats updated ({n} commits, {history}d lookback).[/dim]")
+                    from resource_explorer.github import stats_summary
+                    stats_summary.print_summary(console, result, lookback_days=history, indent="  ")   # TR-63
                 except Exception as exc:
-                    console.print(f"  [dim]Stats update skipped: {exc}[/dim]")
+                    console.print(f"  [yellow]Stats update skipped:[/yellow] {exc}")
             # Collections were proposed once, at onboarding, from the repo as
             # it stood then. Nothing re-evaluates them, so a repo that gains
             # PDFs keeps ignoring them forever. This is a query over the file
@@ -1337,6 +1361,8 @@ def survey(
       resource-explorer survey --all --top-level     # skip sub-projects
       resource-explorer survey --all --publish       # survey + publish all
     """
+    from resource_explorer.github.token_status import warn_on_console
+    warn_on_console(console)      # TR-53: 60 GitHub requests an hour without GITHUB_TOKEN
     from resource_explorer.registry import ProjectRegistry
     from resource_explorer.surveyors.survey_orchestrator import SurveyOrchestrator
     from resource_explorer.surveyors.survey_report import AnnotationType
@@ -1529,6 +1555,11 @@ def survey_definition(
         SurveyDefinitionReaderError,
         UnsupportedSurveyDefinitionError,
     )
+
+    # TR-61: the definition is read from Egeria, so this runs as the person who logged in (exit 2 without a session),
+    # like every other Egeria command; without it a fresh login read "no one is signed in".
+    from resource_explorer.cli import session as cli_session
+    cli_session.require_and_activate(console)
 
     registry = ProjectRegistry()
     project = registry.get(slug)
@@ -2289,6 +2320,11 @@ def database_survey_definition(
         UnsupportedSurveyDefinitionError,
     )
 
+    # TR-61: the definition is read from Egeria, so this runs as the person who logged in (exit 2 without a session),
+    # like every other Egeria command; without it a fresh login read "no one is signed in".
+    from resource_explorer.cli import session as cli_session
+    cli_session.require_and_activate(console)
+
     registry = ProjectRegistry()
     if not registry.database_exists(slug):
         console.print(f"[red]Database '{slug}' not found. Register it first with 'database register'.[/red]")
@@ -2784,6 +2820,11 @@ def filesystem_survey_definition(
         SurveyDefinitionReaderError,
         UnsupportedSurveyDefinitionError,
     )
+
+    # TR-61: the definition is read from Egeria, so this runs as the person who logged in (exit 2 without a session),
+    # like every other Egeria command; without it a fresh login read "no one is signed in".
+    from resource_explorer.cli import session as cli_session
+    cli_session.require_and_activate(console)
 
     registry = ProjectRegistry()
     if not registry.get_filesystem(slug):

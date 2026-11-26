@@ -44,7 +44,7 @@ All settings are in `.env` (loaded via `resource_explorer/config.py` using Pydan
 ### Required
 
 ```bash
-GITHUB_TOKEN=ghp_...          # GitHub personal access token (repo scope)
+GITHUB_TOKEN=ghp_...          # GitHub personal access token (read scope is enough). SET IT: without one GitHub allows 60 requests an hour and a survey's commit history comes back empty or partial; RE warns at startup
 ```
 
 ### LLM backend (default: Ollama)

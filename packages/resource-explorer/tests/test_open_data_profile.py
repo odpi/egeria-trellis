@@ -71,9 +71,25 @@ def listed(store):
     return got["work_list"]
 
 
+@pytest.fixture(autouse=True)
+def _no_egeria_catalog(monkeypatch):
+    """The queued runner loads Egeria's data classes itself; these tests are about the files, so Egeria is said unreachable."""
+    from resource_explorer.surveyors.filesystem import file_class_match as fcm
+
+    monkeypatch.setattr(fcm, "default_catalog", lambda: NoCatalog())
+
+
 def _run(store, wl, t=None):
+    """What the worker does for each dataset of the list (TR-54 B4): the queued profile runner, one dataset at a time; then the
+    stored profiles are read back through the work-list view. A work-list press no longer loops inline."""
+    from resource_explorer.open_data import analyses, queued
+
     t = t or ProfileFake()
-    return profile.profile_work_list(store, wl, transport=t, catalog_loader=NoCatalog), t
+    for ds in store.datasets_in_work_list(wl):
+        queued.run_profile(analyses.RunContext(registry=store.registry, store=store, dataset=ds, transport_factory=lambda: t))
+    rows = [d["profile"] for d in profile.view(store, wl)["datasets"] if d["profile"]]
+    profiled = sum(1 for r in rows if r["outcome"] == "profiled")
+    return {"datasets": rows, "profiled": profiled, "not_profiled": len(rows) - profiled}, t
 
 
 def _by_title(out):
@@ -82,7 +98,8 @@ def _by_title(out):
 
 def test_the_price_line_is_an_upper_bound_stated_before_the_press():
     assert profile.profile_price(3)["line"].startswith("3 datasets × up to 6 calls")
-    assert "capped at 50 MB" in profile.profile_price(3)["line"]
+    assert profile.cap_bytes() == 50_000_000
+    assert "capped at 50.0 MB" in profile.profile_price(3)["line"]
     assert profile.profile_price(1)["line"].startswith("1 dataset × up to 6 calls")
 
 
@@ -111,7 +128,7 @@ def test_a_file_that_turns_out_longer_than_the_cap_is_also_not_profiled(store, l
     out, _ = _run(store, listed)
     c = next(d for d in out["datasets"] if "child" in d["slug"])
     only = c["distributions"][0]
-    assert only["state"] == profile.OVER_CAP and "longer than the 50 MB cap" in only["words"]
+    assert only["state"] == profile.OVER_CAP and "longer than the 50.0 MB cap" in only["words"]
     assert c["outcome"] == "not_profiled"
 
 
@@ -184,25 +201,17 @@ def test_a_dataset_never_profiled_says_never_run(store, listed):
                for d in seen["datasets"])
 
 
-def test_a_work_list_without_open_data_has_nothing_to_profile(store):
-    with pytest.raises(profile.NothingToProfile):
-        profile.profile_work_list(store, "empty", transport=ProfileFake(), catalog_loader=NoCatalog)
+def test_a_portal_that_will_not_list_distributions_fails_that_run_and_says_so_keeping_the_earlier_profile(store, listed):
+    from resource_explorer.open_data.analyses import RunnerFailed
 
-
-def test_a_second_press_while_one_runs_is_refused(store, listed):
-    reg_ = store.registry
-    assert reg_.take_claim(f"{profile.STEP_KEY}:{listed}", "other", stale_after_seconds=900)
-    with pytest.raises(profile.AlreadyRunning):
-        _run(store, listed)
-
-
-def test_a_portal_that_will_not_list_distributions_is_a_row_that_says_so(store, listed):
     class Down(ProfileFake):
         def get_json(self, url, params=None, headers=None):
             raise TransportError("portal is down")
 
-    out, _ = _run(store, listed, Down())
-    assert out["profiled"] == 0 and all("could not list the distributions" in d["words"] for d in out["datasets"])
+    with pytest.raises(RunnerFailed, match="could not list the distributions") as err:
+        _run(store, listed, Down())
+    assert "the earlier profile was kept" in str(err.value) and "portal" in str(err.value)
+    assert all(d["profile"] is None for d in profile.view(store, listed)["datasets"])      # a failed run stores nothing
 
 
 def test_the_fake_get_bytes_binds_the_real_signature():
@@ -229,8 +238,8 @@ def test_the_routes_price_run_and_view(store, listed, monkeypatch):
     c = TestClient(app)
     got = c.get(f"/api/open-data/work-lists/{listed}/profile").json()
     assert got["price"]["line"].startswith("3 datasets") and all(d["profile"] is None for d in got["datasets"])
-    ran = c.post(f"/api/open-data/work-lists/{listed}/profile").json()
-    assert ran["profiled"] == 2 and ran["not_profiled"] == 1
+    ran = c.post(f"/api/open-data/work-lists/{listed}/profile").json()        # B4: queued, one run per dataset, not done inline
+    assert ran["queued"] == 3 and "profiled" not in ran
     assert c.get("/api/open-data/work-lists/nope/profile").status_code == 404
 
 

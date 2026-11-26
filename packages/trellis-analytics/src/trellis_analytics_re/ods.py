@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from typing import Any, Iterator
 
 from trellis_analytics.readers import OdsUnreadable  # noqa: F401 - defined by the seam; this name stays importable
@@ -16,6 +17,15 @@ from trellis_analytics.readers import OdsUnreadable  # noqa: F401 - defined by t
 
 def normalize_slug(slug: str) -> str:
     return slug.replace("-", "_").lower()   # the same rule as ProjectRegistry._normalize_slug
+
+
+def _as_time(value):
+    """A stored time as a naive UTC datetime, or None when it cannot be read."""
+    try:
+        t = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return t.astimezone(timezone.utc).replace(tzinfo=None) if t.tzinfo is not None else t
 
 
 def _json_dict(value) -> dict:
@@ -359,6 +369,32 @@ class OdsReader:
             if isinstance(by_name, dict):
                 return {str(k): int(v) for k, v in by_name.items() if isinstance(v, int)}
         return None
+
+    #: The step runs that open a file system's files after the walk (the walk's own hashing is in the walk rows).
+    OWN_READ_STEPS = ("file_profiles", "narrative_docs", "file_data_class_match")
+
+    def filesystem_own_reads(self, slug: str, since: str = "") -> list[dict]:
+        """The runs in which Resource Explorer itself opened this file system's files, oldest first, recorded at or after
+        `since` ("" = every run): `[{"step", "surveyed_at", "started_at"}]`. `surveyed_at` is the time the run was
+        recorded; for a data-file profile that is its start, for the narrative and data-class runs it is their end, so
+        `started_at` (from the run's own metrics, where the run kept it, else None) is when the files began to be read.
+        Times only. One parameterised statement; an unreadable store raises `OdsUnreadable`, never `[]`."""
+        marks = ", ".join("?" for _ in self.OWN_READ_STEPS)
+        rows = self.query(
+            f"SELECT step_key, surveyed_at, metrics FROM step_runs WHERE entity_type = 'filesystem' AND slug = ? "
+            f"AND step_key IN ({marks})", (normalize_slug(slug), *self.OWN_READ_STEPS))
+        # Compared as times, not text: a walk's run_id and a step run's surveyed_at can differ in form (fractional
+        # seconds, an offset, a Z). A time that cannot be read is kept, never dropped: it cannot be told to be earlier.
+        floor = _as_time(since) if since else None
+        out = []
+        for r in rows:
+            at = _as_time(r.get("surveyed_at"))
+            if floor is not None and at is not None and at < floor:
+                continue
+            started = _json_dict(r.get("metrics")).get("started_at")
+            out.append((at is None, at or datetime.min, {"step": r["step_key"], "surveyed_at": r["surveyed_at"],
+                                                         "started_at": started if isinstance(started, str) and started else None}))
+        return [row for _, _, row in sorted(out, key=lambda t: (t[0], t[1], t[2]["step"]))]
 
     def filesystem_hash_matches(self, slug: str, run_id: str) -> dict:
         """What the OTHER registered file systems hold of this run's content, by (hash, size), from each one's newest

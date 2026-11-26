@@ -44,7 +44,7 @@ import {
   getCurateEgeriaState, syncCurateEgeria, getCurateFeedbackState,
   getCurateFeedback, addCurateFeedback, getCurateNotes, deleteCurateNote,
   assignGroup, listGroups, getDataClassRules, getQualityProposals, postQualityVerdict, postQualityTableComparison, getQualityRules, postQualityPublish,
-  getFilesystemReview, putFilesystemReviewVerdict,
+  getFilesystemReview, putFilesystemReviewVerdict, publishFilesystemDataClasses,
 } from '/static/re-api.js';
 import { mountQualityChecks } from '/static/next/stages/quality-checks.js';
 import {
@@ -244,9 +244,17 @@ export function filesystemReviewHtml(review, shownBy, signedIn, open = false) {
   const r = review || {};
   const held = REVIEW_LISTS.some((l) => ((r[l.key] || {}).items || []).length || ((r[l.key] || {}).gone || []).length);
   if (!held) return filesystemWorkHtml();
+  // Only data-class matches are sent to Egeria; folder descriptions stay in RE
+  const confirmedClasses = (r.classes || {}).confirmed || 0;
+  const sendButton = signedIn && confirmedClasses > 0
+    ? `<button type="button" data-fs-send-classes class="cursor-pointer rounded-sm border border-accent bg-transparent px-2 py-[1px] text-caveat text-accent-ink" title="Sends the ${esc(confirmedClasses)} confirmed data-class matches to Egeria, one DataClassAnnotation each">Send confirmed data classes</button>`
+    : '';
+  const sendFeedback = `<span class="text-provenance text-state-warn" data-fs-send-feedback></span>`;
+  const staysLine = `<div class="mt-s1 text-provenance text-ink-muted" data-fs-review-stays>${esc(r.stays || '')}</div>`;
   return `<div data-curate-work="filesystem" data-fs-review class="text-caveat">
     <details data-fs-review-details${open ? ' open' : ''}><summary class="cursor-pointer text-ink" data-fs-review-line>${esc(reviewLine(r))}</summary>
-      <div class="mt-s1 text-provenance text-ink-muted" data-fs-review-stays>${esc(r.stays || '')}</div>
+      ${staysLine}
+      <div class="mt-s1 text-caveat">${sendButton}${sendFeedback}</div>
       ${REVIEW_LISTS.map((l) => reviewListHtml(l, r[l.key] || {}, shownBy[l.key], signedIn)).join('')}
     </details></div>`;
 }
@@ -287,6 +295,32 @@ export async function renderFilesystemReview(el, slug) {
         if (fb) fb.textContent = `not saved · ${err.message || 'the verdict was refused'}`;
       }
     }));
+    // Wire up the send confirmed data classes button
+    const sendBtn = el.querySelector('[data-fs-send-classes]');
+    if (sendBtn) {
+      sendBtn.addEventListener('click', async () => {
+        if (sendBtn.disabled || sendBtn.dataset.pending) return;     // a second press is ignored
+        sendBtn.disabled = true;
+        sendBtn.dataset.pending = '1';
+        const fbEl = el.querySelector('[data-fs-send-feedback]');
+        try {
+          const result = await publishFilesystemDataClasses(slug);
+          if (!el.isConnected) return;
+          if (result.nothing_new) {
+            fbEl.textContent = 'nothing new to send';
+          } else if (result.sent > 0) {
+            fbEl.textContent = `sent ${result.sent} confirmed data classes`;
+          } else {
+            fbEl.textContent = `not sent · ${result.words || 'nothing was sent'}`;
+          }
+        } catch (err) {
+          if (fbEl) fbEl.textContent = `not sent · ${err.message || 'the send was refused'}`;
+        } finally {
+          sendBtn.disabled = false;
+          delete sendBtn.dataset.pending;
+        }
+      });
+    }
     return details;
   };
   draw(false);

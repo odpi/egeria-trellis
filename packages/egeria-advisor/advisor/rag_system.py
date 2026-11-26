@@ -196,14 +196,17 @@ class RAGSystem:
                             tracker.add_relevance(source['score'])
                     except Exception:
                         pass
-                tracker.log_metrics({
+                metrics = {
                     "response_length": len(result.get("response", "")),
                     "num_sources": result.get("num_sources", 0),
                     "retrieval_time": result.get("retrieval_time", 0.0),
                     "generation_time": result.get("generation_time", 0.0),
                     "avg_relevance_score": result.get("avg_relevance_score", 0.0),
                     "context_length": result.get("context_length", 0)
-                })
+                }
+                # TR-98: a time that was not measured is None, and mlflow.log_metrics raises on a None value (which dropped the
+                # WHOLE row, response_length included). Log only what was measured.
+                tracker.log_metrics({k: v for k, v in metrics.items() if v is not None})
         except Exception as e:
             logger.warning(f"MLflow tracking failed: {e}")
 
@@ -327,7 +330,9 @@ class RAGSystem:
         return bool(self._COMMAND_DISCOVERY_RE.search(query))
 
     def _handle_command_discovery(self, query: str) -> Optional[Dict[str, Any]]:
-        """Answer a command-discovery question directly from CommandKeywordIndex."""
+        """Answer a command-discovery question directly from CommandKeywordIndex. TR-51 d: the answer reports the
+        commands it found as its sources, with the index lookup's time."""
+        from advisor.agents.tools import lookup_source, recording_retrieval, record_lookup, with_retrieval
         from advisor.command_keyword_index import get_command_keyword_index
         idx = get_command_keyword_index()
 
@@ -348,14 +353,18 @@ class RAGSystem:
         else:
             topic = None
 
-        if topic:
-            groups = idx.search_by_keyword(topic)
-        else:
-            groups = idx.all_commands()
+        with recording_retrieval() as log:
+            started = time.perf_counter()
+            groups = idx.search_by_keyword(topic) if topic else idx.all_commands()
+            record_lookup("command_keyword_index", time.perf_counter() - started,
+                          [lookup_source("command_keyword_index", "dr-egeria command catalog and templates",
+                                         cmd["name"], f"{family}: {cmd['name']}", kind="command",
+                                         module=family or "")
+                           for family, cmds in (groups or {}).items() for cmd in cmds])
 
         if not groups:
             if topic:
-                return {
+                return with_retrieval({
                     "query": query,
                     "response": (
                         f"No Dr. Egeria commands found matching **{topic}**. "
@@ -365,7 +374,7 @@ class RAGSystem:
                     "query_type": "explanation",
                     "sources": [],
                     "routing_agent": "command_keyword_index",
-                }
+                }, log)
             return None  # no topic and no commands — fall through to DocAgent
 
         lines = []
@@ -381,13 +390,13 @@ class RAGSystem:
                 lines.append(f"- **{cmd['name']}**{tag}")
             lines.append("")
 
-        return {
+        return with_retrieval({
             "query": query,
             "response": "\n".join(lines),
             "query_type": "explanation",
             "sources": [],
             "routing_agent": "command_keyword_index",
-        }
+        }, log)
 
     # Structural code queries that should go to the symbol store, not RAG.
     _STRUCTURAL_QUERY_RE = re.compile(
@@ -413,22 +422,23 @@ class RAGSystem:
         """Answer a code structure question directly from the symbol store."""
         try:
             from advisor.analytics import get_analytics_manager
-            response = get_analytics_manager().answer_quantitative_query(query, path_filter=path_filter)
-            return {
-                "query": query,
-                "response": response,
-                "query_type": "quantitative",
-                "routing_agent": "symbol_store",
-                "sources": [],
-                "num_sources": 0,
-                "retrieval_time": 0.0,
-                "generation_time": 0.0,
-                "avg_relevance_score": 0.0,
-                "context_length": len(response),
-            }
+            return {"query": query, "routing_agent": "symbol_store",
+                    **self._quantitative_answer(query, path_filter, get_analytics_manager())}
         except Exception as exc:
             logger.warning(f"Structural query handler failed: {exc}")
             return None
+
+    @staticmethod
+    def _quantitative_answer(query: str, path_filter: Optional[str], analytics) -> Dict[str, Any]:
+        """analytics.answer_quantitative_query returns text only. TR-51 d: what it read (symbol-store queries, or the
+        cached metrics file) is recorded while it runs, and the result reports it: its sources, the lookup time and
+        retrieval_method ("none" only when nothing was read), not hard-coded zeros."""
+        from advisor.agents.tools import recording_retrieval, with_retrieval
+        with recording_retrieval() as log:
+            response = analytics.answer_quantitative_query(query, path_filter=path_filter)
+        return with_retrieval({"response": response, "query_type": "quantitative", "sources": [], "num_sources": 0,
+                               "retrieval_time": 0.0, "generation_time": 0.0, "avg_relevance_score": 0.0,
+                               "context_length": len(response)}, log)
 
     # Keywords that signal the user wants Python code, not live Egeria data.
     _CODE_EXAMPLE_SIGNALS = (
@@ -1136,22 +1146,14 @@ class RAGSystem:
         if intent == 'quantitative':
             logger.info("Handling quantitative query with analytics module")
             path_filter = query_analysis.get('path_filter')
-            response = self.analytics.answer_quantitative_query(user_query, path_filter)
             return {
                 "query": user_query,
-                "response": response,
-                "query_type": "quantitative",
+                **self._quantitative_answer(user_query, path_filter, self.analytics),
                 "routing_agent": "analytics",
                 "active_perspective": active_perspective,
                 "applied_policy_rule": applied_policy_rule,
                 "perspective_history": perspective_history,
                 "path_filter": path_filter,
-                "sources": [],
-                "num_sources": 0,
-                "retrieval_time": 0.0,
-                "generation_time": 0.0,
-                "avg_relevance_score": 0.0,
-                "context_length": 0,
                 "session_id": session_id,
                 "user_id": user_id,
             }
@@ -1984,13 +1986,15 @@ class RAGSystem:
                 timestamp=time.time(),
                 query_text=result["query"],
                 collection_name=collection_name,
-                latency_ms=(result.get("retrieval_time", 0) + result.get("generation_time", 0)) * 1000,
+                latency_ms=((result.get("retrieval_time") or 0) + (result.get("generation_time") or 0)) * 1000,
                 query_type=str(query_type).upper(),
                 cache_hit=result.get("cache_hit", False),
                 success=True,
                 result_count=result.get("num_sources", 0),
-                search_time_ms=result.get("retrieval_time", 0) * 1000,
-                llm_time_ms=result.get("generation_time", 0) * 1000,
+                # TR-98: `search_time_ms` is nullable and an unmeasured retrieval time is None: store NULL, not 0 ms.
+                # (`latency_ms` is NOT NULL, so it keeps `or 0` above.)
+                search_time_ms=(None if result.get("retrieval_time") is None else result.get("retrieval_time") * 1000),
+                llm_time_ms=(result.get("generation_time") or 0) * 1000,
                 avg_relevance_score=result.get("avg_relevance_score", 0.0),
                 sources_json=json.dumps(sources_data) if sources_data else None,
                 active_perspective=result.get("active_perspective"),

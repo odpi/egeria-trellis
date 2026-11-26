@@ -48,3 +48,7 @@ class PgVectorStoreConfig:
     # Postgres itself healthy and reachable from every other process — see
     # pg.py's connect() docstring for what None means here.
     connect_timeout: int = 10
+    # libpq connection options sent on EVERY connection this store opens (the pool's and the bootstrap's), e.g.
+    # "-c search_path=public". None sends none. EA pins its search_path here (TR-60a): with schema=None its tables are
+    # unqualified, and a role whose name matches a schema ("$user", public) silently read that schema's empty copies.
+    options: str | None = None

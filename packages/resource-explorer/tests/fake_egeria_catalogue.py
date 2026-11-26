@@ -657,3 +657,220 @@ class FakeEgeria:
                     cqn = f"{tqn}::{c}"
                     if self.by_qn(cqn) is None:
                         self.add_element(cqn, "RelationalColumn", parent=tg)
+
+
+# ── The repository model (TR-89): a repository is a SourceControlLibrary, GitHub a CloudPlatform ──────────────
+#
+# `FakeRepoEgeria` knows the one rule the TR-89 change turns on, so a site still on an Asset API fails in a test:
+# a SourceControlLibrary is a SoftwareCapability, NOT an Asset. Egeria's Asset-only calls (`find_assets`,
+# `get_asset_by_guid`, `update_asset`, `delete_asset`) therefore answer NotFound (or nothing) for a capability
+# GUID, and `add_capability_asset_use` / `link_software_capability_to_asset` refuse a capability at the Asset end.
+# Type facts are from the type archives at Egeria 7d0db895 (TR-89 audit §2); re-verify on a live Egeria.
+
+#: typeName -> its supertypes, only the ones this fake knows.
+_REPO_TYPES = {
+    "SourceControlLibrary": ["ResourceManager", "SoftwareCapability", "Referenceable", "OpenMetadataRoot"],
+    "SoftwareServerPlatform": ["ITInfrastructure", "Infrastructure", "Asset", "Referenceable", "OpenMetadataRoot"],
+    "Asset": ["Referenceable", "OpenMetadataRoot"],
+    "FileFolder": ["DataFolder", "DataStore", "Asset", "Referenceable", "OpenMetadataRoot"],
+    "SurveyReport": ["Asset", "Referenceable", "OpenMetadataRoot"],
+}
+
+
+def FakeNotFound(message: str = "not found"):  # noqa: N802 - used as an exception class by name in tests
+    """The REAL `PyegeriaNotFoundException`, built the way pyegeria builds it from a 404 answer, so
+    `egeria_absence` classifies it as "absent" exactly as it does a live NotFound."""
+    import httpx
+    from pyegeria.core._exceptions import PyegeriaNotFoundException
+
+    body = {"class": "VoidResponse", "relatedHTTPCode": 404, "exceptionErrorMessageId": "OMAG-GENERIC-HANDLERS-404-001",
+            "exceptionErrorMessage": message}
+    resp = httpx.Response(200, json=body, request=httpx.Request("POST", "https://localhost:9443/servers/v/api"))
+    return PyegeriaNotFoundException(resp, {"caller_method": "fake"}, additional_info=body)
+
+
+def _typed(value):
+    if isinstance(value, dict):
+        strings = {k: str(v) for k, v in value.items()}
+        return {"class": "MapTypePropertyValue", "mapElementCount": len(strings),
+                "mapValues": {"propertiesAsStrings": strings, "propertyCount": len(strings),
+                              "propertyNames": list(strings),
+                              "propertyValueMap": {k: {"class": "PrimitiveTypePropertyValue",
+                                                       "primitiveValue": v, "typeName": "string"}
+                                                   for k, v in strings.items()}}}
+    return {"class": "PrimitiveTypePropertyValue", "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+            "primitiveValue": value, "typeName": "string"}
+
+
+class FakeRepoEgeria:
+    """One object that answers as AssetMaker, MetadataExpert and ClassificationExplorer for the repository model.
+
+    Reads speak the LIVE shapes (`elementGUID`, `type`, `elementProperties.propertyValueMap`, a map attribute as a
+    `MapTypePropertyValue`; `get_metadata_element_by_unique_name` answers the string "No elements found" for a
+    miss). Every call is recorded in `calls` as (name, args)."""
+
+    def __init__(self):
+        self.elements: dict[str, dict] = {}
+        self.relationships: list[dict] = []
+        self.calls: list[tuple] = []
+        self._n = 0
+        self.fail_reads = False          # every read raises a connection error: "could not read"
+
+    # -- bookkeeping --------------------------------------------------------------------------------------------
+    def _new(self, type_name: str, props: dict, classifications: dict | None = None) -> str:
+        self._n += 1
+        guid = f"{self._n:08x}-0000-4000-8000-{self._n:012x}"
+        self.elements[guid] = {"type": type_name, "props": dict(props), "classifications": dict(classifications or {})}
+        return guid
+
+    def seed(self, type_name: str, qualified_name: str, **props) -> str:
+        return self._new(type_name, {"qualifiedName": qualified_name, **props})
+
+    def is_asset(self, guid: str) -> bool:
+        el = self.elements.get(guid)
+        return bool(el) and ("Asset" == el["type"] or "Asset" in _REPO_TYPES.get(el["type"], []))
+
+    def ops(self, name: str) -> list[tuple]:
+        return [c for c in self.calls if c[0] == name]
+
+    def by_qn(self, qn: str) -> str | None:
+        return next((g for g, e in self.elements.items() if e["props"].get("qualifiedName") == qn), None)
+
+    def _record(self, name, *args):
+        self.calls.append((name, args))
+
+    def _read_guard(self):
+        if self.fail_reads:
+            raise ConnectionError("Egeria is not answering")
+
+    # -- the live answer shape ----------------------------------------------------------------------------------
+    def _answer(self, guid: str) -> dict:
+        el = self.elements[guid]
+        pvm = {k: _typed(v) for k, v in el["props"].items()}
+        return {"elementGUID": guid,
+                "type": {"typeName": el["type"], "superTypeNames": _REPO_TYPES.get(el["type"], [])},
+                "elementProperties": {"propertiesAsStrings": {k: str(v) for k, v in el["props"].items()},
+                                      "propertyValueMap": pvm, "propertyCount": len(pvm),
+                                      "propertyNames": list(pvm)},
+                "classifications": [{"classificationName": n} for n in el["classifications"]],
+                "versions": {"createTime": el["props"].get("_created", "2026-11-20T00:00:00.000+00:00")}}
+
+    # -- AssetMaker: Asset-only reads and writes (NotFound for a capability) ---------------------------------------
+    def find_assets(self, search_string="*", starts_with=True, ignore_case=False, output_format="JSON", **kw):
+        self._record("find_assets", search_string)
+        self._read_guard()
+        hits = [{"elementHeader": {"guid": g}, "properties": dict(e["props"])}
+                for g, e in self.elements.items()
+                if self.is_asset(g) and str(e["props"].get("qualifiedName", "")).startswith(search_string)]
+        return hits or "No elements found"
+
+    def get_asset_by_guid(self, guid, *a, **kw):
+        self._record("get_asset_by_guid", guid)
+        self._read_guard()
+        if not self.is_asset(guid):
+            raise FakeNotFound(f"OMAG-GENERIC-HANDLERS-404-001 {guid} is not an Asset")
+        return {"elementHeader": {"guid": guid}, "properties": dict(self.elements[guid]["props"])}
+
+    def update_asset(self, guid, body=None, **kw):
+        self._record("update_asset", guid)
+        if not self.is_asset(guid):
+            raise FakeNotFound(f"{guid} is not an Asset")
+
+    def delete_asset(self, guid, *a, **kw):
+        self._record("delete_asset", guid)
+        if not self.is_asset(guid):
+            raise FakeNotFound(f"{guid} is not an Asset")
+        del self.elements[guid]
+
+    def create_asset(self, body=None, **kw):
+        props = dict((body or {}).get("properties") or {})
+        type_name = props.get("typeName", "Asset")
+        self._record("create_asset", type_name, copy.deepcopy(body))
+        if type_name != "Asset" and "Asset" not in _REPO_TYPES.get(type_name, []):
+            raise GatewayError(f"{type_name} is not an Asset")
+        cls = {k: v for k, v in ((body or {}).get("initialClassifications") or {}).items()}
+        return self._new(type_name, {k: v for k, v in props.items() if k not in ("class", "typeName")}, cls)
+
+    def add_capability_asset_use(self, capability_guid, asset_guid, body=None, **kw):
+        self._record("add_capability_asset_use", capability_guid, asset_guid)
+        if not self.is_asset(asset_guid):
+            raise FakeNotFound(f"CapabilityAssetUse end 2 must be an Asset: {asset_guid}")
+        return self._rel("CapabilityAssetUse", capability_guid, asset_guid)
+
+    # -- AssetMaker: the capability calls ---------------------------------------------------------------------------
+    def create_software_capability(self, body=None, **kw):
+        props = dict((body or {}).get("properties") or {})
+        type_name = props.get("typeName", "SoftwareCapability")
+        self._record("create_software_capability", type_name, copy.deepcopy(body))
+        kept = {k: v for k, v in props.items() if k not in ("class", "typeName")}
+        # Egeria drops `libraryType` unless the body names SourceControlLibraryProperties (audit §2.5).
+        if props.get("class") != "SourceControlLibraryProperties":
+            kept.pop("libraryType", None)
+        cls = (body or {}).get("initialClassifications") or {}
+        return self._new(type_name, kept, cls)
+
+    def update_software_capability(self, guid, body=None, **kw):
+        self._record("update_software_capability", guid, copy.deepcopy(body))
+        if guid not in self.elements or self.is_asset(guid):
+            raise FakeNotFound(f"{guid} is not a SoftwareCapability")
+        props = {k: v for k, v in ((body or {}).get("properties") or {}).items() if k not in ("class", "typeName")}
+        # A merge update replaces a map attribute whole, and leaves every attribute it does not name.
+        self.elements[guid]["props"].update(props)
+
+    def link_software_capability_to_asset(self, asset_guid, capability_guid, body=None, **kw):
+        self._record("link_software_capability_to_asset", asset_guid, capability_guid)
+        if not self.is_asset(asset_guid) or self.is_asset(capability_guid):
+            raise FakeNotFound("SupportedSoftwareCapability: an infrastructure Asset at end 1, a capability at end 2")
+        return self._rel("SupportedSoftwareCapability", asset_guid, capability_guid)
+
+    def _rel(self, rel_type, end1, end2) -> str:
+        guid = f"rel-{len(self.relationships) + 1:04d}"
+        self.relationships.append({"guid": guid, "type": rel_type, "end1": end1, "end2": end2})
+        return guid
+
+    def add_relationship(self, rel_type, end1, end2) -> str:
+        """A relationship a test seeds directly (e.g. ReportSubject)."""
+        return self._rel(rel_type, end1, end2)
+
+    # -- MetadataExpert / ClassificationExplorer: type-agnostic ---------------------------------------------------
+    def get_metadata_element_by_guid(self, guid=None, *a, **kw):
+        self._record("get_metadata_element_by_guid", guid)
+        self._read_guard()
+        if guid not in self.elements:
+            raise FakeNotFound(f"OMAG-GENERIC-HANDLERS-404-001 no element {guid}")
+        return self._answer(guid)
+
+    def get_element_by_guid(self, guid, *a, **kw):
+        self._record("get_element_by_guid", guid)
+        self._read_guard()
+        if guid not in self.elements:
+            raise FakeNotFound(f"no element {guid}")
+        return self._answer(guid)
+
+    def get_metadata_element_by_unique_name(self, name=None, property_name="qualifiedName", *a, **kw):
+        self._record("get_metadata_element_by_unique_name", name)
+        self._read_guard()
+        guid = self.by_qn(name)
+        return self._answer(guid) if guid else "No elements found"
+
+    def delete_metadata_element(self, guid, body=None, cascade_delete=False, **kw):
+        self._record("delete_metadata_element", guid)
+        if guid not in self.elements:
+            raise FakeNotFound(f"no element {guid}")
+        del self.elements[guid]
+
+    def get_related_metadata_elements(self, guid, relationship_type, body=None, starting_at_end=0, start_from=0,
+                                      page_size=100, **kw):
+        self._record("get_related_metadata_elements", guid, relationship_type)
+        self._read_guard()
+        rows = []
+        for r in self.relationships:
+            if r["type"] != relationship_type:
+                continue
+            at = r["end1"] if starting_at_end == 1 else r["end2"]
+            far = r["end2"] if starting_at_end == 1 else r["end1"]
+            if at == guid and far in self.elements:
+                rows.append({"relationshipGUID": r["guid"], "versions": {"createTime": "2026-11-20T00:00:00.000Z"},
+                             "element": self._answer(far)})
+        page = rows[start_from:start_from + page_size]
+        return {"elementList": page} if page else "No elements found"

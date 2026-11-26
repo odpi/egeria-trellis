@@ -174,7 +174,8 @@ class TestCheckAndHeal:
 
     def test_missing_batch_is_healed(self, tmp_path, monkeypatch):
         _write_batch(tmp_path, "b", canary={"qualified_name": "Q::b"})
-        monkeypatch.setattr(bs, "canary_present", lambda b, client=None: False)
+        seq = [False, True]      # missing, then present after the heal (TR-111)
+        monkeypatch.setattr(bs, "canary_present", lambda b, client=None: seq.pop(0) if len(seq) > 1 else seq[0])
         called = []
         monkeypatch.setattr(bs, "heal_batch", lambda b: called.append(b.batch_id) or (True, "ok"))
 

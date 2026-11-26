@@ -7,6 +7,7 @@ from contextvars import ContextVar
 
 from beeai_framework.tools import tool
 
+from resource_explorer.byte_format import format_bytes
 from resource_explorer.name_resolution import ambiguity_message, resolve_database
 
 
@@ -134,9 +135,7 @@ def query_project_stats_raw(resource_slug: str, days: int = 90) -> str:
         loc_str = "N/A"
 
     kb = d.get("repo_size_kb")
-    size_str = (
-        f"{int(kb) / 1024:.1f} MB" if kb and int(kb) >= 1024 else (f"{kb} KB" if kb else "N/A")
-    )
+    size_str = format_bytes(int(kb) * 1024) if kb else "N/A"  # repo_size_kb is KiB; decimal words (TR-81)
 
     # Prefer survey total (all file types) over code-only SQLite count
     try:

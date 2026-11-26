@@ -96,6 +96,14 @@ def test_a_column_matches_a_class_stated_against_its_sample_and_named_by_file_an
     assert out["established"] >= 1 and out["catalog"]["data_class_count"] == 1
 
 
+def test_the_run_records_when_it_began_not_only_when_it_ended(registry, tmp_path):
+    """TR-114: `ran_at` is the END of the run, after the sampled files were read; the START is what fs_activity needs."""
+    fs = _register(registry, _tree(tmp_path))
+    _profiles(registry)
+    out = fcm.run_file_class_match(fs, registry, catalog_loader=catalog())
+    assert out["started_at"] and out["started_at"] <= out["ran_at"]
+
+
 def test_a_pattern_no_class_has_is_a_proposal_and_nothing_is_created_in_egeria(registry, tmp_path):
     fs = _register(registry, _tree(tmp_path))
     _profiles(registry)
@@ -106,18 +114,14 @@ def test_a_pattern_no_class_has_is_a_proposal_and_nothing_is_created_in_egeria(r
     assert "a proposal for a new class" in fcm.run_words(out)
 
 
-def test_a_file_egeria_profiled_is_never_opened_and_says_why(registry, tmp_path, monkeypatch):
-    fs = _register(registry, _tree(tmp_path))
+def test_a_file_egeria_profiled_that_cannot_be_read_stays_not_sampled_and_says_why(registry, tmp_path):
+    """TR-126: an Egeria-profiled file is now read for matching only (tests/test_tr126_egeria_profiled_csv.py); when it
+    cannot be read here it is not_sampled with the reason, never matched and never "no match"."""
+    fs = _register(registry, _tree(tmp_path))                  # lake/people.csv is not on disk
     _profiles(registry, extra=[_col("lake/people.csv", "email", 0, source="egeria:abcd1234")])
-    from resource_explorer.surveyors.filesystem import file_profiles as fp
-
-    opened = []
-    real = fp._open_plain
-    monkeypatch.setattr(fp, "_open_plain", lambda p: opened.append(str(p)) or real(p))
     out = fcm.run_file_class_match(fs, registry, catalog_loader=catalog())
     egeria = next(m for m in out["matches"] if m["file_path"] == "lake/people.csv")
-    assert egeria["verdict"] == "not_sampled" and "Egeria's CSV Survey Service profiled this file" in egeria["statement"]
-    assert not any("people.csv" in p for p in opened)
+    assert egeria["verdict"] == "not_sampled"
     assert out["file_outcomes"]["egeria_profiled"] == 1
 
 

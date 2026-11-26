@@ -14,6 +14,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
+from collections.abc import Callable, Collection
 from typing import Any, ClassVar, NamedTuple
 from sqlalchemy import create_engine
 from resource_explorer.survey_time import now_utc_iso
@@ -291,10 +292,34 @@ class InvestigationPublishRunning(RuntimeError):
         self.slug, self.running = slug, running
 
 
+class SchemaNotReady(RuntimeError):
+    """RE_SCHEMA_MODE=external and the registry schema is not at this code's version (TR-112b).
+
+    Scope: this covers the registry (`ProjectRegistry`) only. Four other stores still run their own DDL on first use,
+    even in external mode: the metrics collector, trellis_feedback, trellis_vectorstore (including
+    `CREATE EXTENSION vector`) and trellis_artifact_tree. Bringing them under the schema Job is TR-115
+    (TR-112b part 2)."""
+
+
+SCHEMA_MODES = ("auto", "external")
+
+
+def schema_mode_from_env() -> str:
+    """RE_SCHEMA_MODE, validated: "auto" (default) or "external". "apply" is never accepted from the environment (TR-112b)."""
+    import os as _os
+    mode = (_os.environ.get("RE_SCHEMA_MODE") or "auto").strip().lower()
+    if mode not in SCHEMA_MODES:
+        raise ValueError(f"RE_SCHEMA_MODE must be one of {', '.join(SCHEMA_MODES)}, not {mode!r}")
+    return mode
+
+
 class ConnectionWrapper:
-    def __init__(self, raw_conn, is_postgres: bool):
+    def __init__(self, raw_conn, is_postgres: bool, statement_counter: "list[int] | None" = None):
         self.raw_conn = raw_conn
         self.is_postgres = is_postgres
+        # [n]: when set, every statement sent through this connection's cursors adds one (schema apply counts
+        # the setup this way). None for every ordinary connection.
+        self.statement_counter = statement_counter
 
     def __enter__(self):
         return self
@@ -324,16 +349,22 @@ class ConnectionWrapper:
     def cursor(self):
         raw_cursor = self.raw_conn.cursor()
         if self.is_postgres:
-            return PostgresCursorWrapper(raw_cursor)
+            w = PostgresCursorWrapper(raw_cursor)
         else:
-            return SQLiteCursorWrapper(raw_cursor)
+            w = SQLiteCursorWrapper(raw_cursor)
+        w.statement_counter = self.statement_counter
+        return w
 
 
 class SQLiteCursorWrapper:
+    statement_counter = None
+
     def __init__(self, raw_cursor):
         self.raw_cursor = raw_cursor
 
     def execute(self, sql: str, params: Any = None):
+        if self.statement_counter is not None:
+            self.statement_counter[0] += 1
         if params is None:
             self.raw_cursor.execute(sql)
         else:
@@ -465,6 +496,38 @@ FILESYSTEM_FILE_COLUMNS_DDL = (
         egeria_datafield_guid  TEXT NOT NULL DEFAULT '',
         state                  TEXT NOT NULL DEFAULT 'measured',
         UNIQUE(filesystem_slug, run_id, file_path, column_name)
+    )
+    """,
+)
+
+#: DDL for repo_branch_runs (TR-132 C1): which REFS of a repository a survey run measured or listed. One row per ref per run:
+#: the ref the survey READ (tier 'surveyed': its name, kind and commit, so a result says which branch, tag or commit it is about) and
+#: every other branch the GitHub API listed (tier 'listed': metadata only, nothing was read). 'catalogued' is for C2. Same rules as
+#: the other additive tables here: ONE idempotent block, CREATE ... IF NOT EXISTS only, no ALTER of an existing table, no data
+#: migration, no foreign keys, no question mark or colon-name token. It is created by `resource-explorer schema apply` (the marker's
+#: fingerprint follows this block), never by a pod in external mode. NULL means not known or not applicable (`protected`, and the
+#: three C2 columns `compared_to`, `changed_paths`, `deleted_paths`), never false or empty; `egeria_folder_guid` and `words` are
+#: filled when the Branch classification is set on the default branch's root folder or declined, in words.
+#: Retention: the newest REPO_BRANCH_RUNS_KEPT runs per repository; removing the repository removes them all.
+REPO_BRANCH_RUNS_KEPT = 10
+REPO_BRANCH_RUNS_DDL = (
+    """
+    CREATE TABLE IF NOT EXISTS repo_branch_runs (
+        slug               TEXT NOT NULL,
+        run_id             TEXT NOT NULL,
+        ref_name           TEXT NOT NULL,
+        ref_kind           TEXT NOT NULL DEFAULT 'branch',
+        surveyed_commit    TEXT NOT NULL DEFAULT '',
+        tier               TEXT NOT NULL DEFAULT 'listed',
+        is_default         INTEGER NOT NULL DEFAULT 0,
+        protected          INTEGER DEFAULT NULL,
+        compared_to        TEXT DEFAULT NULL,
+        changed_paths      TEXT DEFAULT NULL,
+        deleted_paths      TEXT DEFAULT NULL,
+        egeria_folder_guid TEXT DEFAULT NULL,
+        words              TEXT NOT NULL DEFAULT '',
+        recorded_at        TEXT NOT NULL,
+        UNIQUE(slug, run_id, ref_name, ref_kind)
     )
     """,
 )
@@ -704,6 +767,8 @@ API_REFERENCE_DDL = (
 
 
 class PostgresCursorWrapper:
+    statement_counter = None
+
     def __init__(self, raw_cursor):
         self.raw_cursor = raw_cursor
 
@@ -727,6 +792,8 @@ class PostgresCursorWrapper:
         return sql_trans
 
     def execute(self, sql: str, params: Any = None):
+        if self.statement_counter is not None:
+            self.statement_counter[0] += 1
         sql_trans = self._translate_sql(sql)
         if params is None:
             self.raw_cursor.execute(sql_trans)
@@ -1916,6 +1983,17 @@ def _target_request_type(target_json) -> str:
 #: Module-level, not a class attribute: trellis-analytics' RegistryReadView borrows these methods unbound.
 _NATIVE_ANNOTATION_ON_REPORT = "NOT (item_key IS NOT NULL AND content_hash IS NULL)"
 
+
+def is_re_walk_row(row: dict) -> bool:
+    """TR-106: is this stored `filesystem_surveys` row Resource Explorer's OWN walk of the whole file system, with its totals?
+    Not an Egeria publish proof (`egeria-published`), and not RE's walk BESIDE an Egeria-led Folder Survey (`walk-extensions`):
+    that row carries RE's totals too, but Egeria's survey is the inventory there. One predicate for the inventory reader, the
+    run credit (`_step_run_times`) and the survey tile, so the three cannot disagree."""
+    sd = (row or {}).get("survey_data")
+    return (row or {}).get("source") not in ("egeria-published", "walk-extensions") and isinstance(sd, dict) \
+        and sd.get("total_files") is not None
+
+
 class ProjectRegistry:
     # Process-wide cache: a Postgres `Engine` (connection pool) and whether
     # `_init_schema` has already run, keyed by `database_url`. Added
@@ -1952,8 +2030,25 @@ class ProjectRegistry:
     # the full URL internally; only the credential-free label is ever logged.
     _opened_logged: set[str] = set()
 
+    @classmethod
+    def open_for_schema_apply(cls, **kwargs) -> "ProjectRegistry":
+        """A registry that builds its engine and runs neither the setup nor the marker check: the apply command's.
+        The mode is passed to the instance, never kept on the class (no shared state between threads, and a
+        patched ProjectRegistry class cannot leak into a constructor)."""
+        self = cls.__new__(cls)
+        self._construct(schema_mode="apply", **kwargs)
+        return self
+
     def __init__(self, db_path: str = "data/registry.db", database_url: str | None = None) -> None:
-        """database_url, when given, is used verbatim — bypassing the
+        self._construct(db_path, database_url)
+
+    def _construct(self, db_path: str = "data/registry.db", database_url: str | None = None,
+                   schema_mode: str | None = None) -> None:
+        """The schema mode (TR-112b) comes from RE_SCHEMA_MODE. "auto" (the default) runs the schema setup here, as
+        always. "external" never runs DDL: it checks the schema-version marker that `resource-explorer schema apply`
+        wrote and raises SchemaNotReady when it is missing or for other code.
+
+        database_url, when given, is used verbatim — bypassing the
         db_path sentinel/config-lookup logic below entirely. Added for the
         real-Postgres integration test tier (Phase 8): db_path's own
         sentinel special-casing has no way to point a ProjectRegistry at an
@@ -1961,6 +2056,13 @@ class ProjectRegistry:
         without either mutating global config or forcing SQLite.
         """
         self.db_path = db_path
+        import os as _os
+        if schema_mode is None:
+            # "apply" is private to open_for_schema_apply's parameter: the environment value may only be auto or external.
+            schema_mode = (_os.environ.get("RE_SCHEMA_MODE") or "auto").strip().lower()
+            if schema_mode not in SCHEMA_MODES:
+                raise ValueError(f"RE_SCHEMA_MODE must be one of {', '.join(SCHEMA_MODES)}, not {schema_mode!r}")
+        self.schema_mode = schema_mode
         if database_url is not None:
             self.database_url = database_url
         elif db_path == "data/registry.db":
@@ -2055,15 +2157,14 @@ class ProjectRegistry:
             if self.database_url not in ProjectRegistry._pg_schema_ready:
                 with ProjectRegistry._pg_cache_lock:
                     if self.database_url not in ProjectRegistry._pg_schema_ready:
-                        self._run_schema_setup()
-                        ProjectRegistry._pg_schema_ready.add(self.database_url)
-                        ran_schema_init = True
+                        ran_schema_init = self._schema_at_start()
+                        if self.schema_mode != "apply":
+                            ProjectRegistry._pg_schema_ready.add(self.database_url)
         else:
             self.engine = create_engine(
                 self.database_url, pool_pre_ping=True, pool_recycle=1800,
             )
-            self._run_schema_setup()
-            ran_schema_init = True
+            ran_schema_init = self._schema_at_start()
         _elapsed_ms = (_time.perf_counter() - _t0) * 1000
         if _elapsed_ms > 5:
             from resource_explorer.registry_label import describe_registry
@@ -2124,7 +2225,7 @@ class ProjectRegistry:
             # project_analysis_metrics succeeds; with it on the same statement
             # raises IntegrityError, matching Postgres.
             raw_conn.execute("PRAGMA foreign_keys=ON")
-        conn = ConnectionWrapper(raw_conn, is_postgres)
+        conn = ConnectionWrapper(raw_conn, is_postgres, getattr(self, "_statement_counter", None))
         try:
             yield conn
             conn.commit()
@@ -2492,6 +2593,88 @@ class ProjectRegistry:
                     "AND name NOT LIKE 'sqlite_%'"
                 ).fetchall()
         return {r[0] for r in rows}
+
+    # ── TR-112b: schema apply, the version marker, RE_SCHEMA_MODE ─────────────────────────────────────────────
+    _SCHEMA_ADVISORY_LOCK = 7_112_002
+
+    def _schema_at_start(self) -> bool:
+        """What construction does about the schema: True when it ran the setup."""
+        if self.schema_mode == "auto":
+            self._run_schema_setup()
+            return True
+        if self.schema_mode == "external":
+            self._require_schema_marker()
+        return False
+
+    @classmethod
+    def schema_fingerprint(cls) -> str:
+        """Hash of the schema-defining code, including what `_init_schema` imports (see schema_fingerprint.py)."""
+        cached = cls.__dict__.get("_schema_fingerprint_cache")
+        if cached:
+            return cached
+        from resource_explorer.schema_fingerprint import fingerprint
+        digest = fingerprint(__name__, cls.__name__)
+        cls._schema_fingerprint_cache = digest
+        return digest
+
+    _MARKER_DDL = ("CREATE TABLE IF NOT EXISTS schema_version ("
+                   "id INTEGER PRIMARY KEY, schema_hash TEXT NOT NULL, statements INTEGER NOT NULL, applied_at TEXT NOT NULL)")
+
+    def _read_schema_marker(self):
+        """(hash, statements) from the marker row, or None when the table or row is missing."""
+        try:
+            with self._conn() as conn:
+                if self.database_url.startswith("postgresql"):
+                    found = conn.execute(
+                        "SELECT 1 FROM information_schema.tables WHERE table_schema = ? AND table_name = 'schema_version'",
+                        (self._search_path_schema(),)).fetchone()
+                    if not found:
+                        return None
+                row = conn.execute("SELECT schema_hash, statements FROM schema_version WHERE id = 1").fetchone()
+        except Exception:  # noqa: BLE001 - SQLite without the table
+            return None
+        return (row[0], int(row[1])) if row else None
+
+    def _require_schema_marker(self) -> None:
+        marker = self._read_schema_marker()
+        if marker is None or marker[0] != self.schema_fingerprint():
+            raise SchemaNotReady(
+                "the RE schema is not at this version: run `resource-explorer schema apply` (the chart's schema Job) first. "
+                + ("No schema-version marker was found." if marker is None else "The marker is for other code.")
+                + " RE_SCHEMA_MODE=external never runs DDL.")
+
+    def schema_apply(self) -> tuple[int, float]:
+        """Run the schema setup once, write the marker, and return (statements, seconds). When the marker already
+        matches this code nothing is sent but the marker read, and the stored statement count is returned. A
+        Postgres advisory lock makes concurrent Jobs take turns, so the second finds the marker and does nothing."""
+        import time as _t
+        t0 = _t.perf_counter()
+        lock_conn = None
+        if self.database_url.startswith("postgresql"):
+            lock_conn = self.engine.raw_connection()
+            lock_conn.cursor().execute("SELECT pg_advisory_lock(%s)", (self._SCHEMA_ADVISORY_LOCK,))
+        try:
+            marker = self._read_schema_marker()
+            if marker is not None and marker[0] == self.schema_fingerprint():
+                return marker[1], _t.perf_counter() - t0
+            self._statement_counter = [0]
+            try:
+                self._run_schema_setup()
+                with self._conn() as conn:
+                    conn.execute(self._MARKER_DDL)
+                setup_statements = self._statement_counter[0] + 1
+            finally:
+                self._statement_counter = None
+            from datetime import datetime, timezone
+            with self._conn() as conn:
+                conn.execute("DELETE FROM schema_version WHERE id = 1")
+                conn.execute("INSERT INTO schema_version (id, schema_hash, statements, applied_at) VALUES (1, ?, ?, ?)",
+                             (self.schema_fingerprint(), setup_statements, datetime.now(timezone.utc).isoformat()))
+            return setup_statements, _t.perf_counter() - t0
+        finally:
+            if lock_conn is not None:
+                lock_conn.cursor().execute("SELECT pg_advisory_unlock(%s)", (self._SCHEMA_ADVISORY_LOCK,))
+                lock_conn.close()
 
     def _run_schema_setup(self) -> None:
         """Run `_init_schema` and log exactly one INFO line saying what it
@@ -3901,6 +4084,9 @@ class ProjectRegistry:
                 conn.execute(_ddl)
             # filesystem_file_columns: ONE additive, idempotent statement (see FILESYSTEM_FILE_COLUMNS_DDL; owner's go 2026-10-23).
             for _ddl in FILESYSTEM_FILE_COLUMNS_DDL:
+                conn.execute(_ddl)
+            # repo_branch_runs: ONE additive, idempotent block (see REPO_BRANCH_RUNS_DDL; TR-132 C1).
+            for _ddl in REPO_BRANCH_RUNS_DDL:
                 conn.execute(_ddl)
             # step_annotations: ONE additive, idempotent block (see STEP_ANNOTATIONS_DDL).
             for _ddl in STEP_ANNOTATIONS_DDL:
@@ -5715,6 +5901,8 @@ class ProjectRegistry:
         "database_analysis_run",
         # One file system Analytic Library step (Files build step 6), run by run_queue._handle_filesystem_analysis_run.
         "filesystem_analysis_run",
+        # One analysis of one open data dataset (TR-54 B1), run by run_queue._handle_open_data_analysis_run. Stored, never published.
+        "open_data_analysis_run",
         "survey_definition_run",
         "scouting_scan",
         "stage_batch",
@@ -8132,6 +8320,7 @@ class ProjectRegistry:
             conn.execute("DELETE FROM project_aliases WHERE project_slug = ?", (normalized,))
             conn.execute("DELETE FROM project_contributor_stats WHERE project_slug = ?", (normalized,))
             conn.execute("DELETE FROM project_contributors WHERE project_slug = ?", (normalized,))
+            conn.execute("DELETE FROM repo_branch_runs WHERE slug = ?", (normalized,))
             conn.execute("DELETE FROM project_dependencies WHERE project_slug = ?", (normalized,))
             conn.execute("DELETE FROM project_file_type_counts WHERE project_slug = ?", (normalized,))
             conn.execute("DELETE FROM project_file_inventory WHERE project_slug = ?", (normalized,))
@@ -10087,11 +10276,10 @@ class ProjectRegistry:
     # ── Egeria integration ────────────────────────────────────────────────────
 
     def get_egeria_asset_guid(self, slug: str) -> str | None:
-        """Return the cached GUID of this project's own Egeria Asset, or None.
+        """Return the cached GUID of this project's own Egeria element, or None.
 
-        Named for the repository's Asset since 2026-09-14 -- it cached a
-        SourceControlLibrary GUID before that was corrected (see
-        egeria_publisher.py's module docstring); the column name and this
+        Named for the repository's Asset since 2026-09-14; since TR-89 (2026-11-19) the element is a
+        SourceControlLibrary again (see egeria_publisher.py's module docstring). The column name and this
         method's name are unchanged, only what they point at."""
         slug = self._normalize_slug(slug)
         with self._conn() as conn:
@@ -12444,6 +12632,10 @@ class ProjectRegistry:
     #: null GUID, and only one of them is a deliberate choice.
     BINDING_LOCAL = "local"      # ad-hoc: no Egeria Project, by choice
     BINDING_EGERIA = "egeria"    # has one, or is meant to
+    #: TR-120. An investigation bound "egeria" with no Project GUID is not broken and not local: the binding only
+    #: records intent, and the Egeria Project is created when the investigation is promoted. Said in words wherever
+    #: the empty GUID would otherwise read as "none" or as created.
+    EGERIA_PROJECT_NOT_CREATED_WORDS = "Egeria Project not created yet: Publish to Egeria creates it"
     EGERIA_BINDINGS = (BINDING_LOCAL, BINDING_EGERIA)
 
     #: The THIRD axis (F56, owner's Option D, 2026-11-04): who may see the
@@ -12684,6 +12876,11 @@ class ProjectRegistry:
             "free_text_name": d.get("egeria_free_text_name") or "",
         }
         d["member_count"] = len(self.list_investigation_members(slug))
+        # TR-120: said in words, only when it is true. After an Egeria reset the Project is gone (status unbound),
+        # which has its own words; a local investigation was never going to have one.
+        if ((d.get("egeria_binding") or self.BINDING_EGERIA) == self.BINDING_EGERIA
+                and not d.get("egeria_project_guid") and d["egeria_context"]["status"] != "unbound"):
+            d["egeria_project_words"] = self.EGERIA_PROJECT_NOT_CREATED_WORDS
         return d
 
     def list_investigations(self, *, include_closed: bool = False,
@@ -15677,6 +15874,76 @@ class ProjectRegistry:
                 conn.execute("DELETE FROM filesystem_file_columns WHERE filesystem_slug = ? AND run_id = ?", (normalized, old))
         return {"rows": len(rows), "run_id": run_id, "pruned_runs": pruned}
 
+    # ── repo_branch_runs (TR-132 C1) ───────────────────────────────────────────────────────────────────────────
+
+    REPO_BRANCH_FIELDS = ("ref_name", "ref_kind", "surveyed_commit", "tier", "is_default", "protected", "compared_to",
+                          "changed_paths", "deleted_paths", "egeria_folder_guid", "words")
+
+    @staticmethod
+    def _branch_row_bool(value):
+        """1 / 0 for a known flag, None (stored NULL) for an unknown one: never false for "not known"."""
+        return None if value is None else (1 if value else 0)
+
+    def record_repo_branch_runs(self, slug: str, run_id: str, rows: list[dict], *, keep_runs: int | None = None) -> dict:
+        """Store one survey run's refs (all or none: one transaction). A second call for the SAME run replaces only that
+        run's rows; every other run's rows are untouched. Then the runs older than the newest `keep_runs` go. Returns
+        {rows, run_id, pruned_runs}."""
+        keep = REPO_BRANCH_RUNS_KEPT if keep_runs is None else keep_runs
+        normalized = self._normalize_slug(slug)
+        now = datetime.utcnow().isoformat()
+        cols = ("slug", "run_id", *self.REPO_BRANCH_FIELDS, "recorded_at")
+        sql = f"INSERT INTO repo_branch_runs ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})"
+        batch = []
+        for r in rows:
+            batch.append((normalized, run_id, r["ref_name"], r.get("ref_kind") or "branch", r.get("surveyed_commit") or "",
+                          r.get("tier") or "listed", 1 if r.get("is_default") else 0, self._branch_row_bool(r.get("protected")),
+                          r.get("compared_to"), r.get("changed_paths"), r.get("deleted_paths"),
+                          r.get("egeria_folder_guid"), r.get("words") or "", now))
+        with self._conn() as conn:
+            conn.execute("DELETE FROM repo_branch_runs WHERE slug = ? AND run_id = ?", (normalized, run_id))
+            if batch:
+                conn.executemany(sql, batch)
+            runs = [x[0] for x in conn.execute(
+                "SELECT DISTINCT run_id FROM repo_branch_runs WHERE slug = ? ORDER BY run_id DESC", (normalized,)).fetchall()]
+            pruned = runs[keep:] if keep >= 0 else []
+            for old in pruned:
+                conn.execute("DELETE FROM repo_branch_runs WHERE slug = ? AND run_id = ?", (normalized, old))
+        return {"rows": len(batch), "run_id": run_id, "pruned_runs": pruned}
+
+    def list_repo_branch_runs(self, slug: str, run_id: str | None = None) -> list[dict]:
+        """The refs of ONE run: `run_id`, or the newest run when it is None. Surveyed rows first, then the default branch,
+        then by name. [] when the repository has never been surveyed with this recording (never a made-up row)."""
+        normalized = self._normalize_slug(slug)
+        with self._conn() as conn:
+            if run_id is None:
+                found = conn.execute("SELECT MAX(run_id) FROM repo_branch_runs WHERE slug = ?", (normalized,)).fetchone()
+                run_id = found[0] if found else None
+                if not run_id:
+                    return []
+            cur = conn.execute(
+                "SELECT slug, run_id, " + ", ".join(self.REPO_BRANCH_FIELDS) + ", recorded_at FROM repo_branch_runs "
+                "WHERE slug = ? AND run_id = ? ORDER BY CASE tier WHEN 'surveyed' THEN 0 ELSE 1 END, "
+                "is_default DESC, ref_name", (normalized, run_id))
+            out = []
+            for row in cur.fetchall():
+                d = dict(row)
+                d["is_default"] = bool(d["is_default"])
+                d["protected"] = None if d["protected"] is None else bool(d["protected"])
+                out.append(d)
+        return out
+
+    def set_repo_branch_outcome(self, slug: str, run_id: str, ref_name: str, ref_kind: str, *, words: str,
+                                egeria_folder_guid: str | None = None) -> int:
+        """What came of setting the Branch classification on this ref's folder: the words, and the folder's GUID when there
+        was one. Returns the rows changed (0 when the run has no such row)."""
+        normalized = self._normalize_slug(slug)
+        with self._conn() as conn:
+            cur = conn.execute(
+                "UPDATE repo_branch_runs SET words = ?, egeria_folder_guid = ? "
+                "WHERE slug = ? AND run_id = ? AND ref_name = ? AND ref_kind = ?",
+                (words, egeria_folder_guid, normalized, run_id, ref_name, ref_kind))
+            return cur.rowcount or 0
+
     def replace_filesystem_file_profile(self, fs_slug: str, run_id: str, file_path: str, rows: list[dict]) -> int:
         """Replace ONE file's rows within a run (Egeria's report read back for a file that was submitted). One transaction."""
         normalized = self._normalize_slug(fs_slug)
@@ -15903,6 +16170,24 @@ class ProjectRegistry:
             d["annotations"] = json.loads(d.pop("annotations_json") or "[]")
             result.append(d)
         return self._attach_publish_proofs(result)
+
+    def rfa_row_exists_for_finding_key(self, entity_slug: str, key: str) -> bool:
+        """Whether an RFA activity row for this file-system finding key exists (TR-109 W3), however old. Asked of the
+        store by key, not by scanning the newest N entries. The key is a substring of the row's annotations JSON, so the
+        SQL narrows (LIKE, escaped) and the JSON confirms: a key that only looks like another's never matches."""
+        like = json.dumps(key).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT annotations_json FROM activity_log WHERE entity_slug = ? AND operation = 'rfa' "
+                "AND annotations_json LIKE ? ESCAPE '\\'", (entity_slug, f"%{like}%")).fetchall()
+        for r in rows:
+            try:
+                anns = json.loads(dict(r)["annotations_json"] or "[]")
+            except ValueError:
+                continue
+            if any(isinstance(a, dict) and a.get("finding_key") == key for a in anns):
+                return True
+        return False
 
     def get_activity(self, entry_id: str) -> dict | None:
         with self._conn() as conn:
@@ -16372,7 +16657,21 @@ class ProjectRegistry:
             # C1: a completed Egeria Folder Survey (report read back) is a run of filesystem_inventory, where Egeria leads.
             found = sorted(found + [("filesystem_inventory", ts) for ts in self._completed_native_survey_times(slug)],
                            key=lambda kv: kv[1], reverse=True)
+            # TR-106: an RE-led walk keeps its totals on a stored survey row and writes no step run of its own: it is a run
+            # of filesystem_inventory too, or the inventory reads "not measured" over a file system RE has walked.
+            found = sorted(found + [("filesystem_inventory", ts) for ts in self._walk_survey_times(slug)],
+                           key=lambda kv: kv[1], reverse=True)
         return found
+
+    def _walk_survey_times(self, slug: str) -> list[str]:
+        """`surveyed_at` of this file system's stored survey rows that carry the walk's totals (`total_files`) and are not an
+        Egeria publish proof, newest first. Empty when it could not be read: nothing is credited on a guess."""
+        try:
+            return [str((r.get("survey_data") or {}).get("surveyed_at") or r.get("surveyed_at"))
+                    for r in self.list_filesystem_surveys(slug)
+                    if is_re_walk_row(r) and (r["survey_data"].get("surveyed_at") or r.get("surveyed_at"))]
+        except Exception:
+            return []
 
     def _completed_native_survey_times(self, slug: str) -> list[str]:
         """`surveyed_at` of the `egeria-native:*` rows of this file system whose engine action succeeded AND whose

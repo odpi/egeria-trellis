@@ -14,6 +14,10 @@ from resource_explorer.github.bounded_retry import bounded_kwargs
 log = logging.getLogger(__name__)
 
 
+class UnknownRef(ValueError):
+    """A requested ref is neither a branch, a tag nor a commit of the repository."""
+
+
 class GitHubClient:
     """
     Rate-limit-aware GitHub API client.
@@ -522,6 +526,58 @@ class GitHubClient:
 
     def get_default_branch(self, repo: Repository) -> str:
         return repo.default_branch
+
+    #: The most branches one listing returns. A repository with more says so in words (it is never a silent cut).
+    MAX_BRANCHES_LISTED = 500
+
+    def list_branches(self, repo: Repository, limit: int | None = None) -> tuple[list[dict], bool]:
+        """(branches, more): every branch of the repository, METADATA ONLY, paginated by PyGitHub (nothing is read from them).
+        Each is {name, head_sha, protected, last_commit_date}; `last_commit_date` is None because it costs one request per
+        branch, so it is not fetched (None means not read, never a date). `more` is True when the repository has more than
+        `limit` (default MAX_BRANCHES_LISTED), so the caller can say so."""
+        cap = self.MAX_BRANCHES_LISTED if limit is None else limit
+        out: list[dict] = []
+        more = False
+        for b in repo.get_branches():
+            if len(out) >= cap:
+                more = True
+                break
+            commit = getattr(b, "commit", None)
+            out.append({"name": b.name, "head_sha": getattr(commit, "sha", "") or "",
+                        "protected": getattr(b, "protected", None), "last_commit_date": None})
+        return out, more
+
+    def resolve_ref(self, repo: Repository, ref: str | None = None) -> dict:
+        """What a survey of `ref` reads: {ref_name, ref_kind, surveyed_commit}. No ref means the default branch. A named ref is
+        a branch if there is one by that name, else a tag, else a commit (a hex SHA of at least 7 digits); anything else
+        raises UnknownRef. `surveyed_commit` is the commit the ref points to now."""
+        if not ref:
+            name = repo.default_branch
+            return {"ref_name": name, "ref_kind": "branch", "surveyed_commit": self._commit_of_branch(repo, name)}
+        try:
+            return {"ref_name": ref, "ref_kind": "branch", "surveyed_commit": self._commit_of_branch(repo, ref)}
+        except GithubException as exc:
+            if getattr(exc, "status", None) != 404:
+                raise
+        try:
+            git_ref = repo.get_git_ref(f"tags/{ref}")
+            obj = git_ref.object
+            sha = obj.sha
+            if getattr(obj, "type", "commit") == "tag":          # an annotated tag points at a tag object, not the commit
+                sha = repo.get_git_tag(sha).object.sha
+            return {"ref_name": ref, "ref_kind": "tag", "surveyed_commit": sha}
+        except GithubException as exc:
+            if getattr(exc, "status", None) != 404:
+                raise
+        import re as _re
+
+        if _re.fullmatch(r"[0-9a-fA-F]{7,40}", ref):
+            return {"ref_name": ref, "ref_kind": "commit", "surveyed_commit": repo.get_commit(ref).sha}
+        raise UnknownRef(f"'{ref}' is not a branch, a tag or a commit of this repository")
+
+    @staticmethod
+    def _commit_of_branch(repo: Repository, name: str) -> str:
+        return repo.get_branch(name).commit.sha
 
     def get_latest_commit_sha(self, repo: Repository) -> str:
         return repo.get_commits()[0].sha

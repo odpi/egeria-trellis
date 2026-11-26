@@ -36,6 +36,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from resource_explorer.byte_format import format_bytes
 from resource_explorer.index_state import has_own_index, own_collections, shared_collections
 
 log = logging.getLogger(__name__)
@@ -216,7 +217,7 @@ def queue(registry, slug: str, *, requested_by: str, store=None) -> dict:
 def needs_words(needs: int | None) -> str:
     if needs is None:
         return "the space it needs could not be measured"
-    return (f"needs about {needs / 1_048_576:,.0f} MB more in the database (the current index's size, measured) "
+    return (f"needs about {format_bytes(needs)} more in the database (the current index's size, measured) "
             f"until its previous index is dropped, {KEEP_PREVIOUS_DAYS} days after the swap")
 
 

@@ -65,7 +65,8 @@ What it does (all its writes are in RE's registry; no DDL; no proof row is ever 
         project_published_annotation_types). The rows, their times and who made them stay.
   REMOVE rows that only cache an Egeria element: architecture_materialized_blueprints / _components / _ports,
         survey_definition_cache, egeria_linkage_status, and the app_settings keys egeria_register_claim::*,
-        egeria_server_claim::*, egeria_server_unconfirmed::*, egeria.github_source_control_library_guid.
+        egeria_server_claim::*, egeria_server_unconfirmed::*, egeria.github_source_control_library_guid,
+        egeria.github_platform_guid (TR-89).
   OUTBOX: rows that are not terminal (not done, dead, superseded or cancelled) become 'superseded' with the
         reason "Egeria reset <when>". 'done' rows are kept untouched; 'dead' rows are left 'dead' (listed as
         "dead before the reset · untouched").
@@ -134,7 +135,10 @@ SETTING_PREFIXES = ("egeria_register_claim::", "egeria_server_claim::", "egeria_
                     "egeria_server_guid::", "egeria_server_cred_slug::", "egeria_asset_guid::")
 #: Tables created lazily by their own module; the only ones --skip-missing-table accepts.
 LAZY_TABLES = ("work_lists",)
-SETTING_KEYS = ("egeria.github_source_control_library_guid",)
+#: Both GitHub-singleton GUID keys: the pre-TR-89 SourceControlLibrary key (never read again, but a database that
+#: was published before TR-89 still holds it) and TR-89's SoftwareServerPlatform key, which the publisher verifies
+#: itself but which a reset must still clear, as it clears every other pointer into the Egeria it replaced.
+SETTING_KEYS = ("egeria.github_source_control_library_guid", "egeria.github_platform_guid")
 PROOF_KIND = "egeria_reset"
 
 #: What a by-GUID read of one pointer answered. GONE is Egeria's own not-found; anything else that is not a
@@ -621,9 +625,10 @@ def apply_plan(conn, plan: dict, cleared_by: str, snapshot_path: Path, now: date
             _group(conn, run)
             done[a["id"]] = n[0]
     except Exception as exc:
+        failed_kind = type(exc).__name__
         _group(conn, lambda: conn.execute(
             "UPDATE activity_log SET status = 'error', summary = ? WHERE id = ?",
-            (f"Egeria reset cleanup FAILED in group {group} after {len(done)} committed: {type(exc).__name__}",
+            (f"Egeria reset cleanup FAILED in group {group} after {len(done)} committed: {failed_kind}",
              act_id)))
         raise ApplyFailed(group, list(done), exc) from None
     try:

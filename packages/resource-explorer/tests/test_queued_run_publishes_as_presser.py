@@ -384,7 +384,9 @@ def test_a_signed_out_press_is_not_a_pressed_run(tmp_path, monkeypatch):
     monkeypatch.setattr("resource_explorer.registry.ProjectRegistry.__init__",
                         lambda self, db_path=None: setattr(self, "__dict__", registry.__dict__) or None)
     from resource_explorer.web.app import app
+    from tests.zone_fakes import open_access
 
+    open_access(monkeypatch, caller_if_none="signed-out-stand-in")  # TR-95: the run route checks start_action; these tests are about something else
     resp = TestClient(app).post("/api/survey-definitions/database/mydb/run",
                                 json={"survey_definition_ref": "GovActionProcess::Test"})
     assert resp.status_code == 200, resp.text

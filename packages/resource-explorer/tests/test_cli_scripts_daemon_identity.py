@@ -38,6 +38,8 @@ class _FakeReader:
     "reconcile_survey_definition_scopes",
     "reconcile_database_survey_definition_links",
     "reconcile_database_survey_definition_scopes",
+    "reconcile_filesystem_survey_definition_links",
+    "reconcile_filesystem_survey_definition_scopes",
 ])
 def test_reconciler_main_reaches_reader_as_daemon(script, monkeypatch):
     from resource_explorer.egeria_clients import KIND_DAEMON

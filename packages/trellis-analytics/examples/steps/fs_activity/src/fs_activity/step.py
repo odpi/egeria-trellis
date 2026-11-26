@@ -18,10 +18,12 @@ Never a silent zero, and "can't tell" said when it is so:
   be told apart and is not called cold);
 - Resource Explorer's own walk reads a file to hash it, so a file the PREVIOUS walk hashed, last read at or after
   that walk's start, may show Resource Explorer's read: it is counted apart, never as hot.
-- With no earlier walk that kept rows, this walk's own hashing is the read there is to name: any access at or after this
-  walk's start may be Resource Explorer's own and is counted apart with the same words (whichever branch led). A file last
-  read before it is not caveated. (Profile and narrative runs also open files; their times are not in the library's ODS
-  reads, so they are not caveated yet.)
+- With no earlier walk that kept rows, this walk's own hashing is a read there is to name: any access at or after this
+  walk's start may be Resource Explorer's own and is counted apart with the same words. So is any access at or after the
+  start of a profile, narrative or data-class run Resource Explorer made since the previous walk (the library's
+  `filesystem_own_reads`, TR-114): the earliest of these leads, whichever branch led. A file last read before it is not
+  caveated. A run recorded only by its end (older narrative and data-class runs) is dated by that end, so reads inside
+  it are not claimed; when the read itself fails, that is said in the summary, never taken as "no reads of its own".
 """
 from __future__ import annotations
 
@@ -112,20 +114,44 @@ def run(inputs) -> list[dict]:
         v = {**common, **_bands(mod, hot, cold), "Files Without A Modified Time": no_mtime, "basis": MODIFY_BASIS}
         out.append({"scope": slug, "state": "measured", "value": v,
                     "summary": (f"{_n(v['Hot Files'], 'file')} modified within {hot} days; {v['Cold Files']:,} not "
-                                f"modified for over {cold} days ({v['Cold Bytes']:,} bytes)"
+                                f"modified for over {cold} days ({v['Cold Bytes']:,} bytes) "
+                                f"on the walk of {_stamp(walk['run_id'])}"
                                 + (f"; {no_mtime:,} without a modified time" if no_mtime else ""))})
     out.append(_access(slug, walk, runs[1] if len(runs) > 1 else None, rows, age, hot, cold, common, inputs))
     return out
 
 
-def _first_own_read(walk, previous) -> datetime | None:
+def _own_reads(inputs, slug, walk, previous):
+    """(the times Resource Explorer began reading this file system's files between the previous walk and this one, why
+    they could not be read or None). A read that cannot be made is said, never taken as "there were none"."""
+    read = getattr(inputs.ods, "filesystem_own_reads", None)
+    if read is None:
+        return [], "this host does not offer the read"
+    try:
+        runs = read(slug, previous["run_id"] if previous is not None else "")
+    except Exception as exc:  # noqa: BLE001 -- any failure of the read is said, not an empty answer
+        return [], str(exc) or exc.__class__.__name__
+    at = _parse(walk["run_id"])
+    times = []
+    for r in runs:
+        # a profile run is recorded at its start; the narrative and data-class runs at their end, and keep `started_at`.
+        # Without a start, the time it was recorded is all that is known (a later bound: reads before it are not claimed).
+        begun = _parse(r.get("started_at")) or _parse(r.get("surveyed_at"))
+        if begun is not None and (at is None or begun <= at):     # a run that began after this walk cannot be in what it saw
+            times.append(begun)
+    return times, None
+
+
+def _first_own_read(walk, previous, own_reads=()) -> datetime | None:
     """The earliest time Resource Explorer itself opened this file system's files that the per-file rows do not already
-    attribute: this walk's own start when it hashed and no earlier walk kept rows to say which files (so the previous-walk
-    rule has nothing to read). None otherwise. Profile and narrative runs also open files, but the library's ODS reads do not
-    expose their times yet; that needs a read added to the library (`ODS_READS`), so they are not caveated here."""
+    attribute: the earliest of this walk's own start when it hashed and no earlier walk kept rows to say which files (so
+    the previous-walk rule has nothing to read), and the start of each profile, narrative or data-class run since the
+    previous walk (`own_reads`, from the library's `filesystem_own_reads`). None when there is neither."""
+    firsts = list(own_reads)
     if previous is None and int(walk.get("hashed") or 0) > 0:
-        return _parse(walk["run_id"])
-    return None
+        firsts.append(_parse(walk["run_id"]))
+    firsts = [t for t in firsts if t is not None]
+    return min(firsts) if firsts else None
 
 
 def _access(slug, walk, previous, rows, age, hot, cold, common, inputs) -> dict:
@@ -147,7 +173,8 @@ def _access(slug, walk, previous, rows, age, hot, cold, common, inputs) -> dict:
                              "nobody read since writing it would look the same, so which files are read cannot be told",
                        "access times not recorded on this mount", ACCESS)
     ours: set[str] = set()
-    first_read = _first_own_read(walk, previous)
+    own_times, own_unread = _own_reads(inputs, slug, walk, previous)
+    first_read = _first_own_read(walk, previous, own_times)
     if first_read is not None:
         ours = {r["file_path"] for r in timed if (_parse(r.get("accessed_at")) or datetime.min) >= first_read}
     if previous is not None:
@@ -159,7 +186,11 @@ def _access(slug, walk, previous, rows, age, hot, cold, common, inputs) -> dict:
              if r["file_path"] not in ours and (a := age(r.get("accessed_at"))) is not None]
     v = {**common, **_bands(pairs, hot, cold), "Files Without An Access Time": len(rows) - len(timed),
          "Access Possibly Resource Explorer's Own Read": len(ours), "basis": ACCESS_BASIS}
-    caveat = (f"; {len(ours):,} last read possibly by Resource Explorer's previous walk, not counted" if ours else "")
+    caveat = (f"; {len(ours):,} last read possibly by Resource Explorer's own reads (its walk, profiles, narrative files or data-class matches), not counted" if ours else "")
+    if own_unread:
+        # not "no own reads": the read failed, so profile, narrative and data-class reads are not separated here
+        caveat += (f"; Resource Explorer's own reads could not be read ({own_unread}), so reads by its profiles, narrative "
+                   "files and data-class matches are not separated")
     return {"scope": slug, "state": "measured", "measure": ACCESS, "value": v,
             "summary": (f"{_n(v['Hot Files'], 'file')} read within {hot} days; {v['Cold Files']:,} not read for over "
-                        f"{cold} days{caveat}")}
+                        f"{cold} days on the walk of {_stamp(walk['run_id'])}{caveat}")}

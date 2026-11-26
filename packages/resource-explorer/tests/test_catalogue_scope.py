@@ -898,9 +898,9 @@ def test_size_is_formatted_dated_and_a_schema_with_unsized_tables_says_at_least(
     world["tree"]["schemas"][0]["tables"][0].update(size_bytes=22 * 1024 * 1024)
     world["tree"]["schemas"][0]["tables"][1].update(size_bytes=None)
     v = view(world)
-    assert node(v, "sales", "orders")["size_view"]["text"] == "22 MB"
+    assert node(v, "sales", "orders")["size_view"]["text"] == "23.1 MB"
     assert node(v, "sales", "customers")["size_view"]["text"] == "not measured"
-    assert node(v, "sales")["size_view"]["text"] == "≥ 22 MB"
+    assert node(v, "sales")["size_view"]["text"] == "≥ 23.1 MB"
 
 
 # ── a failed read is observable, never "nothing known" / "not measured" ─────────────
@@ -965,7 +965,7 @@ def test_a_native_size_of_zero_with_a_column_count_of_zero_is_not_a_measurement(
     assert u["size_view"]["text"] == "not measured" and u["size_bytes"] is None and u["column_count"] is None
     assert w["size_view"]["text"] == "not measured" and w["size_bytes"] is None      # rows were counted
     assert w["column_count"] == 4                                                      # a real count stays
-    assert r["size_view"]["text"] == "16 KB" and r["column_count"] == 3
+    assert r["size_view"]["text"] == "16.4 KB" and r["column_count"] == 3
     assert "size" not in u["facts_from"]                                              # no source claimed for a non-measurement
 
 

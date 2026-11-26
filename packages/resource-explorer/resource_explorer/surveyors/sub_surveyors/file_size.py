@@ -7,6 +7,8 @@ the actual stored inventory and flags oversized individual files.
 """
 from __future__ import annotations
 
+from resource_explorer.byte_format import format_bytes
+
 import logging
 from collections import defaultdict
 from pathlib import Path
@@ -31,13 +33,7 @@ _VERY_LARGE_FILE_THRESHOLD_MB = 200
 
 
 def _fmt_size(size_bytes: int) -> str:
-    if size_bytes >= 1_073_741_824:
-        return f"{size_bytes / 1_073_741_824:.1f} GB"
-    if size_bytes >= 1_048_576:
-        return f"{size_bytes / 1_048_576:.1f} MB"
-    if size_bytes >= 1_024:
-        return f"{size_bytes / 1_024:.1f} KB"
-    return f"{size_bytes} B"
+    return format_bytes(size_bytes)
 
 
 class FileSizeSurveyor(BaseSurveyor):

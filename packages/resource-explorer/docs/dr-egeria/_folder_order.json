@@ -25,6 +25,10 @@
     "documents or scripts. Listed after survey-definitions rather than before purely because that",
     "is authoring order; the two do not depend on each other, only both on questions.",
     "",
+    "survey-definitions-filesystem (added with item D2) is the file-system counterpart: same dependency on questions and on",
+    "engine-host, same non-idempotent Link Next Process Step mechanism, its own directory/canary/reconciler. It does not",
+    "depend on the other two survey-definition batches.",
+    "",
     "engine-host (added 2026-11-04, F54) runs BEFORE the survey-definition batches since RE-HEAL-LEDGER-TRUST",
     "(2026-11-07): their steps' 'Link Action to Action Executor' blocks target the engine it declares, and both declare",
     "\"requires\": [\"engine-host\"] in their _batch.json, so bootstrap.order_by_requires would put it first anyway; this",
@@ -38,6 +42,7 @@
     "engine-host",
     "survey-definitions",
     "survey-definitions-database",
+    "survey-definitions-filesystem",
     "governance-metrics"
   ]
 }

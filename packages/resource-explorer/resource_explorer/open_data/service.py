@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 from resource_explorer.open_data import match as match_mod
 from resource_explorer.open_data.absence import NOT_REPORTED
+from resource_explorer.open_data.ckan import NotCkan
 from resource_explorer.open_data.adapters import (
     Adapter, Price, adapter_for_api_kind, discover_adapters, price)
 from resource_explorer.open_data.store import OpenDataStore, is_reserved_portal, normalise_url, now, slugify
@@ -105,7 +106,16 @@ def register_portal(store: OpenDataStore, *, display_name: str, api_kind: str, b
     if held:
         raise OpenDataError(f"Already registered as '{held['display_name']}' ({held['slug']}).")
     base_url = typed
-    probed = _probe(cls, typed, transport)
+    try:
+        probed = _probe(cls, typed, transport)
+    except NotCkan as not_ckan:
+        # TR-54 E1: a portal typed as CKAN whose /api/3/action is not there may still be a DCAT feed (DKAN 2, ArcGIS Hub ...)
+        dcat = adapter_for_api_kind("DCAT-AP", "portal")
+        try:
+            probed = {**(_probe(dcat, typed, transport) or {}), "typed_as": api_kind}
+        except OpenDataError as exc:
+            raise OpenDataError(f"{not_ckan}; and it is not a DCAT catalog either: {exc}") from exc
+        cls = dcat
     if probed:
         base_url = _check_url(probed["feed_url"])
         page_size = probed["page_size"] if isinstance(probed.get("page_size"), int) else None
@@ -145,9 +155,13 @@ def _probe(cls, base_url: str, transport) -> dict | None:
     from resource_explorer.open_data.transport import TransportError
 
     if transport is None:
+        if getattr(cls, "PROBE_OPTIONAL", False):
+            return None
         raise ValueError("registering a portal whose adapter probes needs a transport")
     try:
         return cls.probe(base_url, transport)
+    except NotCkan:
+        raise
     except TransportError as exc:
         raise OpenDataError(str(exc)) from exc
 
@@ -311,6 +325,29 @@ class Chosen:
     dataset_id: str
 
 
+def _add_investigation_member(registry, investigation: str, dataset_slug: str, rationale: str) -> bool:
+    """Put an imported dataset in the investigation's scope (its Folio) as an `open_data` member.
+
+    Until TR-54 A1 an import only tagged the work list with `investigation=`, so the dataset never entered the
+    investigation's scope. `keep_existing` so a repeat import never overwrites a rationale a person wrote. False when
+    there is no such investigation: the caller says so rather than dropping it silently."""
+    folio = registry.get_or_create_working_set(investigation) if investigation else None
+    if not folio:
+        return False
+    registry.add_working_set_member(folio["slug"], "open_data", dataset_slug, membership_rationale=rationale,
+                                    keep_existing=True)
+    return True
+
+
+def _investigation_outcome(registry, investigation: str, added: int) -> dict:
+    """What the import says about the investigation: its name, how many members it added, and a note when it named one
+    that does not exist (the datasets are then on the work list only). Rows say their own reason (`investigation`)."""
+    out = {"investigation": investigation, "investigation_members": added}
+    if investigation and not registry.get_investigation(investigation):
+        out["investigation_note"] = f"no investigation '{investigation}': datasets kept on the work list only"
+    return out
+
+
 def import_datasets(store: OpenDataStore, chosen: list[Chosen], *, work_list_name: str, transport,
                     egeria_lookup, imported_by: str = "", investigation: str = "",
                     work_list_slug: str = "", registry=None) -> dict:
@@ -330,7 +367,7 @@ def import_datasets(store: OpenDataStore, chosen: list[Chosen], *, work_list_nam
     # 1. describe each, collapse equal identifiers to one dataset listing every portal
     datasets: dict[str, dict] = {}
     errors: list[dict] = []
-    # One adapter per portal for the whole import, as `scout_work_list` does: a one-document feed (a Project Open
+    # One adapter per portal for the whole import, as `scout_dataset`'s callers do: a one-document feed (a Project Open
     # Data `data.json`; healthdata.gov's is 31 MB) is then read once, not once per chosen row. Reading it per row
     # tripled the time spent on the slowest source and gave a busy portal three chances to time out (2026-11-09).
     adapters_by_portal: dict[str, Adapter] = {}
@@ -361,6 +398,7 @@ def import_datasets(store: OpenDataStore, chosen: list[Chosen], *, work_list_nam
 
     resolver = DataCiteResolver(transport=transport).resolve
     outcomes, to_import = list(errors), []
+    members_added = 0
     for identifier, entry in datasets.items():
         row = entry["row"]
         doi = row["doi"] if row["doi"] != NOT_REPORTED else None
@@ -368,7 +406,20 @@ def import_datasets(store: OpenDataStore, chosen: list[Chosen], *, work_list_nam
         base = {"identifier": identifier, "title": row["title"], "portals": entry["portals"],
                 "check": m.as_dict(), "doi": row["doi"], "datacite": m.datacite_status or "no DOI reported"}
         if m.status == match_mod.ALREADY:
-            outcomes.append({**base, "outcome": "already_in_catalog", "words": m.as_dict()["words"]})
+            row_out = {**base, "outcome": "already_in_catalog", "words": m.as_dict()["words"]}
+            if investigation:                                    # TR-54 N1: never a silent drop
+                held = store.dataset_by_identifier(identifier)
+                if held:                                         # RE has a slug for it: it joins like an imported one
+                    row_out["slug"] = held["slug"]
+                    joined = _add_investigation_member(registry, investigation, held["slug"],
+                                                       "already in RE's catalog; chosen again for this investigation")
+                    members_added += int(joined)
+                    row_out["investigation"] = (f"added to {investigation}" if joined
+                                                else f"not added to {investigation}: there is no such investigation")
+                else:                                            # only Egeria holds it: nothing of RE's to add
+                    row_out["investigation"] = (f"not added to {investigation}: Egeria holds it and RE has no record "
+                                                "of it to add")
+            outcomes.append(row_out)
             continue
         to_import.append((identifier, entry, m, base))
 
@@ -388,13 +439,18 @@ def import_datasets(store: OpenDataStore, chosen: list[Chosen], *, work_list_nam
                                f"doi {identifier}" if row["identifier_kind"] == "doi" else identifier)
             store.add_dataset(slug=slug, row=row, portals=entry["portals"], retrieved_at=entry["retrieved_at"],
                               imported_by=imported_by, work_list_slug=wl_slug, datacite=m.datacite)
-            wls.set_member(wl_slug, slug, entity_type="open_data", rationale=f"imported from {', '.join(entry['portals'])}")
+            rationale = f"imported from {', '.join(entry['portals'])}"
+            wls.set_member(wl_slug, slug, entity_type="open_data", rationale=rationale)
+            joined = _add_investigation_member(registry, investigation, slug, rationale)
+            members_added += int(joined)
             outcomes.append({**base, "outcome": "imported", "slug": slug,
+                             **({"investigation": f"added to {investigation}"} if joined else {}),
                              "words": "imported" + (" · could not check Egeria" if m.status == match_mod.COULD_NOT_CHECK else "")})
     return {"work_list": wl_slug if to_import else "", "cap": cap,
             "imported": sum(1 for o in outcomes if o["outcome"] == "imported"),
             "already_in_catalog": sum(1 for o in outcomes if o["outcome"] == "already_in_catalog"),
-            "refused": sum(1 for o in outcomes if o["outcome"] == "refused"), "rows": outcomes}
+            "refused": sum(1 for o in outcomes if o["outcome"] == "refused"), "rows": outcomes,
+            **_investigation_outcome(registry, investigation, members_added)}
 
 
 # ── import from a registered repository ─────────────────────────────────────
@@ -530,8 +586,10 @@ def import_from_repository(store: OpenDataStore, *, repo_slug: str, descriptor_p
                        f"doi {identifier}" if ident["identifier_kind"] == dd.ID_DOI else identifier)
     store.add_dataset(slug=slug, row=row, portals=[REPOSITORY_PORTAL], retrieved_at=now(), imported_by=imported_by,
                       work_list_slug=wl_slug, datacite=datacite, repo_slug=repo_slug)
-    wls.set_member(wl_slug, slug, entity_type="open_data", rationale=f"imported from repository {repo_slug}")
-    return {"outcome": "imported", "identifier": identifier, "identifier_kind": ident["identifier_kind"], "slug": slug,
+    rationale = f"imported from repository {repo_slug}"
+    wls.set_member(wl_slug, slug, entity_type="open_data", rationale=rationale)
+    added = int(_add_investigation_member(registry, investigation, slug, rationale))
+    return {**_investigation_outcome(registry, investigation, added), "outcome": "imported", "identifier": identifier, "identifier_kind": ident["identifier_kind"], "slug": slug,
             "work_list": wl_slug, "datacite": dc_status, "datacite_detail": dc_detail, "check": cc["words"],
             "words": "imported" + (f" · {cc['words']}" if cc["words"] != NOT_REPORTED else "")
                      + (" · DataCite could not be checked" if dc_status == "could not check" else "")}
@@ -665,40 +723,31 @@ def scout_price(n: int) -> dict:
     return {"datasets": n, "calls": n, "line": f"{n} dataset{'s' if n != 1 else ''} × 1 call = {n} call{'s' if n != 1 else ''}"}
 
 
-def scout_work_list(store: OpenDataStore, work_list_slug: str, *, transport) -> dict:
-    """Re-read each dataset in the work list from its portal and refresh its stored columns (licence and flags,
-    publisher, modified, formats, size, the publisher's record with its stated coverage). API only. A dataset whose
-    portal did not answer is reported `could_not_scout` with the reason and keeps what it had: a failed read never
-    blanks a column."""
-    datasets = store.datasets_in_work_list(work_list_slug)
-    if not datasets:
-        raise NotFound(f"No open data in work list '{work_list_slug}'.")
-    out = []
-    adapters_by_portal: dict = {}        # one adapter per portal for the run: a one-document feed is read once
-    for d in datasets:
-        dataset_id = (d["record"] or {}).get("name") or (d["record"] or {}).get("id") or d["identifier"].split(":", 1)[-1]
-        outcome = {"slug": d["slug"], "title": d["title"], "outcome": "could_not_scout", "words": ""}
-        for portal_slug in d["portals"]:
-            portal = store.get_portal(portal_slug)
-            if not portal:
-                outcome["words"] = f"portal '{portal_slug}' is no longer registered"
-                continue
-            try:
-                if portal_slug not in adapters_by_portal:
-                    adapters_by_portal[portal_slug] = portal_adapter(portal, transport)
-                row = adapters_by_portal[portal_slug].describe(dataset_id)
-            except Exception as exc:
-                outcome["words"] = f"could not read from {portal['display_name']}: {exc}"[:REFUSAL_WORDS_MAX]
-                continue
-            changed = row["modified"] != d["modified"]
-            store.update_scouted(d["slug"], row, now())
-            outcome.update(outcome="scouted", words="scouted" + (" · changed on their side since the last look" if changed else " · no change on their side"),
-                           changed=changed)
-            break
-        out.append(outcome)
-    return {"work_list": work_list_slug, "price": scout_price(len(datasets)), "rows": out,
-            "scouted": sum(1 for o in out if o["outcome"] == "scouted"),
-            "could_not_scout": sum(1 for o in out if o["outcome"] != "scouted")}
+def scout_dataset(store: OpenDataStore, d: dict, *, transport, adapters_by_portal: dict | None = None) -> dict:
+    """Re-read ONE dataset from its portal (one call) and refresh its stored columns (licence and flags, publisher, modified, formats,
+    size, the publisher's record with its stated coverage). A portal that did not answer is `could_not_scout` with the reason, and the
+    dataset keeps what it had: a failed read never blanks a column."""
+    adapters_by_portal = {} if adapters_by_portal is None else adapters_by_portal     # one adapter per portal: a one-document feed is read once
+    dataset_id = (d["record"] or {}).get("name") or (d["record"] or {}).get("id") or d["identifier"].split(":", 1)[-1]
+    outcome = {"slug": d["slug"], "title": d["title"], "outcome": "could_not_scout", "words": ""}
+    for portal_slug in d["portals"]:
+        portal = store.get_portal(portal_slug)
+        if not portal:
+            outcome["words"] = f"portal '{portal_slug}' is no longer registered"
+            continue
+        try:
+            if portal_slug not in adapters_by_portal:
+                adapters_by_portal[portal_slug] = portal_adapter(portal, transport)
+            row = adapters_by_portal[portal_slug].describe(dataset_id)
+        except Exception as exc:
+            outcome["words"] = f"could not read from {portal['display_name']}: {exc}"[:REFUSAL_WORDS_MAX]
+            continue
+        changed = row["modified"] != d["modified"]
+        store.update_scouted(d["slug"], row, now())
+        outcome.update(outcome="scouted", words="scouted" + (" · changed on their side since the last look" if changed else " · no change on their side"),
+                       changed=changed)
+        break
+    return outcome
 
 
 def _states_nothing(request: dict | None) -> bool:

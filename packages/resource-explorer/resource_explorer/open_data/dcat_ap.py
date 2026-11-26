@@ -24,7 +24,7 @@ from urllib.parse import urlparse
 from resource_explorer.open_data.absence import NOT_REPORTED, reported_or_absent
 from resource_explorer.open_data.adapters import Adapter, AdapterManifest, page_of
 from resource_explorer.open_data.ckan import normalise_doi
-from resource_explorer.open_data.licences import licence_flags, licence_id_from_iri
+from resource_explorer.open_data.licences import LICENCE_TEXT_KEY, classify_licence, licence_flags, licence_id_from_iri
 from resource_explorer.open_data.transport import Transport, TransportError
 
 LD_ACCEPT = {"Accept": "application/ld+json, application/json;q=0.9"}
@@ -330,6 +330,20 @@ class DcatApAdapter(Adapter):
 
     # -- normalising ----------------------------------------------------------
 
+    @staticmethod
+    def _fallback_url(ident: str | None, ids: list[str], dists: list[dict], doc: _Doc) -> str:
+        """With no landing page: the entry's own IRI, an identifier that is a URL, or a distribution's ACCESS URL (never a
+        download URL: that is the data, not a page about it); else not reported (TR-54 E1: DKAN states no landingPage)."""
+        for candidate in (ident, *ids):
+            if candidate and candidate.lower().startswith(("http://", "https://")):
+                return candidate
+        for d in dists:
+            for v in _vals(d, "dcat", "accessURL"):
+                got = _iri(doc.resolve(v)) or _iri(v) or _text(v)
+                if got and got.lower().startswith(("http://", "https://")):
+                    return got
+        return NOT_REPORTED
+
     def _distribution_nodes(self, entry: dict, doc: _Doc) -> list[dict]:
         out = []
         for v in _vals(entry, "dcat", "distribution"):
@@ -414,9 +428,21 @@ class DcatApAdapter(Adapter):
         if title:
             record["_language"] = lang or "not stated"
         licence_raw, note = self._licence(entry, doc, dist_nodes)
+        if licence_raw == NOT_REPORTED:
+            # Project Open Data's `rights` (OpenDataSoft states its licence there, as text): read as licence text, and said so
+            rights = next((t for t in (_text(v) for v in _vals(entry, "dct", "rights")) if t), None)
+            if rights:
+                licence_raw = rights
+                note = (note + "; " if note else "") + "the licence text is the portal's `rights` statement, not a `license`"
         if note:
             record["_licence_note"] = note
-        licence_id = licence_id_from_iri(licence_raw) if licence_raw != NOT_REPORTED else NOT_REPORTED
+        classified = classify_licence(licence_raw)
+        licence_id, licence_text = classified.id, classified.text
+        if classified.placeholder:
+            note = (note + "; " if note else "") + f"the portal's licence field says {classified.placeholder!r}, which states no licence"
+            record["_licence_note"] = note
+        if licence_text != NOT_REPORTED:
+            record[LICENCE_TEXT_KEY] = licence_text      # kept with the stored record: the licence is stated, and not judged
         modified = next((t for t in (_text(v) for ns_local in (("dct", "modified"), ("dct", "issued"))
                                      for v in _vals(entry, *ns_local)) if t), None)
         sizes = [_bytes(_vals(d, "dcat", "byteSize")) for d in dist_nodes]
@@ -433,11 +459,12 @@ class DcatApAdapter(Adapter):
             "title": title or NOT_REPORTED,
             "publisher": self._publisher(entry, doc),
             "licence_id": licence_id,
+            "licence_text": licence_text,
             "licence": licence_flags(None if licence_id == NOT_REPORTED else licence_id),
             "modified": modified or NOT_REPORTED,
             "formats": self._formats(dist_nodes, doc),
             "size": size if size is not None else NOT_REPORTED,
-            "url": landing or (ident if ident and ident.lower().startswith(("http://", "https://")) else NOT_REPORTED),
+            "url": landing or self._fallback_url(ident, ids, dist_nodes, doc),
             "record": record,
         }
 

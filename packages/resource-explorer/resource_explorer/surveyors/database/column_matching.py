@@ -67,6 +67,11 @@ MATCH_MATCHED = "matched"
 #: Reference data only: the sampled distinct values are covered by a known set,
 #: but not all of them — some values are outside it.
 MATCH_PARTIAL = "partial_match"
+#: TR-127 (Architect ruling 2026-11-22): the column's NAME and TYPE fit a class that carries no value rule, so no
+#: value was tested. It is NOT a match and it must never read as one: it is in `NOT_ESTABLISHED_VERDICTS`, not in
+#: `ESTABLISHED_VERDICTS`, and counts as a match nowhere. Every consumer keys on the verdict, so a distinct verdict
+#: fails closed where an evidence flag on "matched" would fail open at any consumer that forgot to check it.
+MATCH_NAME_ONLY = "name_only"
 #: Values were read, candidates existed, nothing conformed. A real finding.
 MATCH_NO_MATCH = "no_match"
 #: Nothing known conformed, but the values follow a recognisable pattern (or,
@@ -90,7 +95,7 @@ MATCH_NOT_APPLICABLE = "not_applicable"
 #: as absence rather than as a negative answer. Grouped here so a consumer gets
 #: the distinction by importing one name instead of by remembering four.
 NOT_ESTABLISHED_VERDICTS: frozenset[str] = frozenset(
-    {MATCH_NOT_SAMPLED, MATCH_NO_CANDIDATES, MATCH_INCONCLUSIVE, MATCH_NOT_APPLICABLE}
+    {MATCH_NOT_SAMPLED, MATCH_NO_CANDIDATES, MATCH_INCONCLUSIVE, MATCH_NOT_APPLICABLE, MATCH_NAME_ONLY}
 )
 
 #: The verdicts that are a positive statement about the data.
@@ -108,6 +113,13 @@ ESTABLISHED_VERDICTS: frozenset[str] = frozenset(
 #: match drives a PII decision and a fifth of the column disagreeing is not a
 #: conformance, it is two populations in one column.
 VALUE_MATCH_THRESHOLD = 0.95
+
+#: TR-131 read-back W1: a column whose NAME fits a class and whose values conform at least this much (but below
+#: `VALUE_MATCH_THRESHOLD`) is `MATCH_INCONCLUSIVE`, never an established `no_match`: a Phone-named column that is
+#: four-fifths phone numbers is a mixed column or a format the rule does not know, and "no match" would be a confident
+#: wrong answer. Inconclusive rather than `partial_match`: table_preview and column_profile_step count `partial_match`
+#: as a match (it is the reference-data partial), which would show and publish the class.
+NEAR_MATCH_FLOOR = 0.60
 
 #: Below this many distinct sampled values, no value-pattern verdict is
 #: attempted: with three values, any regex that fits them fits by luck.
@@ -432,7 +444,64 @@ def detect_patterns(values: Sequence[Any]) -> list[tuple[ValuePattern, float]]:
     return hits
 
 
+# ── TR-131: value checks beyond a regex, and "generic" value shapes ───────────
+
+def luhn_valid(value: Any) -> bool:
+    """True when `value` is 13-19 digits (spaces or hyphens between them allowed) whose Luhn checksum holds.
+
+    A payment-card regex alone matches any long number (epoch milliseconds, order ids); the checksum is what makes
+    a card number a card number. One in ten random numbers passes it, so a non-card column of 13-19 digit numbers
+    conforms at about 0.10, far below `VALUE_MATCH_THRESHOLD`."""
+    digits = re.sub(r"[ \-]", "", str(value).strip()) if value is not None else ""
+    if not digits.isdigit() or not 13 <= len(digits) <= 19:
+        return False
+    total = 0
+    for i, ch in enumerate(reversed(digits)):
+        d = int(ch)
+        if i % 2 == 1:
+            d *= 2
+            if d > 9:
+                d -= 9
+        total += d
+    return total % 10 == 0
+
+
+#: TR-131: named value checks a Data Class can ask for in `specificationDetails["valueCheck"]`, applied to every
+#: sampled value on top of its regex (a value conforms only when both hold). An unknown name is not ignored: the
+#: class's value rule cannot be applied as written, so nothing is tested and it is reported as unusable.
+VALUE_CHECKS: dict[str, Any] = {"luhn": luhn_valid}
+
+#: TR-131: values any generic shape accepts: bare digit strings of id, phone and card lengths, and plain dates. A
+#: value rule that fully matches one of these says nothing about what a column IS (a date matches every date
+#: column, nine digits every nine-digit id), so a class with such a rule is established only when the column's
+#: NAME passes the class's name hints too (`KnownDataClass.requires_name_match`).
+GENERIC_SHAPE_PROBES: tuple[str, ...] = (
+    "123456789", "1234567890", "1234567890123", "4111111111111111", "20210304",
+    "2021-03-04", "03/04/2021", "04.03.2021", "2021-03-04 00:00:00",
+)
+
+#: Name tokens too common to identify a class on their own: a column called `date`, `id` or `number` does not
+#: say "date of birth", "SSN" or "card number". `name_hint_passes` needs a hint's other tokens.
+_GENERIC_NAME_TOKENS = frozenset({
+    "date", "dt", "time", "timestamp", "number", "num", "no", "nbr", "id", "code", "value", "val", "key",
+    "type", "of", "the", "and", "a",
+})
+
+
+def _detail_true(text: str) -> bool:
+    return (text or "").strip().lower() in ("true", "yes", "1")
+
+
 # ── What a known Egeria Data Class looks like, to this module ─────────────────
+
+#: Characters that make a string a regular expression rather than a plain word.
+_REGEX_METACHARS = frozenset(".^$*+?{}[]\\|()")
+
+
+def _is_name_hint(pattern: str) -> bool:
+    """True for a plain word or name (no regex metacharacter): a column-name keyword, not a value regex."""
+    return bool(pattern and pattern.strip()) and not any(c in _REGEX_METACHARS for c in pattern)
+
 
 @dataclass(frozen=True)
 class KnownDataClass:
@@ -466,23 +535,69 @@ class KnownDataClass:
     #: it were confirmed would let a guess ratify itself. See
     #: `data_class_match`'s `include_draft_classes`.
     content_status: str = ""
+    #: `DataValueSpecificationProperties.specificationDetails` (a string map), as sorted (key, value) pairs so the
+    #: class stays hashable. TR-131 reads two keys: `requiresNameMatch` ("true": a generic value shape, established
+    #: only with the column name) and `valueCheck` (a name in `VALUE_CHECKS`, e.g. "luhn").
+    specification_details: tuple[tuple[str, str], ...] = ()
 
     @property
     def is_draft(self) -> bool:
         return (self.content_status or "").upper() == "DRAFT"
 
+    def _detail(self, key: str) -> str:
+        return next((v for k, v in self.specification_details if k == key), "")
+
+    @property
+    def value_check(self) -> str:
+        """The named extra value check (`specificationDetails["valueCheck"]`), lower case, or ""."""
+        return self._detail("valueCheck").strip().lower()
+
+    @property
+    def requires_name_match(self) -> bool:
+        """TR-131: True when a value conformance alone cannot establish this class, so the column name must pass
+        its name hints as well.
+
+        Marked explicitly (`specificationDetails["requiresNameMatch"] = "true"`, which RE's seed writes for Phone,
+        SSN, Credit Card and Date of Birth) OR inferred: any value regex that fully matches a bare digit string or a
+        plain date (`GENERIC_SHAPE_PROBES`) is generic, whoever authored the class. The inference only ever adds
+        the requirement; an explicit "false" cannot remove it, so a generic class authored by hand in Egeria, or
+        seeded before TR-131, fails closed too."""
+        if _detail_true(self._detail("requiresNameMatch")):
+            return True
+        for regex in self.value_regexes:
+            try:
+                compiled = _compiled(regex)
+            except re.error:
+                continue
+            if any(compiled.fullmatch(probe) for probe in GENERIC_SHAPE_PROBES):
+                return True
+        return False
+
     @property
     def value_regexes(self) -> tuple[str, ...]:
-        """Every regex this class declares, `specification` first.
+        """Every VALUE regex this class declares, `specification` first.
 
         Egeria allows both a single `specification` and a list of
         `dataPatterns`, and a value conforming to any one of them conforms to
         the class — so conformance is computed over the union, not over the
         first one found.
+
+        TR-127: a `dataPatterns` entry with no regex metacharacter is a column-NAME keyword (`email`,
+        `ssn_num`), which is what RE's own seed wrote there before it used `matchPropertyNames`. Fullmatched as
+        a value regex it matches no real value, so the class would disqualify itself; those entries are name
+        hints (`name_hints`), not value regexes. Blank entries are neither.
         """
         return tuple(
-            r for r in (self.specification, *self.data_patterns) if r
+            r for r in (self.specification, *self.data_patterns) if r and r.strip() and not _is_name_hint(r)
         )
+
+    @property
+    def name_hints(self) -> tuple[str, ...]:
+        """The column names this class expects: `matchPropertyNames`, plus the metachar-free `dataPatterns`
+        (TR-127: keywords an older seed wrote as dataPatterns)."""
+        hints = [h for h in self.match_property_names if h and h.strip()]
+        hints += [p for p in self.data_patterns if p and p.strip() and _is_name_hint(p) and p not in hints]
+        return tuple(hints)
 
 
 @dataclass(frozen=True)
@@ -519,6 +634,23 @@ _CAMEL_BOUNDARY_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z]
 def _name_tokens(name: str) -> set[str]:
     split = _CAMEL_BOUNDARY_RE.sub(" ", name or "")
     return {t for t in _NAME_SPLIT_RE.split(split.lower()) if t}
+
+
+def name_hint_passes(column_name: str, candidate_names: Iterable[str]) -> bool:
+    """TR-131: does the column's name carry one of the class's names, beyond its generic words?
+
+    True when, for some candidate name, every token that is not a generic word (`_GENERIC_NAME_TOKENS`: date,
+    number, id, ...) is among the column's tokens: `birth_date` and `date_of_birth` pass `birth_date` (on `birth`),
+    `purchase_date` and a bare `date` do not; `home_phone` passes `phone_number` (on `phone`), `ip_address` does
+    not. Stricter than `name_similarity`'s 0.5, where `date` alone scores 0.5 against `birth_date`."""
+    column_tokens = _name_tokens(column_name)
+    if not column_tokens:
+        return False
+    for candidate in candidate_names:
+        distinctive = _name_tokens(candidate) - _GENERIC_NAME_TOKENS
+        if distinctive and distinctive <= column_tokens:
+            return True
+    return False
 
 
 def name_similarity(column_name: str, candidate_names: Iterable[str]) -> float:
@@ -723,6 +855,13 @@ class ColumnMatch:
                 f"the sampled distinct values; {len(self.unmatched_values)} "
                 f"are outside it. {envelope}."
             )
+        if self.verdict == MATCH_NAME_ONLY:
+            return (
+                f"{self.column_path}: matches "
+                f"'{self.matched_display_name}' on column name and type only — "
+                f"that class carries no value specification, so no value "
+                f"conformance was tested. {envelope}."
+            )
         # MATCH_MATCHED
         draft_note = (
             " (NOTE: the matched element is itself a DRAFT proposal, not "
@@ -882,13 +1021,24 @@ def data_class_match(
     scored: list[dict[str, Any]] = []
     for candidate in candidates:
         name_score = name_similarity(
-            column_name, list(candidate.match_property_names) + [candidate.display_name]
+            column_name, list(candidate.name_hints) + [candidate.display_name]
         )
         type_score = type_compatibility(column_type, candidate.data_type)
         value_score: float | None = None
         regexes = candidate.value_regexes
-        if regexes:
+        check_name = candidate.value_check
+        check = VALUE_CHECKS.get(check_name) if check_name else None
+        if regexes and check_name and check is None:
+            # TR-131: the class asks for a value check this matcher does not know. Its value rule cannot be applied
+            # as written, so nothing is tested (never a pass on the regex alone): reported as unusable.
+            unusable.append(candidate.qualified_name or candidate.display_name)
+        elif regexes:
             value_score, bad = pattern_conformance_any(values, regexes)
+            if check is not None and value_score:
+                usable = [_compiled(x) for x in regexes if x not in bad]
+                hits = sum(1 for v in values
+                           if any(p.fullmatch(str(v).strip()) for p in usable) and check(v))
+                value_score = hits / float(len(values))
             if bad:
                 unusable.append(candidate.qualified_name or candidate.display_name)
             if len(bad) == len(regexes):
@@ -911,12 +1061,27 @@ def data_class_match(
                 "candidate": candidate, "eligible": False,
                 "value_score": value_score, "name_score": name_score,
                 "type_score": type_score,
+                # TR-131 W1: the name fits and most values do too: not a match, and not a "no match" either.
+                "near": (value_score >= NEAR_MATCH_FLOOR and type_score != 0.0 and name_hint_passes(
+                    column_name, list(candidate.name_hints) + [candidate.display_name])),
             })
             continue
         # A declared, tested, FAILING type is disqualifying for the same reason.
         if type_score == 0.0:
             scored.append({
                 "candidate": candidate, "eligible": False,
+                "value_score": value_score, "name_score": name_score,
+                "type_score": type_score,
+            })
+            continue
+
+        # TR-131: a generic value shape (a date, a run of digits) conforming says nothing about what the column IS.
+        # Such a class is established only when the column's name passes its name hints too; on its values alone
+        # it is held back (named among the other candidates, never the match).
+        if (value_score is not None and candidate.value_regexes and candidate.requires_name_match
+                and not name_hint_passes(column_name, list(candidate.name_hints) + [candidate.display_name])):
+            scored.append({
+                "candidate": candidate, "eligible": False, "held_back": True,
                 "value_score": value_score, "name_score": name_score,
                 "type_score": type_score,
             })
@@ -956,8 +1121,65 @@ def data_class_match(
 
     eligible = [s for s in scored if s.get("eligible")]
     eligible.sort(key=lambda s: (-s["confidence"], s["candidate"].display_name))
+    # TR-131: classes whose generic value shape conformed but whose names the column does not carry are named, so a
+    # curator can see what was held back and why; they are not a match.
+    held_back = [
+        {
+            "display_name": s["candidate"].display_name,
+            "qualified_name": s["candidate"].qualified_name,
+            "confidence": 0,
+            "sampled_conformance": s["value_score"],
+            "held_back_reason": (
+                "the values fit this class's value rule, but that shape is generic (a date or a run of digits) and "
+                "the column name does not carry the class's names, so the values alone do not establish it"),
+        }
+        for s in scored if s.get("held_back")
+    ]
 
-    if eligible:
+    # TR-127: a candidate backed by a tested value rule outranks any that rests on name and type alone; when only
+    # name-and-type candidates remain the answer is `name_only`, which is not a match.
+    valued = [s for s in eligible if s.get("evidence") != "name_and_type"]
+    near = sorted((s for s in scored if s.get("near")), key=lambda s: (-s["value_score"], s["candidate"].display_name))
+    if near and not valued:
+        # TR-131 W1: the column is named for a class and most of its values fit that class's rule, but not 0.95 of
+        # them. Not established either way: a mixed column, or a format the rule does not know yet.
+        best = near[0]
+        candidate = best["candidate"]
+        return ColumnMatch(
+            **base, verdict=MATCH_INCONCLUSIVE,
+            sampled_conformance=best["value_score"],
+            not_established_reason=(
+                f"the column's name fits '{candidate.display_name}' and {best['value_score']:.2f} of the sampled "
+                f"values fit its value rule: more than {NEAR_MATCH_FLOOR:.2f} but less than "
+                f"{VALUE_MATCH_THRESHOLD:.2f}, so the column is neither a match nor a no-match (mixed values, or a "
+                f"format the rule does not know)"),
+            other_candidates=[
+                {"display_name": s["candidate"].display_name, "qualified_name": s["candidate"].qualified_name,
+                 "confidence": 0, "sampled_conformance": s["value_score"],
+                 "near_miss_reason": "the name fits and most values conform, but fewer than the match threshold"}
+                for s in near
+            ] + held_back,
+            unusable_specifications=unusable,
+        )
+    if eligible and not valued:
+        best = eligible[0]
+        candidate = best["candidate"]
+        return ColumnMatch(
+            **base, verdict=MATCH_NAME_ONLY,
+            confidence=best["confidence"],
+            evidence="name_and_type",
+            matched_guid=candidate.guid,
+            matched_qualified_name=candidate.qualified_name,
+            matched_display_name=candidate.display_name,
+            matched_element_is_draft=candidate.is_draft,
+            not_established_reason=(
+                f"the column's name and type fit '{candidate.display_name}', but that class carries no value "
+                f"specification, so no value was tested"),
+            other_candidates=held_back,
+            unusable_specifications=unusable,
+        )
+    if valued:
+        eligible = valued
         best = eligible[0]
         candidate: KnownDataClass = best["candidate"]
         return ColumnMatch(
@@ -977,7 +1199,7 @@ def data_class_match(
                     "sampled_conformance": s["value_score"],
                 }
                 for s in eligible[1:4]
-            ],
+            ] + held_back,
             unusable_specifications=unusable,
         )
 
@@ -995,6 +1217,7 @@ def data_class_match(
             proposed_specification=pattern.regex,
             proposed_specification_prose=pattern.description,
             proposed_values=sorted(distinct)[:20],
+            other_candidates=held_back,
             unusable_specifications=unusable,
         )
 
@@ -1003,6 +1226,7 @@ def data_class_match(
         confidence=100,
         evidence="value_pattern",
         not_established_reason="",
+        other_candidates=held_back,
         unusable_specifications=unusable,
     )
 

@@ -340,6 +340,7 @@ def log_rfa(
     analysis_name: str = "",
     items: list[dict] | None = None,
     offer: dict | None = None,
+    extra: dict | None = None,
 ) -> str:
     """Write an RFA and make sure it actually reaches the RFA drawer.
 
@@ -392,6 +393,7 @@ def log_rfa(
             "summary": summary,
             "status": status,
             **({"offer": offer} if offer else {}),
+            **(extra or {}),
         }],
     ))
     return entry_id

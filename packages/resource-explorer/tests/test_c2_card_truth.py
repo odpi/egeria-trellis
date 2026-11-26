@@ -344,7 +344,7 @@ def test_nothing_is_named_before_any_report_was_read(registry, tmp_path):
 
 @pytest.mark.parametrize("n,words", [(0, "0 B"), (999, "999 B"), (1000, "1.0 KB"), (1_500, "1.5 KB"), (999_949, "999.9 KB"),
                                      (999_950, "1.0 MB"), (8_400_000_000, "8.4 GB"), (7_800_000_000, "7.8 GB"),
-                                     (57_400_000, "57.4 MB"), (2_500_000_000_000, "2,500.0 GB")])
+                                     (57_400_000, "57.4 MB"), (2_500_000_000_000, "2.5 TB")])
 def test_the_walk_formatters_are_decimal_and_labelled_in_one_voice(n, words):
     from resource_explorer.surveyors.filesystem import walk_derived, walk_extensions
 

@@ -143,6 +143,13 @@ def _element_guid(element: dict) -> str:
     return str(header.get("guid") or element.get("guid") or "")
 
 
+def _string_map(value: Any) -> tuple[tuple[str, str], ...]:
+    """An Egeria string-map property (`specificationDetails`) as sorted (key, value) pairs; () when absent or not a map."""
+    if not isinstance(value, dict):
+        return ()
+    return tuple(sorted((str(k), "" if v is None else str(v)) for k, v in value.items()))
+
+
 def data_class_from_element(element: dict) -> KnownDataClass | None:
     """Reduce one Egeria element to a `KnownDataClass`, or `None` if it is not
     one.
@@ -174,6 +181,8 @@ def data_class_from_element(element: dict) -> KnownDataClass | None:
         match_property_names=_as_tuple(props.get("matchPropertyNames")),
         value_list=_as_tuple(props.get("valueList")) or _as_tuple(props.get("sampleValues")),
         content_status=str(props.get("contentStatus") or ""),
+        # TR-131: requiresNameMatch / valueCheck travel in the class's own specificationDetails.
+        specification_details=_string_map(props.get("specificationDetails")),
     )
 
 

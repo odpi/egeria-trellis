@@ -19,8 +19,8 @@ reused.
 **A re-run keeps verdicts** whose key is proposed again (the key holds no run id). A verdict whose proposal is no longer
 proposed is listed as "no longer proposed", with who gave it and which run proposed it: never dropped.
 
-A confirmed folder description stays in RE: it is not written to Egeria. A confirmed data-class match is written only by
-`EgeriaFileSystemSurveyor.publish_confirmed_data_classes`, behind the Architect's ruling on the shape.
+A confirmed folder description stays in RE: it is not written to Egeria. A confirmed data-class match is written by
+`EgeriaFileSystemSurveyor.publish_confirmed_data_classes`.
 """
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ VERDICTS = (CONFIRM, REJECT)
 #: What the band says about the verdict whose proposal a later run did not make again.
 GONE_WORDS = "no longer proposed"
 #: One line under the band: where a confirmed proposal goes (TR-71: this is the only explanation).
-STAYS_WORDS = "Confirmed descriptions stay in Resource Explorer; confirmed data classes are not sent to Egeria yet."
+STAYS_WORDS = "Confirmed descriptions stay in Resource Explorer; confirmed data classes go to Egeria only when you press Send."
 
 
 class ReviewRefused(ValueError):
@@ -84,7 +84,9 @@ def class_proposals(registry, slug: str) -> tuple[str, list[dict], int]:
             continue
         out.append({"key": f"{file_path}::{column}::{cls}", "file": file_path, "column": column,
                     "data_class": str(d.get("matched_display_name") or cls), "data_class_guid": str(d.get("matched_guid") or ""),
-                    "confidence": d.get("confidence"), "privacy_relevant": bool(d.get("privacy_relevant"))})
+                    "confidence": d.get("confidence"), "privacy_relevant": bool(d.get("privacy_relevant")),
+                    # TR-126: where the values came from, when RE read them for matching only (an Egeria-profiled file)
+                    "read_note": str(d.get("read_note") or "")})
     return str(m.get("ran_at") or ""), out, int(m.get("matches_not_kept") or 0)
 
 

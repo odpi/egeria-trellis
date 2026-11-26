@@ -96,7 +96,7 @@ def test_f41_fact_is_measured_from_egeria_with_the_surveyor_named(registry, tmp_
     assert fact.provenance == "egeria"
     assert fact.value["surveyed_by"] == "Egeria's Folder Survey"
     assert fact.value["report_sentence"] == EGERIA_WORDS
-    assert fact.headline == f"134 files in 17 folders · 57.3 MB · {EGERIA_WORDS}"
+    assert fact.headline == f"134 files in 17 folders · 60.1 MB · {EGERIA_WORDS}"
     assert fact.note == f"Read back from Egeria's own survey report ({EGERIA_WORDS}), not from a run of Resource Explorer's."
 
 

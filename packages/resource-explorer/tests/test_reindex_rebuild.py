@@ -530,7 +530,7 @@ class TestTheRestOfTheReadBack:
     def test_the_ask_states_the_measured_space_a_rebuild_needs(self, registry, store):
         out = reindex.queue(registry, SLUG, requested_by="erin", store=store)
         assert out["needs_bytes"] == 3 * 1_048_576                           # the repo's own tables, not web_docs
-        assert "needs about 3 MB more" in out["needs_words"]
+        assert "needs about 3.1 MB more" in out["needs_words"]
 
 
 # ── R1c: the previous index, discarded early or dropped after 7 days (Q4) ─────────────────────────────────────
@@ -658,7 +658,7 @@ class TestTheAsk:
         assert out["refused"] == "" and out["first"] is True and out["keep_days"] == reindex.KEEP_PREVIOUS_DAYS
         assert {c["collection"]: c["chunks"] for c in out["collections"]} == {
             f"{SLUG}_markdown_docs": 2, f"{SLUG}_java_code": 1}
-        assert "needs about 3 MB more" in out["needs_words"]
+        assert "needs about 3.1 MB more" in out["needs_words"]
         assert registry.list_runs(kind=reindex.RUN_KIND, limit=5) == []        # reading the ask queues nothing
 
     def test_a_rebuild_that_would_be_refused_says_why(self, registry, store):

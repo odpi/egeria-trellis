@@ -53,8 +53,8 @@ in the QuickStart's own documentation (`portal-docs/quickstart/`):
 3. The QuickStart (`./quick-start-local`), which starts the Egeria platform on port 9443 with the
    `qs-*` servers and the Portal on port 8800 (8843 with TLS).
 
-Wait for `OMAG Server 'qs-view-server' successful start` in `docker logs quickstart-egeria-main`
-before starting either app.
+Wait for the line `SERVER-OPS-0004 The qs-view-server server has successfully completed start up. The following
+services are running: ...` in `docker logs quickstart-egeria-main` before starting either app.
 
 ### 1.3 Identities
 
@@ -65,7 +65,7 @@ All identities are in the QuickStart's user directory,
 |---|---|---|
 | Resource Explorer's own service account (background work: the worker role, surveys, publishing) | `resourceexplorernpa` | `RE_DAEMON_USER_ID` / `RE_DAEMON_USER_PASSWORD` |
 | Egeria Advisor's own service account (its report-spec sync and anonymous reads) | `egeriaadvisornpa` | `EA_DAEMON_USER_ID` / `EA_DAEMON_USER_PASSWORD` |
-| Signing in to either app, in the browser or on the command line | any demo user, e.g. `peterprofile` (the demo users share the QuickStart's standard demo password) | nothing: you type it |
+| Signing in to either app, in the browser or on the command line | any demo user, e.g. `peterprofile` (the demo users share one password: `QUICKSTART_PERSONA_PASSWORD` in egeria-workspaces' `.env`) | nothing: you type it |
 | Platform-services reads used in the checks below | `garygeeke` | nothing |
 
 A service account is the app's own account, never a person, and no one can sign in to an app as one. Don't
@@ -85,7 +85,7 @@ platform tokens last one hour; an app session is the shorter of that and the app
 | `RE_DAEMON_USER_ID` / `TRELLIS_SERVICE_ACCOUNTS` | Egeria user ids no human may sign in as (RE's background account; comma-separated list); EA refuses them with 403 because it shares `TRELLIS_JWT_SECRET` with RE | RE's `EGERIA_USER_ID`; unset refuses nobody |
 | `ADVISOR_PORTAL_SECRET` / `TRELLIS_PORTAL_SECRET` | lets the Portal hand a signed-in user to EA and RE | the same value as the QuickStart's `EGERIA_ADVISOR_SSO_SECRET` |
 | `PGVECTOR_PASSWORD` | the `egeria_advisor` Postgres role. Required, no default: compose, RE and EA refuse to start without it | `compose-configs/shared-infra/.env` (`gen-env.sh` generates it on a new install; `init_trellis.sh` creates the role with it). A role still on the old `advisor`: change it first (shared-infra README) |
-| `GITHUB_TOKEN` | RE's GitHub API access for surveys and discovery | a personal token with read scope; without it GitHub's 60 calls/hour are gone in one survey |
+| `GITHUB_TOKEN` | RE's GitHub API access for surveys and discovery. Set it: not optional in practice | a personal token with read scope; without it GitHub's 60 calls/hour are gone in one survey and commit history comes back empty or partial. RE warns at startup when it is unset |
 | `EA_DAEMON_USER_ID` / `EA_DAEMON_USER_PASSWORD` | EA's own service account (the app's own account, never a person): the background report-spec sync and anonymous reads, and EA's MCP children. Required for those; no default, unset refuses in words. Before TR-34: `EGERIA_USER` / `EGERIA_PASSWORD`, read with a warning until after 6.3 | `egeriaadvisornpa`; its password from the QuickStart's user directory |
 | `EGERIA_USER` / `EGERIA_USER_PASSWORD` | CLI only: pyegeria's own names for running its tools as yourself in a shell. Never in a server's `.env`: EA and RE warn at startup if they see them | your own demo user, e.g. `erinoverview` |
 | `RE_DAEMON_USER_ID` / `RE_DAEMON_USER_PASSWORD` for RE | RE's daemon identity (TR-37, 2026-11-17: these replace RE's `EGERIA_USER_ID` / `EGERIA_USER_PASSWORD`, still read for one release and removed after 6.3; keep `EGERIA_USER` / `EGERIA_USER_PASSWORD` out of RE's environment), RE's own account `resourceexplorernpa` (not a person: RE refuses an interactive sign-in as it). Development bootstrap; not for a shipped product | the account's password in Egeria's user directory; see RE's `docs/admin-guide.md`, "RE's daemon account" |

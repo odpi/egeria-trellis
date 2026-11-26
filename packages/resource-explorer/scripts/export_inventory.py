@@ -28,7 +28,7 @@ def main() -> int:
                          "inventory are byte-identical and diff clean")
     args = ap.parse_args()
 
-    from resource_explorer.inventory_export import export_inventory, verify
+    from resource_explorer.inventory_export import export_inventory, notes, verify
     from resource_explorer.registry import ProjectRegistry
 
     stamp = "" if args.no_timestamp else datetime.now(timezone.utc).isoformat()
@@ -37,6 +37,8 @@ def main() -> int:
     problems = verify(payload)
     for problem in problems:
         print(f"PROBLEM: {problem}", file=sys.stderr)
+    for note in notes(payload):
+        print(f"NOTE: {note}", file=sys.stderr)
 
     text = json.dumps(payload, indent=2, sort_keys=True)
     if args.out:

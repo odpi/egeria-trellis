@@ -212,7 +212,7 @@ async def list_classifications() -> dict:
         ],
         "bindings": [
             {"name": ProjectRegistry.BINDING_EGERIA,
-             "label": "Create in Egeria",
+             "label": "Egeria Project (created when you publish)",
              "description": "Gets an Egeria Project, so it can be shared, zoned "
                             "and found by others."},
             {"name": ProjectRegistry.BINDING_LOCAL,
@@ -331,6 +331,12 @@ async def add_member(slug: str, req: MemberAdd) -> list[dict]:
     makes the empty sidebar an honest prompt to go and scout rather than an
     empty shell that looks broken.
     """
+    from resource_explorer.member_assets import MEMBER_ENTITY_TYPES
+
+    if req.entity_type not in MEMBER_ENTITY_TYPES:       # TR-54 A1: a kind nothing can read is refused, not stored
+        raise HTTPException(status_code=422, detail=(
+            f"'{req.entity_type}' is not a kind an investigation can hold; "
+            f"the kinds are {', '.join(MEMBER_ENTITY_TYPES)}."))
     reg = _registry()
     if not reg.get_investigation(slug):
         raise HTTPException(status_code=404, detail=f"Investigation '{slug}' not found")

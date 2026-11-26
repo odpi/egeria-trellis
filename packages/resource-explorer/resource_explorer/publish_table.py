@@ -559,6 +559,10 @@ def build_rows(registry, entity_type: str, slug: str, *, layer=None, entries: li
                         row.update(capped=True)
                         if not words:
                             row.update(value_words=f"{CAPPED_WORDS} {row['value_words']}")
+                        # Where the walk stopped, in the walk's own words ("capped at 100,000 entries"), when the result says.
+                        stopped = source.get("capped_words") if isinstance(source, dict) else ""
+                        if stopped:
+                            row.update(value_words=f"{row['value_words']} · {stopped}")
                 elsewhere = published_elsewhere(entry, m.name, engine_reports) or read_back_from_egeria(raw)
                 row["elsewhere"] = elsewhere
                 why = ""
@@ -588,6 +592,12 @@ def build_rows(registry, entity_type: str, slug: str, *, layer=None, entries: li
                 if row["choice"] and row["choice"]["choice"] == PUBLISH:
                     row["choice"]["standing"] = standing_words(entity_type)
                 row["published"] = _published_word(proofs.get(loc), row.get("value"), as_of)
+                if entity_type == "filesystem":
+                    # TR-87: its own write, apart from the Publish / Keep choice above: a row that reads "Keep in RE
+                    # only" can still offer it. The server decides from the stored result; the browser only shows it.
+                    from resource_explorer.fs_findings import offer_for
+
+                    row["request_action"] = offer_for(registry, slug, step, m.name)
                 if (row["published"]["state"] == "changed" and row["publishable"]
                         and (row["choice"] or {}).get("choice") == PUBLISH):
                     row["published"]["words"] += " · the next commit sends the new value"

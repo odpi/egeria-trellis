@@ -35,7 +35,7 @@ from trellis_artifact_tree.model import (
     validate,
 )
 from trellis_artifact_tree.schema import create_schema_sql
-from trellis_artifact_tree.store import ArtifactTreeStore
+from trellis_artifact_tree.store import ArtifactTreeStore, SchemaNotReady
 
 __all__ = [
     "Adapter",
@@ -43,6 +43,7 @@ __all__ = [
     "ArtifactTree",
     "ArtifactTreeConfig",
     "ArtifactTreeStore",
+    "SchemaNotReady",
     "CodeAdapter",
     "DocItem",
     "TreeDiagnosis",

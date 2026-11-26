@@ -24,6 +24,8 @@ Three things are Q3's own:
 """
 from __future__ import annotations
 
+from resource_explorer.byte_format import format_bytes
+
 import json
 import logging
 import uuid
@@ -81,12 +83,7 @@ def _duration_words(seconds: float) -> str:
 
 
 def _bytes_words(n: int) -> str:
-    size = float(n)
-    for unit in ("bytes", "KB", "MB", "GB", "TB"):
-        if size < 1024 or unit == "TB":
-            return f"{int(size)} bytes" if unit == "bytes" else f"{size:.1f} {unit}"
-        size /= 1024
-    return f"{n} bytes"     # pragma: no cover - the loop always returns
+    return format_bytes(n, bytes_word="bytes")
 
 
 # ── The inventory ───────────────────────────────────────────────────────────────────────────────────────
@@ -424,7 +421,7 @@ def run_scheduled_batch(registry, work_list_slug: str, definition: str, *, creat
     """A `work_list` schedule firing: the list's members as they are now, skip-unchanged on, each member checked as
     the schedule's creator (the scheduler sets them as the caller). Returns (name, location, errors, result) in the
     scheduler's shape; `result` carries every member's outcome for the activity row."""
-    from resource_explorer.workflows.egeria_work_access import batch_refusal
+    from resource_explorer.workflows.egeria_work_access import definition_batch_refusal
     from resource_explorer.zone_access import EgeriaAccessReader
 
     if definition != QUALITY_DEFINITION:
@@ -442,7 +439,7 @@ def run_scheduled_batch(registry, work_list_slug: str, definition: str, *, creat
         registry, slugs, work_list_slug=work_list_slug, requested_by=created_by, started_by_person=created_by,
         pressed=None, skip_unchanged=True, definition=definition,
         own_schedules=own_schedules(registry, slugs, definition),
-        refusal=lambda s: batch_refusal(registry, "database", s, reader=reader))
+        refusal=lambda s: definition_batch_refusal(registry, "database", s, reader=reader))
     errors = [f"{o['entity_slug']}: {o['words']}" for o in result["members"]
               if o["outcome"] in (NOT_PERMITTED, CANNOT_RUN)]
     return (work_list_slug, "", errors, result)

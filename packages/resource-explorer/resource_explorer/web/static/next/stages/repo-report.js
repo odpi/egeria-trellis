@@ -9,6 +9,7 @@
  * found" are different statements. Nothing here writes: Classic's "Catalog selected" file-type button is
  * retired (file types are published as annotations, DESIGN-FILE-TYPES-AS-ANNOTATIONS.md).
  */
+import { fmtBytesDecimal } from '/static/next/stages/native-report.js';
 import { stateEntry } from '/static/next/glyphs.js';
 import { ago } from '/static/next/format.js';
 
@@ -31,7 +32,7 @@ const card = (key, label, bodyHtml) => {
 
 function sizeText(bytes) {
   if (!bytes) return '';
-  return bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
+  return fmtBytesDecimal(bytes);
 }
 
 

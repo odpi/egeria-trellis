@@ -286,14 +286,14 @@ class EgeriaResync:
         return res
 
     def _scan_assets(self, res: ScanResult) -> Finding:
-        """Cached asset GUIDs that no longer resolve.
+        """Cached repository GUIDs that no longer resolve.
 
-        Verified the way EgeriaPublisher._find_or_create_asset verifies before
-        reusing one — search by qualifiedName and check the GUID is among the
-        results. NOT get_asset_by_guid, which raises NotFound for GUIDs that
-        plainly exist.
+        A repository is a SourceControlLibrary (TR-89), not an Asset, so the Asset-only `find_assets` can never
+        see it: that read would call EVERY repository stale, and `clear_stale_assets` would then delete each
+        one's survey records. Verified by GUID with `ClassificationExplorer.get_element_by_guid`, the type-agnostic
+        existence check every other scan in this file uses. A read that fails is `undetermined`, never stale.
         """
-        am = self._clients["asset"]
+        ce = self._clients["classification"]
         with self._registry._conn() as conn:
             rows = conn.execute(
                 "SELECT slug, github_url, egeria_asset_guid FROM projects "
@@ -301,31 +301,13 @@ class EgeriaResync:
             ).fetchall()
         stale = []
         for r in rows:
-            try:
-                # find_assets, not find_software_capabilities: the repository
-                # is a plain Asset since the 2026-09-14 SourceControlLibrary
-                # correction (egeria_publisher.py's module docstring).
-                check = am.find_assets(
-                    search_string=f"GitHubRepository::{r['github_url']}",
-                    starts_with=True, ignore_case=False, output_format="JSON",
-                )
-            except Exception as exc:
-                res.undetermined.append({
-                    "kind": "asset", "ref": r["slug"],
-                    "reason": f"{type(exc).__name__}: {str(exc)[:80]}",
-                })
-                continue
-            if check is None:
-                # No answer is not "not live" (pyegeria ISSUE-134): undetermined, never cleared.
-                res.undetermined.append({"kind": "asset", "ref": r["slug"],
-                                         "reason": "Egeria gave no answer (the client returned nothing)"})
-                continue
-            live = isinstance(check, list) and any(
-                (e.get("elementHeader") or {}).get("guid") == r["egeria_asset_guid"]
-                for e in check
-            )
-            if not live:
+            v = self._resolves(lambda g: ce.get_element_by_guid(g, graph_query_depth=0), r["egeria_asset_guid"])
+            if v is False:
                 stale.append({"slug": r["slug"], "guid": r["egeria_asset_guid"]})
+            elif v is None:
+                # No answer, or a read that failed, is not "not live" (pyegeria ISSUE-134): undetermined, never cleared.
+                res.undetermined.append({"kind": "asset", "ref": r["slug"],
+                                         "reason": "could not read the repository in Egeria"})
         return Finding(
             key="stale_assets",
             title="Cached asset GUIDs pointing at nothing",
@@ -862,7 +844,7 @@ class EgeriaResync:
                 "publishing is refused (428) until one is set")
         return Finding(
             key="unpublishable",
-            title=f"Repos with no Egeria asset and no Project to publish under",
+            title="Repos with no Egeria asset and no Project to publish under",
             detail=("Assign an Egeria Project to these, or add them to the working "
                     "set of an investigation that has one — membership of a bound "
                     "investigation supplies the binding by inheritance, which is why "

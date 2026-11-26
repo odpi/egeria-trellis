@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 NEXT = ROOT / "resource_explorer/web/static/next"
 IDS = ("Q-0113", "Q-0114", "Q-0115")
 LEADS = {"Q-0113": "od_licence_usable", "Q-0114": "od_cadence_kept", "Q-0115": "od_profile"}
+BUILT = {"od_licence_usable", "od_cadence_kept", "od_profile"}      # built in TR-54 B2, B3 and B4: their rows are PARTIAL (not yet wired, B5)
 
 
 def test_the_catalogue_has_the_three_rows_with_unique_ids_and_declared_analyses():
@@ -27,8 +28,10 @@ def test_the_catalogue_has_the_three_rows_with_unique_ids_and_declared_analyses(
     declared = {a["id"]: a for a in cat["open_data_analyses"]}
     for q in qs:
         lead = LEADS[q["id"]]
-        assert q["answering"]["analysis_ids"] == [lead] and q["answering"]["kind"] == "gap"
-        assert declared[lead]["declaration"]["built"] is False             # declared, no implementation
+        # Q-0113 became PARTIAL when od_licence_usable was built (TR-54 B2, Architect ruling); the other two stay gaps until built
+        assert q["answering"]["analysis_ids"] == [lead] and q["answering"]["kind"] == ("partial" if lead in BUILT else "gap")
+        # declared, no implementation (od_licence_usable was built in TR-54 B2: its question still reads "no reader yet" until B5)
+        assert declared[lead]["declaration"]["built"] is (lead in BUILT)
         assert q["levels"] == ["resource"] and q["catalog_history"].startswith("2026-11-02: added for open data")
     by = {q["id"]: q for q in qs}
     assert (by["Q-0113"]["stage"], by["Q-0114"]["stage"], by["Q-0115"]["stage"]) == ("Assessment", "Scouting", "Discovery")
@@ -45,7 +48,8 @@ def test_the_csv_mirror_names_the_three_rows():
 
     rows = {r["Question ID"]: r for r in csv.DictReader(open(ROOT / "docs/dr-egeria/resource_questions.csv", newline="", encoding="utf-8"))}
     for qid in IDS:
-        assert rows[qid]["Resource Types"] == "open_data" and rows[qid]["Answering Analysis"].startswith("GAP:")
+        assert rows[qid]["Resource Types"] == "open_data"
+        assert rows[qid]["Answering Analysis"].startswith("PARTIAL:" if LEADS[qid] in BUILT else "GAP:")
 
 
 def _dataset(**kw):
@@ -60,18 +64,28 @@ def _by(res):
     return {q["id"]: q for q in res["questions"]}
 
 
+def _not_built():
+    """A fixture catalogue with the three analyses NOT built: what these tests were written against, before the checks existed (TR-54 B5
+    moved the real catalogue on: built and wired, so a row follows the stored result; tests/test_tr54_b5_questions_wired.py covers that)."""
+    from types import SimpleNamespace as NS
+
+    return {a: NS(id=a, answers_questions=None, declaration=NS(built=False, absence=NS(sentence=lambda k: k)))
+            for a in ("od_licence_usable", "od_cadence_kept", "od_profile")}
+
+
 def test_a_dataset_with_nothing_stated_is_three_no_reader_rows_and_says_why():
-    res = dataset_questions.build(_dataset())
-    assert [q["state"] for q in res["questions"]] == ["no_reader"] * 3
-    assert all(q["answer"] == "" and q["words"].startswith("No mechanism exists for this yet — ") for q in res["questions"])
-    assert res["answered"] == 0 and res["partial"] == 0 and res["total"] == 3
-    assert [s["stage"] for s in res["stages"]] == ["Scouting", "Discovery", "Assessment"]
+    res = dataset_questions.build(_dataset(), declared=_not_built())
+    od = [q for q in res["questions"] if q["kind"] == "open_data"]       # the page also asks the generic questions (TR-54 A2)
+    assert [q["state"] for q in od] == ["no_reader"] * 3
+    assert all(q["answer"] == "" and q["words"].startswith("No mechanism exists for this yet — ") for q in od)
+    assert res["answered"] == 0 and len(od) == 3
+    assert [s["stage"] for s in res["stages"]][:3] == ["Scouting", "Discovery", "Assessment"]
 
 
 def test_licence_and_modified_in_the_record_make_the_two_rows_partial_with_their_source():
     d = _dataset(licence_id="cc-by-4.0", licence={"attribution": True, "share_alike": False, "commercial": True},
                  modified="2026-10-30T02:00:47", record={"accrualPeriodicity": "R/P1Y"})
-    by = _by(dataset_questions.build(d))
+    by = _by(dataset_questions.build(d, declared=_not_built()))
     assert by["Q-0113"]["state"] == "partial"
     assert by["Q-0113"]["answer"] == ("Licence cc-by-4.0 · attribution ✓ · share-alike ✗ · commercial ✓ — from the "
                                       "publisher's record at data_gov_ie, retrieved 2026-11-02")
@@ -81,10 +95,10 @@ def test_licence_and_modified_in_the_record_make_the_two_rows_partial_with_their
 
 
 def test_a_licence_id_alone_or_a_modified_date_alone_is_still_partial_and_unknown_flags_say_so():
-    only_id = _by(dataset_questions.build(_dataset(licence_id="https://open.fda.gov/license")))
+    only_id = _by(dataset_questions.build(_dataset(licence_id="https://open.fda.gov/license"), declared=_not_built()))
     assert only_id["Q-0113"]["answer"].startswith("Licence https://open.fda.gov/license · attribution ? · share-alike ? · commercial ?")
     assert only_id["Q-0114"]["state"] == "no_reader"
-    only_mod = _by(dataset_questions.build(_dataset(modified="2025-09-06")))
+    only_mod = _by(dataset_questions.build(_dataset(modified="2025-09-06"), declared=_not_built()))
     assert only_mod["Q-0114"]["answer"].startswith("Last modified 2025-09-06 —") and only_mod["Q-0113"]["state"] == "no_reader"
 
 
@@ -119,10 +133,12 @@ def test_the_route_returns_the_three_with_and_without_the_record_fields(client):
     _add(client.store, "stated", licence_id="cc-by-4.0", licence={"attribution": True, "share_alike": False, "commercial": True},
          modified="2026-10-30", record={"accrualPeriodicity": "R/P1M"})
     bare = client.get("/api/open-data/datasets/bare/questions").json()
-    assert [q["state"] for q in bare["questions"]] == ["no_reader"] * 3 and bare["partial"] == 0
+    od = lambda res: [q for q in res["questions"] if q["kind"] == "open_data"]       # noqa: E731  (the generic ones are A2's)
+    # the real catalogue: the three checks are built and WIRED (TR-54 B5), and nothing has run: ○ not run on a bare record
+    assert [q["state"] for q in od(bare)] == ["unrun"] * 3 and bare["answered"] == 0
     stated = client.get("/api/open-data/datasets/stated/questions").json()
-    assert {q["id"]: q["state"] for q in stated["questions"]} == {"Q-0113": "partial", "Q-0114": "partial", "Q-0115": "no_reader"}
-    assert stated["partial"] == 2 and stated["total"] == 3
+    assert {q["id"]: q["state"] for q in od(stated)} == {"Q-0113": "partial", "Q-0114": "partial", "Q-0115": "unrun"}
+    assert sum(1 for q in od(stated) if q["state"] == "partial") == 2
     assert client.get("/api/open-data/datasets/nope/questions").status_code == 404
 
 
@@ -135,3 +151,52 @@ def test_the_served_text_has_the_section_the_glyph_words_and_no_bare_zero():
     assert "mountQuestions(" in kind and "data-od-questions" in kind
     api = (ROOT / "resource_explorer/web/static/re-api.js").read_text(encoding="utf-8")
     assert "if (entityType === 'open_data') return `/api/open-data/datasets/${enc}/questions`;" in api
+
+
+def test_q0113_is_partial_with_the_architects_words_and_says_when_it_changed():
+    import csv
+
+    rows = {r["Question ID"]: r for r in csv.DictReader(open(ROOT / "docs/dr-egeria/resource_questions.csv", newline="", encoding="utf-8"))}
+    r = rows["Q-0113"]
+    assert r["Answering Analysis"].startswith("PARTIAL: od_licence_usable judges a dataset's licence identifier against RE's licence table")
+    assert "RE gives no legal advice" in r["Answering Analysis"] and "GAP" not in r["Answering Mechanism"]
+    assert r["Catalog History"].endswith("2026-11-23: od_licence_usable built (TR-54 B2): GAP → PARTIAL; it answers the question once wired (B5).")
+    assert rows["Q-0115"]["Answering Analysis"].startswith("PARTIAL: od_profile reads a dataset's tabular distributions")
+
+
+def test_q0114_is_partial_and_states_the_absence_rules_in_words():
+    import csv
+
+    r = {x["Question ID"]: x for x in csv.DictReader(open(ROOT / "docs/dr-egeria/resource_questions.csv", newline="", encoding="utf-8"))}["Q-0114"]
+    cell = r["Answering Analysis"]
+    assert cell.startswith("PARTIAL: od_cadence_kept compares the cadence a dataset's publisher states with the modified dates")
+    assert "one refresh is 'not enough history', never 'kept'" in cell and "states no cadence is 'not judged'" in cell
+    assert "reads stored refresh history only, with no portal call" in cell and "GAP" not in r["Answering Mechanism"]
+    assert r["Catalog History"].endswith("2026-11-23: od_cadence_kept built (TR-54 B3): GAP → PARTIAL; it answers the question once wired (B5).")
+
+
+def test_q0115_says_the_check_is_built_and_not_yet_read_by_the_question_not_that_it_has_no_reader():
+    import csv
+
+    r = {x["Question ID"]: x for x in csv.DictReader(open(ROOT / "docs/dr-egeria/resource_questions.csv", newline="", encoding="utf-8"))}["Q-0115"]
+    cell = r["Answering Analysis"]
+    assert cell.startswith("PARTIAL: od_profile reads a dataset's tabular distributions")
+    assert cell.endswith("The row's answer is the stored profile.")
+    assert "no reader yet" not in cell                     # od_profile IS built: that sentence would be false
+    assert r["Answering Mechanism"] == "Value Profiling" and r["Catalog History"].endswith("it answers the question once wired (B5).")
+
+
+def test_the_catalogue_no_longer_says_the_question_is_not_yet_wired_and_the_kind_stays_partial():
+    """W-B5-2: B5 wired Q-0113/4/5 to their checks, so "Until the question is wired to it, ..." is false. Each now says whose answer the row
+    is (the CSV and the generated YAML alike), and each stays PARTIAL: the analysis answers part of the question."""
+    import csv
+
+    rows = {x["Question ID"]: x["Answering Analysis"] for x in
+            csv.DictReader(open(ROOT / "docs/dr-egeria/resource_questions.csv", newline="", encoding="utf-8"))}
+    said = {"Q-0113": "The row's answer is the stored check, with its fit to the reader's own investigations' stated licence needs.",
+            "Q-0114": "The row's answer is the stored check.", "Q-0115": "The row's answer is the stored profile."}
+    text = open(ROOT / "resource_explorer/configdata/question_catalog.yaml", encoding="utf-8").read()
+    assert "Until the question is wired" not in text and "Until the question is wired" not in "".join(rows.values())
+    for qid, sentence in said.items():
+        assert rows[qid].startswith("PARTIAL:") and rows[qid].endswith(sentence)
+        assert sentence.replace("'", "''") in " ".join(text.split())          # the generated YAML says it too (quoted, so '' for ')

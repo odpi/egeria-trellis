@@ -408,7 +408,7 @@ NO_REQUESTER_WORDS = "no person asked for this run"
 
 
 def person_write_refusal(registry: ProjectRegistry, entity_type: str, slug: str, write: str = "publish", *,
-                         element_guid: str | None = None) -> str:
+                         element_guid: str | None = None, reader=None) -> str:
     """The run-time re-check at an automatic write (an analysis or Survey Definition run's auto-publish, a
     scheduled run): "" when it may proceed, else "not permitted · <reason>".
 
@@ -423,12 +423,12 @@ def person_write_refusal(registry: ProjectRegistry, entity_type: str, slug: str,
     who = _caller_identity()
     try:
         if who is None or not (who.user_id or "").strip():
-            zones = zones_in_use(registry, entity_type, slug, element_guid=element_guid)
+            zones = zones_in_use(registry, entity_type, slug, element_guid=element_guid, reader=reader)
             if not zones:
                 return ""
             return (f"not permitted · {NO_REQUESTER_WORDS}, and zone{'s' if len(zones) != 1 else ''} "
                     f"{', '.join(zones)} {'are' if len(zones) != 1 else 'is'} in use")
-        d = resource_access(registry, entity_type, slug, write, element_guid=element_guid)
+        d = resource_access(registry, entity_type, slug, write, element_guid=element_guid, reader=reader)
     except (AccessUnreadable, _RegistryUnreadable) as exc:
         return f"not permitted · could not check access in Egeria ({exc})"[:300]
     except Exception as exc:  # noqa: BLE001 - a failure is a refusal with its reason, never a pass

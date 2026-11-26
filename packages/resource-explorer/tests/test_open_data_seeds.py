@@ -147,7 +147,7 @@ def client(reg, monkeypatch):
 
     app = FastAPI()
     app.include_router(routes.router, prefix="/api/open-data")
-    t = FakeTransport()
+    t = FakeTransport(hosts=("demo.ckan.org", "www.demo.ckan.org"))   # a typed CKAN URL is probed once (TR-54 E1)
     monkeypatch.setattr(routes, "_transport", lambda: t)
     monkeypatch.setattr(routes, "_store", lambda: OpenDataStore(reg))
     monkeypatch.setattr(routes, "_signed_in_user", lambda request: "tester")

@@ -13,7 +13,7 @@ from resource_explorer.registry import ProjectRegistry
 from resource_explorer.observability import openlineage
 from resource_explorer.surveyors import credential_capability, prerequisite_resolver, step_cost_observer
 from resource_explorer.surveyors import result_status, run_cancellation, step_preconditions
-from resource_explorer.surveyors.survey_report import summarise_annotations, ClassificationAnnotation, SurveyResult
+from resource_explorer.surveyors.survey_report import summarise_annotations, ClassificationAnnotation, SurveyResult, ref_metrics
 from resource_explorer.survey_time import as_utc_iso
 
 log = logging.getLogger(__name__)
@@ -61,6 +61,27 @@ class SurveyOrchestrator:
     pyegeria_client : optional — passed to FileClassifierSurveyor for cache refresh
     force_refresh   : force FileTypeCache refresh even if not stale
     """
+
+    def _record_surveyed_ref(self, project, result, surveyed_at: str, repo=None) -> None:
+        """TR-132 C1: which ref of the repository this run read, and every branch it lists. Only when the run acquired code
+        (the ref is what that code is). Metadata only: it reuses the repository object the acquisition already fetched (no second
+        lookup), lists the branches, and takes the commit from what the run actually READ (`survey_commit_sha`, the SHA the
+        zipball or clone served) rather than asking GitHub again. Any failure is logged and the survey goes on with no ref
+        recorded (never a made-up one)."""
+        if repo is None:
+            return
+        try:
+            from resource_explorer.github.client import GitHubClient
+            from resource_explorer.repo_branches import record_repo_branches
+
+            info = record_repo_branches(self._registry, project.slug, surveyed_at, GitHubClient(), repo,
+                                        read_commit=result.survey_commit_sha)
+            if info.get("ref_name"):
+                result.surveyed_ref = info["ref_name"]
+                result.ref_kind = info["ref_kind"]
+                result.surveyed_commit = info["surveyed_commit"]
+        except Exception as exc:  # noqa: BLE001 -- recording the ref must never stop a survey
+            log.warning("could not record the surveyed ref of %s: %s", getattr(project, "slug", "?"), exc)
 
     def __init__(
         self,
@@ -142,7 +163,8 @@ class SurveyOrchestrator:
                 result.commit_by_step[producer] = commit
             run_cancellation.raise_if_cancelled(f"recording the work row of {producer}")
             step_cost_observer.record(
-                self._registry, project.slug, observed[0], surveyed_at, survey_commit_sha=commit)
+                self._registry, project.slug, observed[0], surveyed_at, survey_commit_sha=commit,
+                survey_ref=ref_metrics(result) if commit else None)
         result.add(ClassificationAnnotation(
             check_name="prerequisite_auto_run",
             item_key=producer,
@@ -319,6 +341,8 @@ class SurveyOrchestrator:
                     resources.update(resolve_resources(stack, providers, {resource_name}))
                 acquired[resource_name] = cost
             result.survey_commit_sha = served.get("zipball_root") or served.get("git_clone_root") or None
+            if result.survey_commit_sha:
+                self._record_surveyed_ref(project, result, surveyed_at, served.get("github_repo"))
 
             # Iterate STEP_REGISTRY's own insertion order, not
             # step_keys_to_run (a set — unordered) — a full run's step
@@ -549,7 +573,7 @@ class SurveyOrchestrator:
                     run_cancellation.raise_if_cancelled(f"recording the work row of {step_key}")
                     recorded = step_cost_observer.record(
                         self._registry, project.slug, _observed[0], surveyed_at,
-                        survey_commit_sha=_commit)
+                        survey_commit_sha=_commit, survey_ref=ref_metrics(result) if _commit else None)
                     if recorded == step_cost_observer.NOT_RECORDED:
                         # Branchable, not just logged: an unwritten observation
                         # is indistinguishable from a step that was never slow.

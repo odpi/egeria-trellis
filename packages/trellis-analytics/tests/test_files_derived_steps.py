@@ -124,6 +124,56 @@ def test_the_capped_token_is_what_the_registry_writes(fs_registry):
         ("2026-10-03", None, 1), ("2026-10-02", 0, 0), ("2026-10-01", 1, 0)]
 
 
+def test_own_reads_are_the_times_of_the_runs_that_opened_files_since_a_walk(fs_registry):
+    """TR-114: `filesystem_own_reads` answers file_profiles, narrative_docs and file_data_class_match runs of ONE file
+    system, oldest first, from `since`; times only. Not the publish steps, not another file system, not a database."""
+    from trellis_analytics_re.ods import OdsReader
+
+    reg, url = fs_registry
+    def rec(slug, step, at, metrics=None, entity_type="filesystem"):
+        reg.record_step_run(slug, step, at, entity_type=entity_type, source="resource-explorer", executor="local",
+                            metrics=metrics or {})
+    rec("tree", "file_profiles", "2026-10-02T10:00:00")
+    rec("tree", "file_profiles", "2026-10-05T10:00:00")
+    rec("tree", "narrative_docs", "2026-10-06T09:30:00", {"started_at": "2026-10-06T09:00:00", "files": 3})
+    rec("tree", "file_data_class_match", "2026-10-07T01:00:00")
+    rec("tree", "file_profiles_publish", "2026-10-07T02:00:00")          # publishes: opens no file
+    rec("other", "file_profiles", "2026-10-05T11:00:00")                  # another file system
+    rec("tree", "file_profiles", "2026-10-05T12:00:00", entity_type="database")
+    ods = OdsReader(url)
+    assert ods.filesystem_own_reads("tree", "2026-10-03T00:00:00") == [
+        {"step": "file_profiles", "surveyed_at": "2026-10-05T10:00:00", "started_at": None},
+        {"step": "narrative_docs", "surveyed_at": "2026-10-06T09:30:00", "started_at": "2026-10-06T09:00:00"},
+        {"step": "file_data_class_match", "surveyed_at": "2026-10-07T01:00:00", "started_at": None}]
+    assert len(ods.filesystem_own_reads("tree")) == 4                     # since "" = every run
+    assert ods.filesystem_own_reads("tree", "2027-01-01T00:00:00") == []   # none since: an answer, not a failure
+
+
+def test_own_reads_since_compares_times_not_strings(fs_registry):
+    """TR-114 N2: a walk's run_id and a step run's surveyed_at may be written in different forms (fractional seconds,
+    an offset, a Z). They are compared as times, so a run at the same instant is not lost to the text order."""
+    from trellis_analytics_re.ods import OdsReader
+
+    reg, url = fs_registry
+    for step, at in (("file_profiles", "2026-11-19T02:13:07.5+00:00"),      # after the walk by half a second
+                     ("narrative_docs", "2026-11-19T02:13:07Z"),            # the same instant as the walk
+                     ("file_data_class_match", "2026-11-19T02:13:06.9"),    # before it by a tenth of a second
+                     ("file_profiles", "2026-11-19T04:13:08+02:00")):       # 02:13:08 UTC
+        reg.record_step_run("tree", step, at, entity_type="filesystem", source="resource-explorer", executor="local",
+                            metrics={})
+    got = OdsReader(url).filesystem_own_reads("tree", "2026-11-19T02:13:07")
+    assert [(r["step"], r["surveyed_at"]) for r in got] == [
+        ("narrative_docs", "2026-11-19T02:13:07Z"), ("file_profiles", "2026-11-19T02:13:07.5+00:00"),
+        ("file_profiles", "2026-11-19T04:13:08+02:00")]                     # oldest first, as times
+
+
+def test_own_reads_of_an_unreadable_store_raise_never_empty(tmp_path):
+    from trellis_analytics_re.ods import OdsReader, OdsUnreadable
+
+    with pytest.raises(OdsUnreadable):
+        OdsReader(f"sqlite:///{tmp_path}/missing/none.sqlite").filesystem_own_reads("tree")
+
+
 def test_hash_matches_read_only_other_file_systems_newest_walk_and_never_empty_files(fs_registry):
     from trellis_analytics_re.ods import OdsReader
 
@@ -315,7 +365,7 @@ def test_activity_reads_measured_and_resource_explorers_own_read_counted_apart(f
     v = a.resource_properties
     assert state(a) == "measured"
     assert (v["Hot Files"], v["Cold Files"], v["Access Possibly Resource Explorer's Own Read"]) == ("1", "1", "1")
-    assert "possibly by Resource Explorer's previous walk" in a.summary
+    assert "possibly by Resource Explorer's own reads (its walk, profiles, narrative files or data-class matches)" in a.summary
 
 
 def test_activity_parameters_are_read_from_the_manifest(fs_steps_installed, fs_registry, monkeypatch):

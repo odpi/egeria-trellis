@@ -84,6 +84,62 @@ def get_survey_reports_by_guid(asset_maker, resource_guid: str) -> list[dict]:
     return reports
 
 
+#: ReportSubject: the subject (any element) sits at end 1, the SurveyReport at end 2 (Archive1_2 l.5360 at 7d0db895;
+#: re-verify on the throwaway Egeria, TR-89 brief "live proof").
+REPORT_SUBJECT = "ReportSubject"
+SUBJECT_END = 1
+
+
+class RepoReportsUnreadable(Exception):
+    """A repository's SurveyReports could not be read to the end. Never "the repository has no reports"."""
+
+
+def _report_row(entry: dict) -> dict:
+    """One report row (the shape `get_survey_reports_by_guid` gives) from a `get_related_metadata_elements` entry."""
+    element = entry.get("element") or entry.get("relatedElement") or {}
+    pvm = (element.get("elementProperties") or {}).get("propertyValueMap") or {}
+    props = {k: _typed_value(v) for k, v in pvm.items()}
+    if not props:
+        props = dict((element.get("elementProperties") or {}).get("propertiesAsStrings") or {})
+    additional = props.get("additionalProperties") or {}
+    if not isinstance(additional, dict):
+        additional = {}
+    guid = element.get("elementGUID") or (element.get("elementHeader") or {}).get("guid") or ""
+    versions = element.get("versions") or (element.get("elementHeader") or {}).get("versions") or {}
+    return {
+        "guid": str(guid),
+        "qualified_name": props.get("qualifiedName", ""),
+        "display_name": props.get("displayName", ""),
+        "surveyed_at": versions.get("createTime", "") or "",
+        "annotation_count": _safe_int(additional.get("annotation_count")),
+        "annotation_count_stated": additional.get("annotation_count") is not None,
+        "schema_count": _safe_int(additional.get("schema_count")),
+        "table_count": _safe_int(additional.get("table_count")),
+        "column_count": _safe_int(additional.get("column_count")),
+        "description": props.get("description", ""),
+    }
+
+
+def get_repo_survey_reports_by_guid(metadata_expert, repo_guid: str) -> list[dict]:
+    """All SurveyReports of a repository, read through ReportSubject from the repository's own element.
+
+    A repository is a SourceControlLibrary (a SoftwareCapability, not an Asset), so the Asset-only
+    `get_asset_by_guid` read answers NotFound for it (TR-89). Databases and file systems ARE Assets and keep
+    `get_survey_reports_by_guid`.
+
+    Raises `RepoReportsUnreadable` when the list could not be read to its end: `[]` means the repository has no
+    reports, and nothing else does."""
+    from resource_explorer.egeria_link_once import Unreadable, related_entries
+
+    try:
+        entries = related_entries(metadata_expert, REPORT_SUBJECT, repo_guid, SUBJECT_END)
+    except Unreadable as exc:
+        raise RepoReportsUnreadable(f"could not read the survey reports of {repo_guid}: {exc}") from exc
+    reports = [_report_row(e) for e in entries]
+    reports.sort(key=lambda r: r.get("surveyed_at", ""), reverse=True)
+    return reports
+
+
 def get_annotations_by_report_guid(metadata_expert, report_guid: str) -> list[dict]:
     """All annotations attached to a SurveyReport via ReportedAnnotation,
     regardless of which engine produced the report, paged to the end of the
